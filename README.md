@@ -16,6 +16,12 @@ pnpm build
 
 ## Usage
 
+Check installation:
+
+```bash
+node packages/core/dist/cli.js --version
+```
+
 ```bash
 node packages/core/dist/cli.js verdict \
   --task-file task.md \
@@ -60,6 +66,33 @@ exit `2`.
 - `rejected`: verification logs or builder report contain blocking failures.
 - `pr_only`: the CLI cannot judge the implementation against task/diff context.
 
+## Kaizen Loop Integration
+
+When `kaizen-loop` invokes `verifier`, it calls the command with no arguments,
+passes the verification prompt on stdin, and expects a compact result payload in
+`KAIZEN_VERIFIER_RESULT_PATH`.
+
+```bash
+KAIZEN_VERIFIER_RESULT_PATH=.kaizen/verifier/verify-result.json \
+KAIZEN_WORKSPACE_DIR="$PWD" \
+verifier < prompt.txt
+```
+
+The integration payload is:
+
+```json
+{
+  "status": "approved",
+  "summary": "Approved with 0 should_fix item(s); risk is low.",
+  "notes": "risk=low\nconfidence=82",
+  "reason": ""
+}
+```
+
+`status` is one of `approved`, `pr_only`, or `rejected`. `verifier` does not
+create pull requests, commit changes, or approve merges; it only returns an
+independent gate decision for the orchestrator.
+
 ## Development
 
 ```bash
@@ -70,4 +103,3 @@ pnpm schema:check
 
 `schemas/verdict.schema.json` is generated from the Zod schema in
 `packages/core/src/types.ts`.
-
