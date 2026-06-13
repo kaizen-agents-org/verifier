@@ -1,0 +1,85 @@
+{
+  "$id": "https://github.com/s-hiraoku/verifier/schemas/verdict.schema.json",
+  "$ref": "#/definitions/Verdict",
+  "definitions": {
+    "Verdict": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "rejected",
+            "pr_only"
+          ]
+        },
+        "must_fix": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "task",
+                  "diff",
+                  "verify_logs",
+                  "builder_report",
+                  "system"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "should_fix": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Verdict/properties/must_fix/items"
+          }
+        },
+        "confidence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "risk": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "verdict",
+        "must_fix",
+        "should_fix",
+        "confidence",
+        "risk",
+        "summary"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

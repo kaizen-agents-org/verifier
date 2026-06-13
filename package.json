@@ -1,0 +1,22 @@
+{
+  "name": "verifier",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.25.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "schema:generate": "pnpm --filter @verifier/core schema:generate",
+    "schema:check": "pnpm schema:generate && git diff --exit-code -- schemas/verdict.schema.json"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0",
+    "zod": "^3.25.0",
+    "zod-to-json-schema": "^3.24.0"
+  }
+}
