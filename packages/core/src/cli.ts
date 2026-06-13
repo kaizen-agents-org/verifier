@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { evaluateMinimalVerdict, VerdictInputSchema } from "./index.js";
 
 interface CliOptions {
@@ -16,6 +16,17 @@ interface CliOptions {
 }
 
 async function main(argv: string[]): Promise<number> {
+  if (argv[0] === "--version" || argv[0] === "-v") {
+    process.stdout.write("verifier 0.0.0\n");
+    return 0;
+  }
+
+  if (argv.length === 0 && process.env.KAIZEN_VERIFIER_RESULT_PATH) {
+    const payload = await runKaizenLoopMode();
+    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+    return 0;
+  }
+
   const options = parseArgs(argv);
   if (options.help) {
     process.stdout.write(helpText());
@@ -38,6 +49,53 @@ async function main(argv: string[]): Promise<number> {
   const verdict = evaluateMinimalVerdict(input);
   process.stdout.write(`${JSON.stringify(verdict, null, options.pretty ? 2 : 0)}\n`);
   return 0;
+}
+
+async function runKaizenLoopMode(): Promise<{
+  status: "approved" | "pr_only" | "rejected";
+  summary: string;
+  notes: string;
+  reason?: string;
+}> {
+  const prompt = await readStdin();
+  const input = VerdictInputSchema.parse(parseKaizenLoopPrompt(prompt));
+  const verdict = evaluateMinimalVerdict(input);
+  const payload = {
+    status: verdict.verdict,
+    summary: verdict.summary,
+    notes: [
+      `risk=${verdict.risk}`,
+      `confidence=${verdict.confidence}`,
+      verdict.must_fix.length ? `must_fix=${verdict.must_fix.map((item) => item.message).join("; ")}` : "",
+      verdict.should_fix.length ? `should_fix=${verdict.should_fix.map((item) => item.message).join("; ")}` : ""
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    ...(verdict.verdict === "rejected"
+      ? { reason: verdict.must_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary }
+      : {})
+  };
+
+  await writeFile(process.env.KAIZEN_VERIFIER_RESULT_PATH!, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  return payload;
+}
+
+function parseKaizenLoopPrompt(prompt: string) {
+  return {
+    task: section(prompt, "# Issue", "# Builder result") || prompt,
+    builderReport: section(prompt, "# Builder result", "# Mechanical verification"),
+    verifyLogs: section(prompt, "# Mechanical verification", "# Changed files"),
+    diff: section(prompt, "# Changed files", "# Decision rules")
+  };
+}
+
+function section(text: string, startMarker: string, endMarker: string): string {
+  const start = text.indexOf(startMarker);
+  if (start === -1) return "";
+  const bodyStart = text.indexOf("\n", start);
+  if (bodyStart === -1) return "";
+  const end = text.indexOf(endMarker, bodyStart + 1);
+  return text.slice(bodyStart + 1, end === -1 ? undefined : end).trim();
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -125,6 +183,14 @@ Options:
 `;
 }
 
+async function readStdin(): Promise<string> {
+  let text = "";
+  for await (const chunk of process.stdin) {
+    text += chunk;
+  }
+  return text;
+}
+
 main(process.argv.slice(2)).then(
   (code) => {
     process.exitCode = code;
@@ -135,4 +201,3 @@ main(process.argv.slice(2)).then(
     process.exitCode = 2;
   }
 );
-
