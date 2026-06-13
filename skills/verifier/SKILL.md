@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Judge whether a change is approved, rejected, or PR-only from task text, diff, verification logs, and builder report by running the local verifier CLI.
+description: Judge whether orchestration should open, warn on, block, or request context for a PR from task text, diff, verification logs, and builder report by running the local verifier CLI.
 ---
 
 # Verifier Skill
@@ -39,13 +39,12 @@ some or all of:
 
 The CLI returns:
 
-- `verdict`: `approved`, `rejected`, or `pr_only`
-- `must_fix`: blocking items that should prevent approval
+- `verdict`: `open_pr`, `open_pr_with_warning`, `block_pr`, or `needs_context`
+- `must_fix`: blocking items that should prevent PR creation
 - `should_fix`: non-blocking risks or missing context
 - `confidence`: integer from 0 to 100
 - `risk`: `low`, `medium`, or `high`
 - `summary`: short human-readable explanation
 
-The CLI exits `0` for completed judgments, including `rejected`. It exits `2`
+The CLI exits `0` for completed judgments, including `block_pr`. It exits `2`
 for usage or runtime errors.
-

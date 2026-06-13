@@ -52,14 +52,20 @@ async function main(argv: string[]): Promise<number> {
 }
 
 async function runKaizenLoopMode(): Promise<{
-  status: "approved" | "pr_only" | "rejected";
+  status: "open_pr" | "open_pr_with_warning" | "block_pr" | "needs_context";
   summary: string;
   notes: string;
-  reason?: string;
+  reason: string;
 }> {
   const prompt = await readStdin();
   const input = VerdictInputSchema.parse(parseKaizenLoopPrompt(prompt));
   const verdict = evaluateMinimalVerdict(input);
+  const reason =
+    verdict.verdict === "block_pr"
+      ? verdict.must_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary
+      : verdict.verdict === "needs_context"
+        ? verdict.should_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary
+        : "";
   const payload = {
     status: verdict.verdict,
     summary: verdict.summary,
@@ -71,9 +77,7 @@ async function runKaizenLoopMode(): Promise<{
     ]
       .filter(Boolean)
       .join("\n"),
-    ...(verdict.verdict === "rejected"
-      ? { reason: verdict.must_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary }
-      : {})
+    reason
   };
 
   await writeFile(process.env.KAIZEN_VERIFIER_RESULT_PATH!, `${JSON.stringify(payload, null, 2)}\n`, "utf8");

@@ -45,26 +45,27 @@ node packages/core/dist/cli.js \
 ## Verdict JSON
 
 The CLI always writes JSON to stdout and exits `0` for successful judgment,
-including rejected judgments. Usage or runtime errors are written to stderr and
+including blocking judgments. Usage or runtime errors are written to stderr and
 exit `2`.
 
 ```json
 {
   "schemaVersion": 1,
-  "verdict": "approved",
+  "verdict": "open_pr",
   "must_fix": [],
   "should_fix": [],
   "confidence": 82,
   "risk": "low",
-  "summary": "Approved with 0 should_fix item(s); risk is low."
+  "summary": "Open PR with 0 should_fix item(s); risk is low."
 }
 ```
 
 `verdict` is one of:
 
-- `approved`: no blocking signal was found and task/diff context exists.
-- `rejected`: verification logs or builder report contain blocking failures.
-- `pr_only`: the CLI cannot judge the implementation against task/diff context.
+- `open_pr`: no blocking or warning signal was found and task/diff context exists.
+- `open_pr_with_warning`: no blocking signal was found, but non-blocking risk signals should be shown to reviewers.
+- `block_pr`: verification logs or builder report contain blocking failures.
+- `needs_context`: task or diff context is missing, so the implementation cannot be checked against intent.
 
 ## Kaizen Loop Integration
 
@@ -82,16 +83,17 @@ The integration payload is:
 
 ```json
 {
-  "status": "approved",
-  "summary": "Approved with 0 should_fix item(s); risk is low.",
+  "status": "open_pr",
+  "summary": "Open PR with 0 should_fix item(s); risk is low.",
   "notes": "risk=low\nconfidence=82",
   "reason": ""
 }
 ```
 
-`status` is one of `approved`, `pr_only`, or `rejected`. `verifier` does not
-create pull requests, commit changes, or approve merges; it only returns an
-independent gate decision for the orchestrator.
+`status` is one of `open_pr`, `open_pr_with_warning`, `block_pr`, or
+`needs_context`. `verifier` does not create pull requests, commit changes, or
+grant merge decisions; it only returns an independent gate decision for the
+orchestrator.
 
 ## Development
 

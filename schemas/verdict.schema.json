@@ -12,9 +12,10 @@
         "verdict": {
           "type": "string",
           "enum": [
-            "approved",
-            "rejected",
-            "pr_only"
+            "open_pr",
+            "open_pr_with_warning",
+            "block_pr",
+            "needs_context"
           ]
         },
         "must_fix": {
