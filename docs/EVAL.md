@@ -40,9 +40,12 @@ description: 管理APIの認可チェックがPOSTに適用されない
 intent:                 # Verifierに渡すIntent（一次ソースとして扱う）
   text: "管理APIに認可チェックを追加する"
 expected:
-  verdict: not_mergeable  # 単一値。幅を許す場合は verdictAnyOf: [conditional, not_mergeable]
+  verdict: not_mergeable  # 単一値。幅を許す場合は verdictAnyOf を使う
                           # 区分の順序は mergeable < conditional < not_mergeable
                           # （inconclusiveは順序外。DESIGN.md VerdictKind参照）
+  verdictAnyOf: [conditional, not_mergeable]  # 任意。VerdictKind[]。verdictの代替。
+                          # 指定時は列挙した区分のいずれかに一致すれば期待判定とみなす。
+                          # verdict と同時指定しない（混在結果ケースは verdictAnyOf を使う）
   confidenceMax: 95       # 任意。確信度の上限期待（「確信度が下がること」の検証用）
   findings:               # 期待Finding（検出率の分母）
     - category: security
@@ -127,7 +130,7 @@ sb-008/009のような**正常ケースを必ず含める**（検出率だけ最
 |---|---|---|
 | authz-gap | POSTのみ認可スキップ | request stepで200（期待401） |
 | schema-drift | レスポンスからフィールド欠落 | スキーマ差分 |
-| flaky-500 | 10%の確率で500 | リトライポリシーの検証 |
+| flaky-500 | `?fail=1` または `X-FLAKY: true` 指定時だけ500を返す（未指定時は200） | リトライポリシーの検証。例: `GET /health?fail=1` を1回目に実行し、retry後は `GET /health` で成功させる |
 
 ### 3.4 electron-min / tui-min（Phase 2）
 
@@ -158,7 +161,7 @@ test(`${driver.targetType} clean run has no failures`, async () => {
 |---|---|
 | **recall** | mustDetect=true の期待Findingのうち、survived Findingとマッチしたものの割合。**マッチ条件**: `locationFile` 一致 かつ category一致。期待側に `locationLine` があれば実Findingの行と±10行以内であること。実Findingの `location` が欠落している場合はマッチ不成立 |
 | **fpRate** | `Σ_case max(0, 未マッチsurvived数 − maxFalsePositives) / Σ_case survived総数`。SPEC §12 KPIの偽陽性率（人間判断ベース）の自動推定値として使う |
-| **verdictAgreement** | 判定が期待と一致したケースの割合。一致条件: `verdict`（または `verdictAnyOf` のいずれか）と一致し、かつ `confidenceMax` 指定時は confidence ≤ confidenceMax |
+| **verdictAgreement** | 判定が期待と一致したケースの割合。一致条件: `expected.verdict` と一致、または `expected.verdictAnyOf` 指定時はそのいずれかと一致し、かつ `confidenceMax` 指定時は confidence ≤ confidenceMax |
 | **reproducibility** | 全ケースをN=5回実行し、Verdict区分が5回とも一致したケースの割合（リリースタグ時のみ算出。§5） |
 | **costPerRun** | 1ケースあたり平均USD / 平均トークン |
 | **wallClock** | 1ケースあたり平均実行時間 |

@@ -196,8 +196,9 @@ export function deriveClaimStatus(claim: Claim, survived: Finding[],
                                   evidence: Evidence[]): ClaimStatus {
   // failed: このClaimをfailさせる再現済みFindingが生き残っている
   if (survived.some(f => f.claimIds.includes(claim.id) && f.reproduced)) return 'failed';
-  // verified: 紐づくEvidenceが1件以上あり、failさせるFindingがない
-  if (claim.evidenceIds.length > 0) return 'verified';
+  // verified: 実在するEvidenceがこのClaimに紐づいており、failさせるFindingがない
+  const hasClaimEvidence = evidence.some(e => claim.evidenceIds.includes(e.id));
+  if (hasClaimEvidence) return 'verified';
   return 'unverified';
 }
 ```
@@ -338,6 +339,8 @@ sequenceDiagram
 
 `packages/probe-sdk`（依存ゼロの公開パッケージ）。
 
+SDK境界は `ProbeDriver.launch()` が返す `ProbeSession` に寄せる。ドライバはターゲット検出・起動・セッション内部状態・操作実行・観測・終了処理を所有し、orchestratorは `detect → launch → session.interact → session.observe → session.teardown` を呼び出すだけにする。Finding化、差分判定、retry/fallback判断はorchestrator側の責務とし、ドライバは共通error型と観測結果だけを返す。
+
 ```typescript
 export interface ProbeDriver {
   readonly targetType: TargetType;
@@ -367,6 +370,17 @@ export interface LaunchContext {
   networkPolicy: NetworkPolicy;  // 許可リスト
 }
 
+export class LaunchError extends Error {
+  readonly cause?: unknown;
+  readonly retryable: boolean;
+  constructor(message: string, options?: { cause?: unknown; retryable?: boolean }) {
+    super(message);
+    this.name = 'LaunchError';
+    this.cause = options?.cause;
+    this.retryable = options?.retryable ?? false;
+  }
+}
+
 export interface ProbeSession {
   /** シナリオを実行。各stepの成否を返す */
   interact(scenario: Scenario): Promise<StepResult[]>;
@@ -393,9 +407,30 @@ export type Step =
   | { op: 'type'; target: string; text: string }
   | { op: 'key'; keys: string }
   | { op: 'exec'; command: string; stdin?: string }
-  | { op: 'request'; method: string; path: string; body?: unknown; headers?: Record<string,string> }
+  | { op: 'request'; method: string; path: string; body?: unknown; headers?: Record<string,string>; expect?: RequestExpectation }
   | { op: 'wait'; forMs?: number; until?: string }
   | { op: 'assert-screen'; naturalLanguage: string };  // Vision LLM判定（反証必須Finding源）
+
+export interface RequestExpectation {
+  status?: number;                // 例: 認可必須APIは401を期待
+  statusAnyOf?: number[];
+  jsonSchema?: unknown;           // JSON Schema draft 2020-12互換。schema差分検出に使う
+  bodyIncludes?: string;
+  headers?: Record<string, string>;
+}
+
+export class UnsupportedStepError extends Error {
+  readonly cause?: unknown;
+  readonly retryable: boolean;
+  readonly step: Step;
+  constructor(step: Step, message: string, options?: { cause?: unknown; retryable?: boolean }) {
+    super(message);
+    this.name = 'UnsupportedStepError';
+    this.step = step;
+    this.cause = options?.cause;
+    this.retryable = options?.retryable ?? false;
+  }
+}
 
 export interface Observation {
   consoleErrors: LogEntry[];     // 新規/既存の区別はorchestrator側で差分化
