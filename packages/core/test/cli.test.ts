@@ -30,7 +30,7 @@ Implemented validation and tests.
 
 # Decision rules
 
-Return "rejected" when the builder must revise the change before a PR is created.
+Return "block_pr" when the builder must revise the change before a PR is created.
 `;
 
     const { stdout } = await spawnWithInput(
@@ -52,9 +52,9 @@ Return "rejected" when the builder must revise the change before a PR is created
       summary: string;
     };
 
-    expect(output.status).toBe("approved");
-    expect(result.status).toBe("approved");
-    expect(result.summary).toContain("Approved");
+    expect(output.status).toBe("open_pr");
+    expect(result.status).toBe("open_pr");
+    expect(result.summary).toContain("Open PR");
   });
 });
 

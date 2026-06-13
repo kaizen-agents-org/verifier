@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { evaluateMinimalVerdict } from "../src/index.js";
 
 describe("evaluateMinimalVerdict", () => {
-  it("approves clean inputs with task, diff, logs, and builder report", () => {
+  it("opens a PR for clean inputs with task, diff, logs, and builder report", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Add validation to the signup form",
       diff: "diff --git a/signup.ts b/signup.ts\n+validateEmail(input.email)",
@@ -10,13 +10,13 @@ describe("evaluateMinimalVerdict", () => {
       builderReport: "build successful"
     });
 
-    expect(verdict.verdict).toBe("approved");
+    expect(verdict.verdict).toBe("open_pr");
     expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.risk).toBe("low");
     expect(verdict.confidence).toBeGreaterThanOrEqual(80);
   });
 
-  it("rejects when verify logs contain blocking failures", () => {
+  it("blocks PR creation when verify logs contain blocking failures", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Keep API authorization intact",
       diff: "diff --git a/api.ts b/api.ts\n-authz.check()\n+return ok()",
@@ -24,12 +24,12 @@ describe("evaluateMinimalVerdict", () => {
       builderReport: "builder found blocker: auth regression"
     });
 
-    expect(verdict.verdict).toBe("rejected");
+    expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.length).toBeGreaterThanOrEqual(2);
     expect(verdict.risk).toBe("high");
   });
 
-  it("returns pr_only when task or diff is missing", () => {
+  it("needs context when task or diff is missing", () => {
     const verdict = evaluateMinimalVerdict({
       task: "",
       diff: "",
@@ -37,7 +37,7 @@ describe("evaluateMinimalVerdict", () => {
       builderReport: "build ok"
     });
 
-    expect(verdict.verdict).toBe("pr_only");
+    expect(verdict.verdict).toBe("needs_context");
     expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.should_fix.map((item) => item.source)).toContain("task");
     expect(verdict.should_fix.map((item) => item.source)).toContain("diff");
@@ -51,9 +51,21 @@ describe("evaluateMinimalVerdict", () => {
       builderReport: "build successful"
     });
 
-    expect(verdict.verdict).toBe("approved");
+    expect(verdict.verdict).toBe("open_pr_with_warning");
     expect(verdict.risk).toBe("medium");
     expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(true);
   });
-});
 
+  it("opens PRs with a warning for non-blocking verification risk signals", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "all tests passed\nwarning: snapshot was skipped",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+});
