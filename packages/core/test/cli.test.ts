@@ -46,15 +46,18 @@ Return "block_pr" when the builder must revise the change before a PR is created
       }
     );
 
-    const output = JSON.parse(stdout) as { status: string; summary: string };
+    const output = JSON.parse(stdout) as { status: string; summary: string; reason: string };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
       summary: string;
+      reason: string;
     };
 
     expect(output.status).toBe("open_pr");
     expect(result.status).toBe("open_pr");
     expect(result.summary).toContain("Open PR");
+    expect(output.reason).toBe("");
+    expect(result.reason).toBe("");
   });
 });
 
