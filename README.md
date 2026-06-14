@@ -23,7 +23,7 @@ node packages/core/dist/cli.js --version
 ```
 
 ```bash
-node packages/core/dist/cli.js verdict \
+node packages/core/dist/cli.js check \
   --task-file task.md \
   --diff-file diff.patch \
   --verify-logs-file verify.log \
@@ -34,13 +34,19 @@ node packages/core/dist/cli.js verdict \
 Inline values are also supported:
 
 ```bash
-node packages/core/dist/cli.js \
+node packages/core/dist/cli.js check \
   --task "Add signup validation" \
   --diff "diff --git a/signup.ts b/signup.ts ..." \
   --verify-logs "all tests passed" \
   --builder-report "build successful" \
   --pretty
 ```
+
+`verifier check` is the canonical command. The older `verifier verdict` form
+and bare options are still accepted for compatibility. The full staged verifier
+flags from the public spec, including `--base`, `--pr`, `--intent`, `--stages`,
+and `--reuse-claims`, are not implemented in this MVP; pass explicit task and
+diff text or files instead.
 
 ## Verdict JSON
 
