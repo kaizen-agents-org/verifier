@@ -12,7 +12,7 @@ When a Kaizen Agents bug is reported, investigate where the bug originates befor
 ## Repository Routing
 
 - `kaizen-agents-org/builder-agent`: builder execution, build request/result contracts, Codex/Claude backend invocation, self-review, implementation output, builder artifacts, or generated change quality before verifier review.
-- `kaizen-agents-org/verifier`: verifier execution, verdict schemas, gate-decision logic, verification prompts, risk evaluation, or verifier result artifacts.
+- `kaizen-agents-org/verifier`: verifier execution, verdict schemas, verdict statuses (`open_pr`, `open_pr_with_warning`, `block_pr`, `needs_context`), verification prompts, risk evaluation, or verifier result artifacts.
 - `kaizen-agents-org/kaizen-loop`: issue selection, labels, scheduling, registry/config loading, orchestration, retry loops, workspace/git handling, GitHub issue/PR operations, reflection policy, protected path handling, comments, or cross-agent handoff.
 - `kaizen-agents-org/.github`: org-level shared docs, issue templates, reusable skills, PR/issue linking guidance, or org configuration.
 
