@@ -13,7 +13,7 @@ const schema = zodToJsonSchema(VerdictSchema, {
 });
 
 const withMetadata = {
-  $id: "https://github.com/s-hiraoku/verifier/schemas/verdict.schema.json",
+  $id: "https://github.com/kaizen-agents-org/verifier/schemas/verdict.schema.json",
   ...schema
 };
 

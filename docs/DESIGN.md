@@ -253,7 +253,7 @@ export function decideVerdict(claims: Claim[], findings: Finding[],
 
 ## 3. verdict.schema.json
 
-`packages/core/src/types.ts` から `ts-json-schema-generator` で生成し、`schemas/verdict.schema.json` としてコミットする。CIで「生成結果とコミット済みスキーマの一致」を検証する（drift検出）。ルート型は `Verdict`、`$id` は `https://github.com/s-hiraoku/verifier/schemas/verdict.schema.json`、`schemaVersion` フィールドで後方互換を管理する（破壊的変更時にインクリメント）。
+`packages/core/src/types.ts` から `ts-json-schema-generator` で生成し、`schemas/verdict.schema.json` としてコミットする。CIで「生成結果とコミット済みスキーマの一致」を検証する（drift検出）。ルート型は `Verdict`、`$id` は `https://github.com/kaizen-agents-org/verifier/schemas/verdict.schema.json`、`schemaVersion` フィールドで後方互換を管理する（破壊的変更時にインクリメント）。
 
 ## 4. 確信度算出式
 
