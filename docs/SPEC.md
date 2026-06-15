@@ -218,6 +218,11 @@ verifier check --stages 0,1,2,3,4    # Stage 5（実行観測）を除外 等
 verifier check --reuse-claims <id>   # 過去実行のClaimセットを固定して再実行（判定差分の切り分け）
 ```
 
+現行MVPの実装は `verifier check` で明示的な `--task` / `--task-file` と
+`--diff` / `--diff-file` 入力を受け取り、JSON Verdictを返す。`--base`、
+`--pr`、`--intent`、`--stages`、`--reuse-claims` は段階的Verifier向けの
+公開仕様であり、MVP CLIでは未対応。
+
 設定は `verifier.config.{json,ts}`（実行コマンド、テストコマンド、Stage 5の起動手順、確信度閾値）。未設定でも自動検出でゼロコンフィグ動作する。
 
 ### Phase 2: GitHub App / Action

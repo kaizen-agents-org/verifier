@@ -104,11 +104,22 @@ function section(text: string, startMarker: string, endMarker: string): string {
 
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = { pretty: false, help: false };
-  const args = argv[0] === "verdict" ? argv.slice(1) : argv;
+  const args = argv[0] === "check" || argv[0] === "verdict" ? argv.slice(1) : argv;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     switch (arg) {
+      case "--base":
+      case "--pr":
+      case "--intent":
+      case "--stages":
+      case "--reuse-claims":
+        throw new Error(
+          `${arg} is part of the staged verifier spec but is not supported by this MVP. ` +
+            "Use --task/--task-file and --diff/--diff-file inputs instead."
+        );
+      case "--json":
+        break;
       case "--task":
         options.task = readFlagValue(args, ++index, arg);
         break;
@@ -170,6 +181,7 @@ async function readInlineOrFile(
 
 function helpText(): string {
   return `Usage:
+  verifier check [options]
   verifier verdict [options]
   verifier [options]
 
@@ -182,8 +194,13 @@ Options:
   --verify-logs-file <path>        File containing verification logs
   --builder-report <text>          Builder report text
   --builder-report-file <path>     File containing builder report
+  --json                           Accepted for spec compatibility; JSON is always written to stdout
   --pretty                         Pretty-print JSON
   -h, --help                       Show this help
+
+Future staged verifier flags such as --base, --pr, --intent, --stages, and
+--reuse-claims are documented in the public spec but are not supported by this
+MVP command yet.
 `;
 }
 

@@ -24,7 +24,7 @@ some or all of:
 2. Run the CLI with file inputs when possible:
 
    ```bash
-   node packages/core/dist/cli.js verdict \
+   node packages/core/dist/cli.js check \
      --task-file task.md \
      --diff-file diff.patch \
      --verify-logs-file verify.log \
@@ -34,6 +34,11 @@ some or all of:
 
 3. Treat stdout as the machine-readable result. The schema is
    `schemas/verdict.schema.json`.
+
+`verifier check` is the canonical command. `verifier verdict` and bare options
+remain available for compatibility. Spec-only staged flags such as `--base`,
+`--pr`, `--intent`, `--stages`, and `--reuse-claims` are not supported by this
+MVP command yet; provide explicit task and diff inputs instead.
 
 ## Output Contract
 
