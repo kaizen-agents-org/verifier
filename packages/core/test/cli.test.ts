@@ -229,6 +229,36 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.must_fix.some((item) => item.evidence?.includes("exit code 1"))).toBe(true);
   });
 
+  it("rejects check results when a verification command is signaled", async () => {
+    const dir = await createChangedRepo();
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        "kill -TERM $$"
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as {
+      final_verdict: string;
+      must_fix: Array<{ evidence?: string }>;
+    };
+
+    expect(output.final_verdict).toBe("not_mergeable");
+    expect(output.must_fix.some((item) => item.evidence?.includes("verification failed"))).toBe(true);
+  });
+
   it("prints markdown reports for check", async () => {
     const dir = await createChangedRepo();
 
@@ -286,6 +316,36 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(code).toBe(1);
     expect(output.final_verdict).toBe("conditional");
     expect(output.conditions).toContain("Run at least one verification command.");
+  });
+
+  it("resolves config intentFile relative to the checked workspace", async () => {
+    const dir = await createChangedRepo();
+    await writeFile(join(dir, "task.md"), "Update greeting text.\n", "utf8");
+    await writeFile(
+      join(dir, "verifier.config.json"),
+      JSON.stringify({
+        intentFile: "task.md",
+        verifyCommands: ["node -e \"console.log('all tests passed')\""]
+      }),
+      "utf8"
+    );
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir
+      ],
+      "",
+      { env: process.env }
+    );
+    const output = JSON.parse(stdout) as { final_verdict: string };
+
+    expect(output.final_verdict).toBe("mergeable");
   });
 });
 

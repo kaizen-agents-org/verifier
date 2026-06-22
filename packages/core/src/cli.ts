@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { access, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict, VerdictInputSchema } from "./index.js";
 import type { FinalVerdictKind } from "./types.js";
@@ -57,9 +57,12 @@ async function main(argv: string[]): Promise<number> {
 
   if (options.command === "check" && await shouldRunWorkspaceCheck(options)) {
     const config = await readVerifierConfig(options.workspace, options.configFile);
+    const configIntentFile = config.intentFile
+      ? resolveWorkspacePath(options.workspace, config.intentFile)
+      : undefined;
     const task = await readInlineOrFile(
       options.task ?? (options.taskFile ? undefined : config.intent),
-      options.taskFile ?? (options.task ? undefined : config.intentFile)
+      options.taskFile ?? (options.task ? undefined : configIntentFile)
     );
     const outputDir = options.outputDir ?? config.outputDir;
     const result = await runCheck({
@@ -306,6 +309,10 @@ async function readVerifierConfig(
     throw new Error("verifier.config.json verifyCommands must be an array.");
   }
   return parsed;
+}
+
+function resolveWorkspacePath(workspace: string, path: string): string {
+  return isAbsolute(path) ? path : resolve(workspace, path);
 }
 
 async function fileExists(path: string): Promise<boolean> {

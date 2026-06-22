@@ -213,9 +213,13 @@ function runShellCommand(command: string, workspace: string): Promise<CommandRun
 }
 
 function formatCommandResult(result: CommandRunResult): string {
+  const status =
+    result.signal || result.code === null
+      ? `verification failed: exit code ${result.code ?? "null"}${result.signal ? ` signal ${result.signal}` : ""}`
+      : `exit code ${result.code}`;
   return [
     `$ ${result.command}`,
-    `exit code ${result.code ?? "null"}${result.signal ? ` signal ${result.signal}` : ""}`,
+    status,
     result.stdout.trim() ? `stdout:\n${result.stdout.trim()}` : "",
     result.stderr.trim() ? `stderr:\n${result.stderr.trim()}` : ""
   ]
