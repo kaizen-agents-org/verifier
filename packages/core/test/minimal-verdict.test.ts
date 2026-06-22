@@ -55,5 +55,17 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.risk).toBe("medium");
     expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(true);
   });
-});
 
+  it("does not flag high-risk terms embedded inside identifiers", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor verdict parsing",
+      diff: "diff --git a/cli.ts b/cli.ts\n+const input = VerdictInputSchema.parse(raw)",
+      verifyLogs: "all tests passed",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("approved");
+    expect(verdict.risk).toBe("low");
+    expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(false);
+  });
+});

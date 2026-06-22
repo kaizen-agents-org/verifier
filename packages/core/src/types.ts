@@ -6,6 +6,14 @@ export type VerdictDecision = z.infer<typeof VerdictDecisionSchema>;
 export const RiskLevelSchema = z.enum(["low", "medium", "high"]);
 export type RiskLevel = z.infer<typeof RiskLevelSchema>;
 
+export const FinalVerdictKindSchema = z.enum([
+  "mergeable",
+  "conditional",
+  "not_mergeable",
+  "inconclusive"
+]);
+export type FinalVerdictKind = z.infer<typeof FinalVerdictKindSchema>;
+
 export const FindingSeveritySchema = z.enum(["must_fix", "should_fix"]);
 export type FindingSeverity = z.infer<typeof FindingSeveritySchema>;
 
@@ -36,14 +44,53 @@ export type VerdictInput = z.infer<typeof VerdictInputSchema>;
 export const MinimalVerdictSchema = z.object({
   schemaVersion: z.literal(1),
   verdict: VerdictDecisionSchema,
+  final_verdict: FinalVerdictKindSchema.optional(),
   must_fix: z.array(MinimalFindingSchema),
   should_fix: z.array(MinimalFindingSchema),
+  conditions: z.array(z.string()).optional(),
   confidence: z.number().int().min(0).max(100),
   risk: RiskLevelSchema,
-  summary: z.string()
+  summary: z.string(),
+  run: z
+    .object({
+      id: z.string(),
+      started_at: z.string(),
+      completed_at: z.string(),
+      duration_ms: z.number().int().min(0),
+      workspace: z.string(),
+      base_ref: z.string(),
+      head_ref: z.string(),
+      artifacts_dir: z.string(),
+      changed_files: z.array(z.string()),
+      verify_commands: z.array(
+        z.object({
+          command: z.string(),
+          exit_code: z.number().int().nullable(),
+          signal: z.string().nullable(),
+          duration_ms: z.number().int().min(0)
+        })
+      )
+    })
+    .optional(),
+  evidence: z
+    .array(
+      z.object({
+        id: z.string(),
+        kind: z.enum([
+          "intent",
+          "diff",
+          "verify_logs",
+          "builder_report",
+          "verdict",
+          "markdown"
+        ]),
+        path: z.string(),
+        summary: z.string()
+      })
+    )
+    .optional()
 });
 export type MinimalVerdict = z.infer<typeof MinimalVerdictSchema>;
 
 export const VerdictSchema = MinimalVerdictSchema;
 export type Verdict = MinimalVerdict;
-
