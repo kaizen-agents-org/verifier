@@ -1,8 +1,14 @@
 # Verifier
 
-`verifier` is the independent quality gate for Kaizen Agents. It evaluates task context, diff text, mechanical verification logs, and builder output, then returns a small JSON verdict that `kaizen-loop` can use before opening a pull request.
+`verifier` is the independent quality gate for Kaizen Agents. It evaluates task
+context, diff text, mechanical verification logs, and builder output, then
+returns a small JSON verdict that `kaizen-loop` can use before opening a pull
+request.
 
-The current implementation is an MVP gate. The full staged verifier described in [docs/SPEC.md](./docs/SPEC.md) and [docs/DESIGN.md](./docs/DESIGN.md) is the roadmap; the MVP provides the stable executable contract that the orchestrator can call today.
+The current implementation is an MVP gate. The full staged verifier described in
+[docs/SPEC.md](./docs/SPEC.md) and [docs/DESIGN.md](./docs/DESIGN.md) is the
+roadmap; the MVP provides the stable executable contract that the orchestrator
+can call today, plus a local workspace check that records run evidence.
 
 ## Gate Flow
 
@@ -36,7 +42,8 @@ flowchart TB
 
 ## Current Package
 
-The runnable CLI lives in `packages/core` and is exposed as `verifier` after build.
+The runnable CLI lives in `packages/core` and is exposed as `verifier` after
+build.
 
 ```sh
 pnpm install
@@ -62,7 +69,7 @@ Check installation:
 node packages/core/dist/cli.js --version
 ```
 
-Run the canonical check command with files:
+Run the canonical contract check with files:
 
 ```sh
 node packages/core/dist/cli.js check \
@@ -84,11 +91,57 @@ node packages/core/dist/cli.js check \
   --pretty
 ```
 
-`verifier check` is the canonical command. `verifier verdict` and bare options are accepted for compatibility.
+`verifier check` also supports a workspace mode when workspace-only options such
+as `--verify-command`, `--base`, `--workspace`, `--markdown`, or `--fail-on` are
+present:
 
-The CLI always writes JSON to stdout and exits:
+```sh
+node packages/core/dist/cli.js check \
+  --intent-file task.md \
+  --verify-command "pnpm typecheck" \
+  --verify-command "pnpm test" \
+  --pretty
+```
+
+Workspace mode collects `git diff --no-ext-diff --binary <base>` from the target
+workspace, runs each `--verify-command` in that workspace, saves evidence under
+`.verifier/runs/<run-id>/`, then feeds the collected diff and command logs into
+the same verdict contract.
+
+Configure workspace check defaults in `verifier.config.json`:
+
+```json
+{
+  "base": "main",
+  "intentFile": "task.md",
+  "verifyCommands": ["pnpm typecheck", "pnpm test"],
+  "failOn": "not_mergeable"
+}
+```
+
+Print a Markdown workspace report instead of JSON:
+
+```sh
+node packages/core/dist/cli.js check \
+  --intent-file task.md \
+  --verify-command "pnpm test" \
+  --markdown
+```
+
+Fail a CI job when the final workspace verdict reaches a threshold:
+
+```sh
+node packages/core/dist/cli.js check \
+  --intent-file task.md \
+  --verify-command "pnpm test" \
+  --fail-on conditional
+```
+
+`verifier verdict` and bare options are accepted for compatibility. Unless
+`--markdown` is used, completed judgments write JSON to stdout and exit:
 
 - `0` for a completed judgment, including blocking judgments.
+- `1` for `verifier check --fail-on <kind>` gate failures.
 - `2` for usage or runtime errors.
 
 ## MVP Verdict Model
@@ -99,11 +152,40 @@ The current JSON contract is:
 {
   "schemaVersion": 1,
   "verdict": "open_pr",
+  "final_verdict": "mergeable",
   "must_fix": [],
   "should_fix": [],
+  "conditions": [],
   "confidence": 82,
   "risk": "low",
-  "summary": "Open PR with 0 should_fix item(s); risk is low."
+  "summary": "Mergeable with confidence 82; risk is low.",
+  "run": {
+    "id": "20260618084500-12345-abcdef",
+    "started_at": "2026-06-18T08:45:00.000Z",
+    "completed_at": "2026-06-18T08:45:02.000Z",
+    "duration_ms": 2000,
+    "workspace": "/path/to/repo",
+    "base_ref": "main",
+    "head_ref": "abc1234",
+    "artifacts_dir": "/path/to/repo/.verifier/runs/20260618084500-12345-abcdef",
+    "changed_files": ["src/signup.ts"],
+    "verify_commands": [
+      {
+        "command": "pnpm test",
+        "exit_code": 0,
+        "signal": null,
+        "duration_ms": 1234
+      }
+    ]
+  },
+  "evidence": [
+    {
+      "id": "E-2",
+      "kind": "diff",
+      "path": "diff.patch",
+      "summary": "Git diff against main."
+    }
+  ]
 }
 ```
 
@@ -116,6 +198,13 @@ The current JSON contract is:
 | `block_pr` | Verification logs or builder report contain blocking failure signals. |
 | `needs_context` | Task or diff context is missing, so the change cannot be checked against intent. |
 
+Workspace mode also emits `final_verdict`:
+
+- `mergeable`: intent, diff, and verification evidence are present with no blocking or conditional signal.
+- `conditional`: no blocker was found, but required evidence or review context is missing.
+- `not_mergeable`: verification found a blocking failure.
+- `inconclusive`: the diff or execution context is insufficient to make a grounded judgment.
+
 The MVP heuristic intentionally stays small and deterministic:
 
 - hard failure patterns in verification logs or builder reports become `must_fix`;
@@ -123,9 +212,28 @@ The MVP heuristic intentionally stays small and deterministic:
 - missing task, diff, logs, or builder report lowers confidence and may require context;
 - high-risk diff terms such as auth, secrets, billing, migration, delete, or database operations add a warning unless covered by stronger evidence.
 
+## Workspace Evidence Store
+
+Each workspace check writes artifacts to:
+
+```text
+.verifier/runs/<run-id>/
+  intent.txt
+  diff.patch
+  verify-logs.txt
+  builder-report.md
+  report.md
+  verdict.json
+```
+
+The JSON output includes `run.artifacts_dir` and an `evidence` list so callers
+can link the final verdict back to the saved files.
+
 ## Kaizen Loop Integration
 
-When `kaizen-loop` invokes `verifier`, it calls the command with no arguments, passes a verifier prompt on stdin, and expects a compact payload at `KAIZEN_VERIFIER_RESULT_PATH`.
+When `kaizen-loop` invokes `verifier`, it calls the command with no arguments,
+passes a verifier prompt on stdin, and expects a compact payload at
+`KAIZEN_VERIFIER_RESULT_PATH`.
 
 ```sh
 KAIZEN_VERIFIER_RESULT_PATH=.kaizen/verifier/verify-result.json \
@@ -144,9 +252,17 @@ The integration payload is:
 }
 ```
 
-`status` is one of `open_pr`, `open_pr_with_warning`, `block_pr`, or `needs_context`.
+`status` is one of `open_pr`, `open_pr_with_warning`, `block_pr`, or
+`needs_context`.
 
-`verifier` does not edit files, create branches, commit changes, create pull requests, or grant merge approval. It returns an independent gate decision for the orchestrator and human reviewers.
+`verifier` does not edit files, create branches, commit changes, create pull
+requests, or grant merge approval. It returns an independent gate decision for
+the orchestrator and human reviewers.
+
+## Current MVP Scope
+
+See [docs/MVP.md](./docs/MVP.md) for the current product scope and the explicit
+line between this MVP and the longer-term AI verifier design.
 
 ## Full Verifier Roadmap
 
@@ -156,4 +272,5 @@ The longer-term design is documented but not fully implemented:
 - [docs/DESIGN.md](./docs/DESIGN.md): component architecture, data model, severity rules, evidence store, and probe driver design.
 - [docs/EVAL.md](./docs/EVAL.md): benchmark corpus, fixture apps, metrics, and release gates for verifier quality.
 
-Future staged flags such as `--base`, `--pr`, `--intent`, `--stages`, and `--reuse-claims` are reserved by the public spec. The current MVP rejects them with a clear error and expects explicit task/diff/log/report inputs instead.
+Future staged flags such as `--pr`, `--stages`, and `--reuse-claims` are
+reserved by the public spec. The current MVP rejects them with a clear error.

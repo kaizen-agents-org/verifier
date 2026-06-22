@@ -2,6 +2,8 @@
 
 > 関連文書: [DESIGN.md](./DESIGN.md)（詳細設計 — 型定義・スキーマ・Driver SDK・図解）/ [EVAL.md](./EVAL.md)（Evalハーネス実装仕様 — コーパス・fixtureアプリ・リリースゲート）
 
+> 実装状況: 現在の実装済みMVPは [MVP.md](./MVP.md) に定義する。本文書は最終構想を含む上位仕様であり、AI Claim分解・多視点レビュー・反証・Probe DriverはまだMVP範囲外である。
+
 ## 1. 背景と課題
 
 生成AIによってコードを書くコストはゼロに近づいた。その結果、ソフトウェア開発のボトルネックは「書くこと」から「**この変更を自信を持ってマージできるか判定すること**」へ移動した（参考: [ボトルネックの移動とソフトウェアの未来](https://zenn.dev/hiraoku/articles/bottleneck-shift-future-of-software)）。

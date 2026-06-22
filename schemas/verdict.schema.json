@@ -18,6 +18,15 @@
             "needs_context"
           ]
         },
+        "final_verdict": {
+          "type": "string",
+          "enum": [
+            "mergeable",
+            "conditional",
+            "not_mergeable",
+            "inconclusive"
+          ]
+        },
         "must_fix": {
           "type": "array",
           "items": {
@@ -53,6 +62,12 @@
             "$ref": "#/definitions/Verdict/properties/must_fix/items"
           }
         },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "confidence": {
           "type": "integer",
           "minimum": 0,
@@ -68,6 +83,128 @@
         },
         "summary": {
           "type": "string"
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "started_at": {
+              "type": "string"
+            },
+            "completed_at": {
+              "type": "string"
+            },
+            "duration_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "workspace": {
+              "type": "string"
+            },
+            "base_ref": {
+              "type": "string"
+            },
+            "head_ref": {
+              "type": "string"
+            },
+            "artifacts_dir": {
+              "type": "string"
+            },
+            "changed_files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "verify_commands": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  },
+                  "exit_code": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "signal": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "duration_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "command",
+                  "exit_code",
+                  "signal",
+                  "duration_ms"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "id",
+            "started_at",
+            "completed_at",
+            "duration_ms",
+            "workspace",
+            "base_ref",
+            "head_ref",
+            "artifacts_dir",
+            "changed_files",
+            "verify_commands"
+          ],
+          "additionalProperties": false
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "intent",
+                  "diff",
+                  "verify_logs",
+                  "builder_report",
+                  "verdict",
+                  "markdown"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "path",
+              "summary"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [

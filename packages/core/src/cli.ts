@@ -1,8 +1,12 @@
 #!/usr/bin/env node
-import { readFile, writeFile } from "node:fs/promises";
+import { access, readFile, writeFile } from "node:fs/promises";
+import { isAbsolute, join, resolve } from "node:path";
+import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict, VerdictInputSchema } from "./index.js";
+import type { FinalVerdictKind } from "./types.js";
 
 interface CliOptions {
+  command: "verdict" | "check";
   task?: string;
   taskFile?: string;
   diff?: string;
@@ -11,8 +15,26 @@ interface CliOptions {
   verifyLogsFile?: string;
   builderReport?: string;
   builderReportFile?: string;
+  base?: string;
+  workspace: string;
+  workspaceExplicit: boolean;
+  verifyCommands: string[];
+  configFile?: string;
+  outputDir?: string;
+  markdown: boolean;
+  failOn?: FinalVerdictKind;
   pretty: boolean;
   help: boolean;
+}
+
+interface VerifierConfig {
+  base?: string;
+  intent?: string;
+  intentFile?: string;
+  verifyCommands?: string[];
+  outputDir?: string;
+  markdown?: boolean;
+  failOn?: FinalVerdictKind;
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -31,6 +53,34 @@ async function main(argv: string[]): Promise<number> {
   if (options.help) {
     process.stdout.write(helpText());
     return 0;
+  }
+
+  if (options.command === "check" && await shouldRunWorkspaceCheck(options)) {
+    const config = await readVerifierConfig(options.workspace, options.configFile);
+    const configIntentFile = config.intentFile
+      ? resolveWorkspacePath(options.workspace, config.intentFile)
+      : undefined;
+    const task = await readInlineOrFile(
+      options.task ?? (options.taskFile ? undefined : config.intent),
+      options.taskFile ?? (options.task ? undefined : configIntentFile)
+    );
+    const outputDir = options.outputDir ?? config.outputDir;
+    const result = await runCheck({
+      task,
+      workspace: options.workspace,
+      base: options.base ?? config.base ?? "HEAD",
+      verifyCommands: options.verifyCommands.length > 0
+        ? options.verifyCommands
+        : config.verifyCommands ?? [],
+      ...(outputDir ? { outputDir } : {})
+    });
+    const markdown = options.markdown || config.markdown === true;
+    process.stdout.write(markdown
+      ? `${result.markdown}\n`
+      : `${JSON.stringify(result.verdict, null, options.pretty ? 2 : 0)}\n`);
+    return shouldFailForVerdict(result.verdict.final_verdict!, options.failOn ?? config.failOn)
+      ? 1
+      : 0;
   }
 
   const input = VerdictInputSchema.parse({
@@ -103,27 +153,36 @@ function section(text: string, startMarker: string, endMarker: string): string {
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const options: CliOptions = { pretty: false, help: false };
+  const command = argv[0] === "check" || argv[0] === "verdict" ? argv[0] : "verdict";
+  const options: CliOptions = {
+    command,
+    workspace: process.cwd(),
+    workspaceExplicit: false,
+    verifyCommands: [],
+    markdown: false,
+    pretty: false,
+    help: false
+  };
   const args = argv[0] === "check" || argv[0] === "verdict" ? argv.slice(1) : argv;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     switch (arg) {
-      case "--base":
       case "--pr":
-      case "--intent":
       case "--stages":
       case "--reuse-claims":
         throw new Error(
           `${arg} is part of the staged verifier spec but is not supported by this MVP. ` +
-            "Use --task/--task-file and --diff/--diff-file inputs instead."
+            "Use --task/--task-file and --diff/--diff-file inputs, or workspace check inputs."
         );
       case "--json":
         break;
       case "--task":
+      case "--intent":
         options.task = readFlagValue(args, ++index, arg);
         break;
       case "--task-file":
+      case "--intent-file":
         options.taskFile = readFlagValue(args, ++index, arg);
         break;
       case "--diff":
@@ -144,6 +203,28 @@ function parseArgs(argv: string[]): CliOptions {
       case "--builder-report-file":
         options.builderReportFile = readFlagValue(args, ++index, arg);
         break;
+      case "--base":
+        options.base = readFlagValue(args, ++index, arg);
+        break;
+      case "--workspace":
+        options.workspace = readFlagValue(args, ++index, arg);
+        options.workspaceExplicit = true;
+        break;
+      case "--verify-command":
+        options.verifyCommands.push(readFlagValue(args, ++index, arg));
+        break;
+      case "--config":
+        options.configFile = readFlagValue(args, ++index, arg);
+        break;
+      case "--output-dir":
+        options.outputDir = readFlagValue(args, ++index, arg);
+        break;
+      case "--markdown":
+        options.markdown = true;
+        break;
+      case "--fail-on":
+        options.failOn = parseFinalVerdictKind(readFlagValue(args, ++index, arg));
+        break;
       case "--pretty":
         options.pretty = true;
         break;
@@ -157,6 +238,43 @@ function parseArgs(argv: string[]): CliOptions {
   }
 
   return options;
+}
+
+async function shouldRunWorkspaceCheck(options: CliOptions): Promise<boolean> {
+  if (options.command !== "check") return false;
+  if (
+    options.base !== undefined ||
+    options.workspaceExplicit ||
+    options.verifyCommands.length > 0 ||
+    options.configFile !== undefined ||
+    options.outputDir !== undefined ||
+    options.markdown ||
+    options.failOn !== undefined
+  ) {
+    return true;
+  }
+
+  const hasDirectVerdictInput =
+    options.diff !== undefined ||
+    options.diffFile !== undefined ||
+    options.verifyLogs !== undefined ||
+    options.verifyLogsFile !== undefined ||
+    options.builderReport !== undefined ||
+    options.builderReportFile !== undefined;
+  if (hasDirectVerdictInput) return false;
+
+  const configPath = join(options.workspace, "verifier.config.json");
+  if (!(await fileExists(configPath))) return false;
+  const config = await readVerifierConfig(options.workspace, undefined);
+  return Boolean(
+    config.base ||
+      config.intent ||
+      config.intentFile ||
+      config.verifyCommands ||
+      config.outputDir ||
+      config.markdown ||
+      config.failOn
+  );
 }
 
 function readFlagValue(args: string[], index: number, flag: string): string {
@@ -179,6 +297,45 @@ async function readInlineOrFile(
   return "";
 }
 
+async function readVerifierConfig(
+  workspace: string,
+  configFile: string | undefined
+): Promise<VerifierConfig> {
+  const configPath = configFile ?? join(workspace, "verifier.config.json");
+  if (!configFile && !(await fileExists(configPath))) return {};
+  const parsed = JSON.parse(await readFile(configPath, "utf8")) as VerifierConfig;
+  if (parsed.failOn !== undefined) parsed.failOn = parseFinalVerdictKind(parsed.failOn);
+  if (parsed.verifyCommands !== undefined && !Array.isArray(parsed.verifyCommands)) {
+    throw new Error("verifier.config.json verifyCommands must be an array.");
+  }
+  return parsed;
+}
+
+function resolveWorkspacePath(workspace: string, path: string): string {
+  return isAbsolute(path) ? path : resolve(workspace, path);
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function parseFinalVerdictKind(value: string): FinalVerdictKind {
+  if (
+    value === "mergeable" ||
+    value === "conditional" ||
+    value === "not_mergeable" ||
+    value === "inconclusive"
+  ) {
+    return value;
+  }
+  throw new Error(`Unknown final verdict kind: ${value}`);
+}
+
 function helpText(): string {
   return `Usage:
   verifier check [options]
@@ -187,20 +344,28 @@ function helpText(): string {
 
 Options:
   --task <text>                    Task or intent text
+  --intent <text>                  Alias for --task
   --task-file <path>               File containing task or intent text
-  --diff <text>                    Diff text
+  --intent-file <path>             Alias for --task-file
+  --diff <text>                    Diff text for direct contract checks
   --diff-file <path>               File containing diff text
-  --verify-logs <text>             Verification log text
+  --verify-logs <text>             Verification log text for direct contract checks
   --verify-logs-file <path>        File containing verification logs
   --builder-report <text>          Builder report text
   --builder-report-file <path>     File containing builder report
+  --base <ref>                     Base ref for workspace check diff (default: HEAD)
+  --workspace <path>               Repository path for workspace check (default: cwd)
+  --config <path>                  JSON config file (default: verifier.config.json)
+  --verify-command <cmd>           Command to run during workspace check; repeatable
+  --output-dir <path>              Directory for workspace check artifacts
+  --markdown                       Print the Markdown workspace check report to stdout
+  --fail-on <kind>                 Exit 1 when workspace check reaches kind or stricter
   --json                           Accepted for spec compatibility; JSON is always written to stdout
   --pretty                         Pretty-print JSON
   -h, --help                       Show this help
 
-Future staged verifier flags such as --base, --pr, --intent, --stages, and
---reuse-claims are documented in the public spec but are not supported by this
-MVP command yet.
+Future staged verifier flags such as --pr, --stages, and --reuse-claims are
+documented in the public spec but are not supported by this MVP command yet.
 `;
 }
 

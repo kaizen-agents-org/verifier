@@ -41,11 +41,11 @@ const SOFT_RISK_PATTERNS = [
 ];
 
 const HIGH_RISK_DIFF_PATTERNS = [
-  /auth|authorization|authentication|permission/i,
-  /password|secret|token|credential/i,
-  /payment|billing|invoice/i,
-  /migration|schema|database/i,
-  /delete|drop table|truncate/i
+  /\b(?:auth|authorization|authentication|permission)\b/i,
+  /\b(?:password|secret|token|credential)\b/i,
+  /\b(?:payment|billing|invoice)\b/i,
+  /\b(?:migration|schema|database)\b/i,
+  /\b(?:delete|drop\s+table|truncate)\b/i
 ];
 
 export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
