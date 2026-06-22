@@ -17,6 +17,7 @@ interface CliOptions {
   builderReportFile?: string;
   base?: string;
   workspace: string;
+  workspaceExplicit: boolean;
   verifyCommands: string[];
   configFile?: string;
   outputDir?: string;
@@ -54,7 +55,7 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
 
-  if (options.command === "check") {
+  if (options.command === "check" && await shouldRunWorkspaceCheck(options)) {
     const config = await readVerifierConfig(options.workspace, options.configFile);
     const task = await readInlineOrFile(
       options.task ?? (options.taskFile ? undefined : config.intent),
@@ -98,14 +99,20 @@ async function main(argv: string[]): Promise<number> {
 }
 
 async function runKaizenLoopMode(): Promise<{
-  status: "approved" | "pr_only" | "rejected";
+  status: "open_pr" | "open_pr_with_warning" | "block_pr" | "needs_context";
   summary: string;
   notes: string;
-  reason?: string;
+  reason: string;
 }> {
   const prompt = await readStdin();
   const input = VerdictInputSchema.parse(parseKaizenLoopPrompt(prompt));
   const verdict = evaluateMinimalVerdict(input);
+  const reason =
+    verdict.verdict === "block_pr"
+      ? verdict.must_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary
+      : verdict.verdict === "needs_context"
+        ? verdict.should_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary
+        : "";
   const payload = {
     status: verdict.verdict,
     summary: verdict.summary,
@@ -117,9 +124,7 @@ async function runKaizenLoopMode(): Promise<{
     ]
       .filter(Boolean)
       .join("\n"),
-    ...(verdict.verdict === "rejected"
-      ? { reason: verdict.must_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary }
-      : {})
+    reason
   };
 
   await writeFile(process.env.KAIZEN_VERIFIER_RESULT_PATH!, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -149,6 +154,7 @@ function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
     command,
     workspace: process.cwd(),
+    workspaceExplicit: false,
     verifyCommands: [],
     markdown: false,
     pretty: false,
@@ -159,6 +165,15 @@ function parseArgs(argv: string[]): CliOptions {
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     switch (arg) {
+      case "--pr":
+      case "--stages":
+      case "--reuse-claims":
+        throw new Error(
+          `${arg} is part of the staged verifier spec but is not supported by this MVP. ` +
+            "Use --task/--task-file and --diff/--diff-file inputs, or workspace check inputs."
+        );
+      case "--json":
+        break;
       case "--task":
       case "--intent":
         options.task = readFlagValue(args, ++index, arg);
@@ -190,6 +205,7 @@ function parseArgs(argv: string[]): CliOptions {
         break;
       case "--workspace":
         options.workspace = readFlagValue(args, ++index, arg);
+        options.workspaceExplicit = true;
         break;
       case "--verify-command":
         options.verifyCommands.push(readFlagValue(args, ++index, arg));
@@ -219,6 +235,43 @@ function parseArgs(argv: string[]): CliOptions {
   }
 
   return options;
+}
+
+async function shouldRunWorkspaceCheck(options: CliOptions): Promise<boolean> {
+  if (options.command !== "check") return false;
+  if (
+    options.base !== undefined ||
+    options.workspaceExplicit ||
+    options.verifyCommands.length > 0 ||
+    options.configFile !== undefined ||
+    options.outputDir !== undefined ||
+    options.markdown ||
+    options.failOn !== undefined
+  ) {
+    return true;
+  }
+
+  const hasDirectVerdictInput =
+    options.diff !== undefined ||
+    options.diffFile !== undefined ||
+    options.verifyLogs !== undefined ||
+    options.verifyLogsFile !== undefined ||
+    options.builderReport !== undefined ||
+    options.builderReportFile !== undefined;
+  if (hasDirectVerdictInput) return false;
+
+  const configPath = join(options.workspace, "verifier.config.json");
+  if (!(await fileExists(configPath))) return false;
+  const config = await readVerifierConfig(options.workspace, undefined);
+  return Boolean(
+    config.base ||
+      config.intent ||
+      config.intentFile ||
+      config.verifyCommands ||
+      config.outputDir ||
+      config.markdown ||
+      config.failOn
+  );
 }
 
 function readFlagValue(args: string[], index: number, flag: string): string {
@@ -283,25 +336,29 @@ function helpText(): string {
   verifier [options]
 
 Options:
-  --base <ref>                     Base ref for verifier check diff (default: HEAD)
-  --workspace <path>               Repository path for verifier check (default: cwd)
-  --config <path>                  JSON config file (default: verifier.config.json)
   --task <text>                    Task or intent text
   --intent <text>                  Alias for --task
   --task-file <path>               File containing task or intent text
   --intent-file <path>             Alias for --task-file
-  --diff <text>                    Diff text
+  --diff <text>                    Diff text for direct contract checks
   --diff-file <path>               File containing diff text
-  --verify-logs <text>             Verification log text
+  --verify-logs <text>             Verification log text for direct contract checks
   --verify-logs-file <path>        File containing verification logs
-  --verify-command <cmd>           Command to run during verifier check; repeatable
   --builder-report <text>          Builder report text
   --builder-report-file <path>     File containing builder report
-  --output-dir <path>              Directory for check run artifacts
-  --markdown                       Print the Markdown check report to stdout
-  --fail-on <kind>                 Exit 1 when check reaches kind or stricter
+  --base <ref>                     Base ref for workspace check diff (default: HEAD)
+  --workspace <path>               Repository path for workspace check (default: cwd)
+  --config <path>                  JSON config file (default: verifier.config.json)
+  --verify-command <cmd>           Command to run during workspace check; repeatable
+  --output-dir <path>              Directory for workspace check artifacts
+  --markdown                       Print the Markdown workspace check report to stdout
+  --fail-on <kind>                 Exit 1 when workspace check reaches kind or stricter
+  --json                           Accepted for spec compatibility; JSON is always written to stdout
   --pretty                         Pretty-print JSON
   -h, --help                       Show this help
+
+Future staged verifier flags such as --pr, --stages, and --reuse-claims are
+documented in the public spec but are not supported by this MVP command yet.
 `;
 }
 

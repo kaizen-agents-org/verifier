@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-export const VerdictDecisionSchema = z.enum(["approved", "rejected", "pr_only"]);
+export const VerdictDecisionSchema = z.enum([
+  "open_pr",
+  "open_pr_with_warning",
+  "block_pr",
+  "needs_context"
+]);
 export type VerdictDecision = z.infer<typeof VerdictDecisionSchema>;
 
 export const RiskLevelSchema = z.enum(["low", "medium", "high"]);

@@ -9,6 +9,99 @@ import { describe, expect, it } from "vitest";
 const execFileAsync = promisify(execFile);
 
 describe("CLI", () => {
+  it("supports check with inline task and diff inputs", async () => {
+    const { stdout, stderr } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--task",
+        "Add signup validation",
+        "--diff",
+        "diff --git a/signup.ts b/signup.ts\n+validateEmail(input.email)",
+        "--verify-logs",
+        "pnpm test passed",
+        "--builder-report",
+        "Implemented validation and tests."
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as { verdict: string; summary: string };
+
+    expect(stderr).toBe("");
+    expect(output.verdict).toBe("open_pr");
+    expect(output.summary).toContain("Open PR");
+  });
+
+  it("supports check with file task and diff inputs", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-"));
+    const taskPath = join(dir, "task.md");
+    const diffPath = join(dir, "diff.patch");
+    await writeFile(taskPath, "Add signup validation", "utf8");
+    await writeFile(
+      diffPath,
+      "diff --git a/signup.ts b/signup.ts\n+validateEmail(input.email)",
+      "utf8"
+    );
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--task-file",
+        taskPath,
+        "--diff-file",
+        diffPath,
+        "--verify-logs",
+        "pnpm test passed",
+        "--builder-report",
+        "Implemented validation and tests."
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as { verdict: string };
+
+    expect(output.verdict).toBe("open_pr");
+  });
+
+  it.each([
+    ["verdict command", ["verdict"]],
+    ["bare options", []]
+  ])("keeps %s compatibility", async (_name, commandArgs) => {
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        ...commandArgs,
+        "--task",
+        "Add signup validation",
+        "--diff",
+        "diff --git a/signup.ts b/signup.ts\n+validateEmail(input.email)",
+        "--verify-logs",
+        "pnpm test passed",
+        "--builder-report",
+        "Implemented validation and tests."
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as { verdict: string };
+
+    expect(output.verdict).toBe("open_pr");
+  });
+
   it("supports the kaizen-loop stdin/result-file contract", async () => {
     const dir = await mkdtemp(join(tmpdir(), "verifier-"));
     const resultPath = join(dir, "verify-result.json");
@@ -34,7 +127,7 @@ Implemented validation and tests.
 
 # Decision rules
 
-Return "rejected" when the builder must revise the change before a PR is created.
+Return "block_pr" when the builder must revise the change before a PR is created.
 `;
 
     const { stdout } = await spawnWithInput(
@@ -50,15 +143,18 @@ Return "rejected" when the builder must revise the change before a PR is created
       }
     );
 
-    const output = JSON.parse(stdout) as { status: string; summary: string };
+    const output = JSON.parse(stdout) as { status: string; summary: string; reason: string };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
       summary: string;
+      reason: string;
     };
 
-    expect(output.status).toBe("approved");
-    expect(result.status).toBe("approved");
-    expect(result.summary).toContain("Approved");
+    expect(output.status).toBe("open_pr");
+    expect(result.status).toBe("open_pr");
+    expect(result.summary).toContain("Open PR");
+    expect(output.reason).toBe("");
+    expect(result.reason).toBe("");
   });
 
   it("checks a workspace by collecting git diff and running verification commands", async () => {
@@ -92,7 +188,7 @@ Return "rejected" when the builder must revise the change before a PR is created
       evidence: Array<{ path: string }>;
     };
 
-    expect(output.verdict).toBe("approved");
+    expect(output.verdict).toBe("open_pr");
     expect(output.final_verdict).toBe("mergeable");
     expect(output.risk).toBe("low");
     expect(output.run.changed_files).toEqual(["greeting.txt"]);
@@ -128,7 +224,7 @@ Return "rejected" when the builder must revise the change before a PR is created
       must_fix: Array<{ evidence?: string }>;
     };
 
-    expect(output.verdict).toBe("rejected");
+    expect(output.verdict).toBe("block_pr");
     expect(output.final_verdict).toBe("not_mergeable");
     expect(output.must_fix.some((item) => item.evidence?.includes("exit code 1"))).toBe(true);
   });

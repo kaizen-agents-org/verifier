@@ -237,7 +237,7 @@ function deriveFinalVerdict(
   input: VerdictInput,
   verifyCommands: string[]
 ): FinalVerdictKind {
-  if (verdict.verdict === "rejected") return "not_mergeable";
+  if (verdict.verdict === "block_pr") return "not_mergeable";
   if (!input.diff.trim()) return "inconclusive";
   if (!input.task.trim()) return "conditional";
   if (verifyCommands.length === 0) return "conditional";

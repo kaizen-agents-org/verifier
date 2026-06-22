@@ -16,8 +16,7 @@ const HARD_FAILURE_PATTERNS = [
   /\bsegmentation fault\b/i,
   /\bexit code\s+[1-9]\d*\b/i,
   /\bnot mergeable\b/i,
-  /\brejected\b/i,
-  /\bblocker\b/i,
+  /\bblock(?:ed|ing|er)?\b/i,
   /\bmust[-_\s]?fix\b/i,
   /\bnpm ERR!\b/i,
   /\bERR_PNPM\b/i
@@ -90,7 +89,8 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
   const verdict = chooseVerdict({
     task: normalized.task,
     diff: normalized.diff,
-    mustFix
+    mustFix,
+    shouldFix
   });
   const risk = chooseRisk(verdict, mustFix, shouldFix, diffRisk !== null);
   const confidence = calculateConfidence(verdict, {
@@ -167,10 +167,12 @@ function chooseVerdict(input: {
   task: string;
   diff: string;
   mustFix: MinimalFinding[];
+  shouldFix: MinimalFinding[];
 }): MinimalVerdict["verdict"] {
-  if (input.mustFix.length > 0) return "rejected";
-  if (!input.task || !input.diff) return "pr_only";
-  return "approved";
+  if (input.mustFix.length > 0) return "block_pr";
+  if (!input.task || !input.diff) return "needs_context";
+  if (input.shouldFix.length > 0) return "open_pr_with_warning";
+  return "open_pr";
 }
 
 function chooseRisk(
@@ -179,8 +181,9 @@ function chooseRisk(
   shouldFix: MinimalFinding[],
   highRiskDiff: boolean
 ): RiskLevel {
-  if (verdict === "rejected" || mustFix.length >= 2) return "high";
-  if (highRiskDiff || shouldFix.length >= 2 || verdict === "pr_only") return "medium";
+  if (verdict === "block_pr" || mustFix.length >= 2) return "high";
+  if (highRiskDiff || shouldFix.length >= 2 || verdict === "needs_context") return "medium";
+  if (verdict === "open_pr_with_warning") return "medium";
   return "low";
 }
 
@@ -196,7 +199,14 @@ function calculateConfidence(
     highRiskDiff: boolean;
   }
 ): number {
-  let confidence = verdict === "rejected" ? 78 : verdict === "approved" ? 82 : 55;
+  let confidence =
+    verdict === "block_pr"
+      ? 78
+      : verdict === "open_pr"
+        ? 82
+        : verdict === "open_pr_with_warning"
+          ? 68
+          : 55;
   if (!input.task) confidence -= 12;
   if (!input.diff) confidence -= 12;
   if (!input.verifyLogs) confidence -= 8;
@@ -213,13 +223,16 @@ function summarize(
   mustFixCount: number,
   shouldFixCount: number
 ): string {
-  if (verdict === "rejected") {
-    return `Rejected with ${mustFixCount} must_fix item(s); risk is ${risk}.`;
+  if (verdict === "block_pr") {
+    return `Block PR with ${mustFixCount} must_fix item(s); risk is ${risk}.`;
   }
-  if (verdict === "pr_only") {
-    return `PR-only judgment with ${shouldFixCount} should_fix item(s); risk is ${risk}.`;
+  if (verdict === "needs_context") {
+    return `Needs context with ${shouldFixCount} should_fix item(s); risk is ${risk}.`;
   }
-  return `Approved with ${shouldFixCount} should_fix item(s); risk is ${risk}.`;
+  if (verdict === "open_pr_with_warning") {
+    return `Open PR with warning and ${shouldFixCount} should_fix item(s); risk is ${risk}.`;
+  }
+  return `Open PR with ${shouldFixCount} should_fix item(s); risk is ${risk}.`;
 }
 
 function lines(text: string): string[] {

@@ -1,5 +1,5 @@
 {
-  "$id": "https://github.com/s-hiraoku/verifier/schemas/verdict.schema.json",
+  "$id": "https://github.com/kaizen-agents-org/verifier/schemas/verdict.schema.json",
   "$ref": "#/definitions/Verdict",
   "definitions": {
     "Verdict": {
@@ -12,9 +12,10 @@
         "verdict": {
           "type": "string",
           "enum": [
-            "approved",
-            "rejected",
-            "pr_only"
+            "open_pr",
+            "open_pr_with_warning",
+            "block_pr",
+            "needs_context"
           ]
         },
         "final_verdict": {
