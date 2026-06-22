@@ -128,9 +128,9 @@ export function shouldFailForVerdict(
   failOn: FinalVerdictKind | undefined
 ): boolean {
   if (!failOn) return false;
-  if (failOn === "mergeable") return verdict !== "mergeable";
+  if (failOn === "mergeable") return verdict === "conditional" || verdict === "not_mergeable";
   if (failOn === "conditional") {
-    return verdict === "conditional" || verdict === "not_mergeable" || verdict === "inconclusive";
+    return verdict === "conditional" || verdict === "not_mergeable";
   }
   if (failOn === "inconclusive") {
     return verdict === "inconclusive" || verdict === "not_mergeable";

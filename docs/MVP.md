@@ -54,9 +54,10 @@ can link the final verdict back to the saved files.
 
 The legacy compact field remains available as `verdict`:
 
-- `approved`
-- `rejected`
-- `pr_only`
+- `open_pr`
+- `open_pr_with_warning`
+- `block_pr`
+- `needs_context`
 
 The MVP merge-readiness field is `final_verdict`:
 
@@ -101,9 +102,9 @@ verifier check --fail-on conditional
 The gate behavior is:
 
 - `not_mergeable`: fail only on `not_mergeable`.
-- `conditional`: fail on `conditional`, `not_mergeable`, or `inconclusive`.
+- `conditional`: fail on `conditional` or `not_mergeable`.
 - `inconclusive`: fail on `inconclusive` or `not_mergeable`.
-- `mergeable`: fail on anything other than `mergeable`.
+- `mergeable`: fail on `conditional` or `not_mergeable`.
 
 ## Explicit Non-goals For This MVP
 
@@ -117,3 +118,43 @@ The gate behavior is:
 
 Those belong to later stages once the local run/evidence/verdict contract is
 stable.
+
+## Implemented Scope Matrix
+
+| Area | MVP status |
+|---|---|
+| Stage 0 intent handling | Implemented as explicit `--intent` / `--intent-file` input only; no AI claim extraction. |
+| Stage 1/2 verification | Implemented as user-supplied `--verify-command` execution with captured logs and exit metadata. |
+| Stage 3 review agents | Not implemented; no multi-lens AI review runs in this MVP. |
+| Stage 4 refutation | Not implemented; findings are deterministic log/context signals only. |
+| Stage 5 probe drivers | Not implemented; no web/API/TUI/Electron/native driver orchestration. |
+| Stage 6 verdict integration | Implemented as deterministic compact verdict plus workspace `final_verdict`. |
+| Evidence store | Implemented for local workspace runs under `.verifier/runs/<run-id>/`. |
+
+## Deferred Phase 2+ Scope
+
+- AI claim extraction from primary and secondary intent sources.
+- AI multi-lens review and adversarial refutation.
+- Generated tests and coverage-aware evidence linking.
+- Probe Driver SDK and bundled drivers for web, API, CLI, TUI, Electron, Tauri,
+  and native apps.
+- GitHub App / Action publishing, PR comments, and branch protection status.
+- Untrusted-code execution in isolated containers.
+
+## Known Limitations
+
+- The MVP is TypeScript/Node-only internally and ships only `@verifier/core`.
+- Workspace verification is CLI-command based; there is no structured driver
+  coverage beyond spawning configured shell commands.
+- The verifier does not infer project test commands from manifests yet.
+- Log classification is heuristic and pattern-based.
+- Evidence is local filesystem output only; no remote artifact upload is
+  implemented.
+
+## Phase 2 Unlock Conditions
+
+- Container isolation for untrusted PRs and reproducible command execution.
+- A stable Probe Driver SDK with at least CLI, API, and web driver coverage.
+- Claim/evidence data model promotion beyond the compact MVP schema.
+- Evaluation fixtures that measure false positives, false negatives, and
+  verdict stability before AI review/refutation is enabled by default.

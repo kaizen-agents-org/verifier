@@ -318,6 +318,64 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.conditions).toContain("Run at least one verification command.");
   });
 
+  it("does not fail conditional gates for inconclusive workspace checks", async () => {
+    const dir = await createChangedRepo();
+    await execFileAsync("git", ["checkout", "--", "greeting.txt"], { cwd: dir });
+
+    const { stdout, code } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        "node -e \"console.log('all tests passed')\"",
+        "--fail-on",
+        "conditional"
+      ],
+      "",
+      { env: process.env, allowFailure: true }
+    );
+    const output = JSON.parse(stdout) as { final_verdict: string };
+
+    expect(code).toBe(0);
+    expect(output.final_verdict).toBe("inconclusive");
+  });
+
+  it("fails explicit inconclusive gates for inconclusive workspace checks", async () => {
+    const dir = await createChangedRepo();
+    await execFileAsync("git", ["checkout", "--", "greeting.txt"], { cwd: dir });
+
+    const { stdout, code } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        "node -e \"console.log('all tests passed')\"",
+        "--fail-on",
+        "inconclusive"
+      ],
+      "",
+      { env: process.env, allowFailure: true }
+    );
+    const output = JSON.parse(stdout) as { final_verdict: string };
+
+    expect(code).toBe(1);
+    expect(output.final_verdict).toBe("inconclusive");
+  });
+
   it("resolves config intentFile relative to the checked workspace", async () => {
     const dir = await createChangedRepo();
     await writeFile(join(dir, "task.md"), "Update greeting text.\n", "utf8");

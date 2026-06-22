@@ -137,8 +137,8 @@ node packages/core/dist/cli.js check \
   --fail-on conditional
 ```
 
-`verifier verdict` and bare options are accepted for compatibility. The CLI
-always writes JSON to stdout and exits:
+`verifier verdict` and bare options are accepted for compatibility. Unless
+`--markdown` is used, completed judgments write JSON to stdout and exit:
 
 - `0` for a completed judgment, including blocking judgments.
 - `1` for `verifier check --fail-on <kind>` gate failures.
