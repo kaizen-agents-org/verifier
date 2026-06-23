@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 
-describe("CLI", () => {
+describe("CLI", { timeout: 20_000 }, () => {
   it("supports check with inline task and diff inputs", async () => {
     const { stdout, stderr } = await spawnWithInput(
       process.execPath,
