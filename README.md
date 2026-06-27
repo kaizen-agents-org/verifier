@@ -193,10 +193,10 @@ The current JSON contract is:
 
 | Verdict | Meaning |
 |---|---|
-| `open_pr` | Task and diff context exist, and no blocking or warning signal was found. |
-| `open_pr_with_warning` | No blocking signal was found, but reviewers should see non-blocking risk signals. |
-| `block_pr` | Verification logs or builder report contain blocking failure signals. |
-| `needs_context` | Task or diff context is missing, so the change cannot be checked against intent. |
+| `open_pr` | Task, diff, and positive mechanical verification evidence exist, and no blocking or warning signal was found. |
+| `open_pr_with_warning` | No blocking signal was found, but reviewers should see non-blocking risk signals, including high-risk changes with targeted verification evidence. |
+| `block_pr` | Verification failed, a configured check did not pass, or a high-risk change lacks targeted verification evidence. |
+| `needs_context` | Task, diff, or positive mechanical verification evidence is missing, so the change cannot be checked against intent with local evidence. |
 
 Workspace mode also emits `final_verdict`:
 
@@ -208,9 +208,11 @@ Workspace mode also emits `final_verdict`:
 The MVP heuristic intentionally stays small and deterministic:
 
 - hard failure patterns in verification logs or builder reports become `must_fix`;
+- unchecked or failed configured verification commands become `must_fix`;
 - warnings, skipped/flaky/todo/risk/manual-review signals become `should_fix`;
-- missing task, diff, logs, or builder report lowers confidence and may require context;
-- high-risk diff terms such as auth, secrets, billing, migration, delete, or database operations add a warning unless covered by stronger evidence.
+- missing task, diff, logs, or positive mechanical verification evidence lowers confidence and may require context;
+- high-risk diff terms such as auth, secrets, billing, migration, delete, or database operations block PR creation unless the verification logs or builder report show targeted coverage for that risk area;
+- high-risk changes with targeted coverage still add a reviewer warning.
 
 ## Workspace Evidence Store
 
