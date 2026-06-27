@@ -120,6 +120,19 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix.some((item) => item.source === "verify_logs")).toBe(true);
   });
 
+  it("treats intentionally skipped verification as a non-blocking risk", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "all tests passed\npnpm schema:check skipped because schema service is unavailable",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.evidence?.includes("skipped because"))).toBe(true);
+  });
+
   it("needs context when no positive mechanical verification evidence is available", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Update dashboard copy",
@@ -157,6 +170,19 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.verdict).toBe("needs_context");
     expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.should_fix.some((item) => item.message.includes("not configured"))).toBe(true);
+  });
+
+  it("does not treat unrelated not-configured prose as missing verification", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "all tests passed\npreview banner is not configured in this fixture",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.message.includes("not configured"))).toBe(false);
   });
 
   it("blocks when a configured verification command did not pass", () => {

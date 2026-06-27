@@ -52,14 +52,14 @@ const SOFT_RISK_PATTERNS = [
 const UNEXECUTED_VERIFICATION_PATTERNS = [
   /\[\s\]\s+\S+/,
   /\b(?:was\s+)?not run\b/i,
-  /\bnot executed\b/i,
-  /\bskipped because\b/i
+  /\bnot executed\b/i
 ];
 
 const MISSING_VERIFICATION_CONFIG_PATTERNS = [
   /\bverification commands are not configured\b/i,
   /\bno verification (?:logs|commands|results)\b/i,
-  /\bnot configured\b/i
+  /\b(?:verification|verify|test|tests|typecheck|lint|schema(?::check)?|build|check|checks|command|commands|log|logs|result|results)\b.*\bnot configured\b/i,
+  /\bnot configured\b.*\b(?:verification|verify|test|tests|typecheck|lint|schema(?::check)?|build|check|checks|command|commands|log|logs|result|results)\b/i
 ];
 
 const HIGH_RISK_DIFF_SIGNALS = [
