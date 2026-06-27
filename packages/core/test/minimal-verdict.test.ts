@@ -176,7 +176,8 @@ describe("evaluateMinimalVerdict", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Update dashboard copy",
       diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
-      verifyLogs: "all tests passed\npreview banner is not configured in this fixture",
+      verifyLogs:
+        "all tests passed\npreview banner is not configured in this fixture\npreview build is not configured in this fixture",
       builderReport: "build successful"
     });
 

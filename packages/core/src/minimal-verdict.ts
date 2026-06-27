@@ -58,8 +58,8 @@ const UNEXECUTED_VERIFICATION_PATTERNS = [
 const MISSING_VERIFICATION_CONFIG_PATTERNS = [
   /\bverification commands are not configured\b/i,
   /\bno verification (?:logs|commands|results)\b/i,
-  /\b(?:verification|verify|test|tests|typecheck|lint|schema(?::check)?|build|check|checks|command|commands|log|logs|result|results)\b.*\bnot configured\b/i,
-  /\bnot configured\b.*\b(?:verification|verify|test|tests|typecheck|lint|schema(?::check)?|build|check|checks|command|commands|log|logs|result|results)\b/i
+  /\b(?:verification(?:\s+(?:commands?|logs?|results?))?|verify|test|tests|typecheck|lint|schema(?::check)?)\b.*\bnot configured\b/i,
+  /\bnot configured\b.*\b(?:verification(?:\s+(?:commands?|logs?|results?))?|verify|test|tests|typecheck|lint|schema(?::check)?)\b/i
 ];
 
 const HIGH_RISK_DIFF_SIGNALS = [
