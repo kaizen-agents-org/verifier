@@ -59,6 +59,18 @@ The legacy compact field remains available as `verdict`:
 - `block_pr`
 - `needs_context`
 
+The compact gate is intentionally conservative:
+
+- `open_pr` requires intent, diff, and positive mechanical verification
+  evidence.
+- `open_pr_with_warning` is used for non-blocking risk signals, including
+  high-risk changes that have targeted verification evidence but still warrant
+  human attention.
+- `block_pr` is used for verification failures, configured commands that did
+  not pass, and high-risk changes without targeted verification evidence.
+- `needs_context` is used when intent, diff, or positive mechanical verification
+  evidence is missing.
+
 The MVP merge-readiness field is `final_verdict`:
 
 - `mergeable`: intent, diff, and at least one verification command exist; no

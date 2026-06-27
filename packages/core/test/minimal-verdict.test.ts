@@ -43,7 +43,7 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix.map((item) => item.source)).toContain("diff");
   });
 
-  it("keeps high-risk diffs as should_fix when logs are otherwise clean", () => {
+  it("blocks high-risk diffs without targeted verification evidence", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor billing token handling",
       diff: "diff --git a/billing.ts b/billing.ts\n+const token = req.body.token",
@@ -51,8 +51,21 @@ describe("evaluateMinimalVerdict", () => {
       builderReport: "build successful"
     });
 
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.risk).toBe("high");
+    expect(verdict.must_fix.some((item) => item.source === "diff")).toBe(true);
+  });
+
+  it("opens high-risk diffs with a warning when targeted verification is present", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor billing token handling",
+      diff: "diff --git a/billing.ts b/billing.ts\n+const token = req.body.token",
+      verifyLogs: "billing token tests passed",
+      builderReport: "Verified billing token handling with focused tests."
+    });
+
     expect(verdict.verdict).toBe("open_pr_with_warning");
-    expect(verdict.risk).toBe("medium");
+    expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(true);
   });
 
@@ -80,5 +93,43 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.verdict).toBe("open_pr_with_warning");
     expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.should_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
+  it("needs context when no positive mechanical verification evidence is available", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "",
+      builderReport: "Implemented the requested copy update."
+    });
+
+    expect(verdict.verdict).toBe("needs_context");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
+  it("needs context when mechanical verification is not configured", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "Verification commands are not configured",
+      builderReport: "Implemented the requested copy update."
+    });
+
+    expect(verdict.verdict).toBe("needs_context");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.message.includes("not configured"))).toBe(true);
+  });
+
+  it("blocks when a configured verification command did not pass", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "- [x] pnpm typecheck\n- [ ] pnpm test",
+      builderReport: "Implemented the requested copy update."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
   });
 });
