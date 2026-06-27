@@ -8,6 +8,10 @@ import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 
+function nodeEvalCommand(source: string): string {
+  return `${JSON.stringify(process.execPath)} -e ${JSON.stringify(source)}`;
+}
+
 describe("CLI", { timeout: 20_000 }, () => {
   it("supports check with inline task and diff inputs", async () => {
     const { stdout, stderr } = await spawnWithInput(
@@ -174,7 +178,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
         "--task-file",
         taskPath,
         "--verify-command",
-        "node -e \"console.log('all tests passed')\""
+        nodeEvalCommand("console.log('all tests passed')")
       ],
       "",
       { env: process.env }
@@ -197,6 +201,38 @@ Return "block_pr" when the builder must revise the change before a PR is created
     await expect(readFile(join(output.run.artifacts_dir, "report.md"), "utf8")).resolves.toContain("# Verifier Verdict: mergeable");
   });
 
+  it("treats silent successful verification commands as positive evidence", async () => {
+    const dir = await createChangedRepo();
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        nodeEvalCommand("process.exit(0)")
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as {
+      verdict: string;
+      final_verdict: string;
+      conditions: string[];
+    };
+
+    expect(output.verdict).toBe("open_pr");
+    expect(output.final_verdict).toBe("mergeable");
+    expect(output.conditions).not.toContain("No positive mechanical verification evidence was provided.");
+  });
+
   it("rejects check results when a verification command fails", async () => {
     const dir = await createChangedRepo();
 
@@ -212,7 +248,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
         "--task",
         "Update greeting text.",
         "--verify-command",
-        "node -e \"process.exit(1)\""
+        nodeEvalCommand("process.exit(1)")
       ],
       "",
       { env: process.env }
@@ -274,7 +310,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
         "--intent",
         "Update greeting text.",
         "--verify-command",
-        "node -e \"console.log('all tests passed')\"",
+        nodeEvalCommand("console.log('all tests passed')"),
         "--markdown"
       ],
       "",
@@ -377,7 +413,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
       join(dir, "verifier.config.json"),
       JSON.stringify({
         intentFile: "task.md",
-        verifyCommands: ["node -e \"console.log('all tests passed')\""]
+        verifyCommands: [nodeEvalCommand("console.log('all tests passed')")]
       }),
       "utf8"
     );

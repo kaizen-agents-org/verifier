@@ -30,6 +30,15 @@ const CLEAN_RESULT_PATTERNS = [
   /\bsuccess(?:ful)?\b/i
 ];
 
+const POSITIVE_VERIFICATION_PATTERNS = [
+  /\[[xX]\]\s+\S+/,
+  /\bexit code 0\b/i,
+  /\b0\s+(?:failures|failed|errors)\b/i,
+  /\bno\s+(?:failures|errors)\b/i,
+  /\ball\s+(?:tests\s+)?passed\b/i,
+  /\b(?:build|typecheck|lint|tests?)\s+(?:ok|passed|succeeded|successful)\b/i
+];
+
 const SOFT_RISK_PATTERNS = [
   /\bwarn(?:ing)?\b/i,
   /\bflake|flaky\b/i,
@@ -40,12 +49,48 @@ const SOFT_RISK_PATTERNS = [
   /\bmanual review\b/i
 ];
 
-const HIGH_RISK_DIFF_PATTERNS = [
-  /\b(?:auth|authorization|authentication|permission)\b/i,
-  /\b(?:password|secret|token|credential)\b/i,
-  /\b(?:payment|billing|invoice)\b/i,
-  /\b(?:migration|schema|database)\b/i,
-  /\b(?:delete|drop\s+table|truncate)\b/i
+const UNEXECUTED_VERIFICATION_PATTERNS = [
+  /\[\s\]\s+\S+/,
+  /\b(?:was\s+)?not run\b/i,
+  /\bnot executed\b/i
+];
+
+const MISSING_VERIFICATION_CONFIG_PATTERNS = [
+  /\bverification commands are not configured\b/i,
+  /\bno verification (?:logs|commands|results)\b/i,
+  /\bverification\s+(?:commands?|logs?|results?)\s+(?:is|are|was|were)?\s*not configured\b/i,
+  /\b(?:test|tests|typecheck|lint|schema(?::check)?)\s+(?:command\s+)?(?:is|are|was|were)?\s*not configured\b/i,
+  /\bnot configured:?\s+(?:verification\s+(?:commands?|logs?|results?)|test|tests|typecheck|lint|schema(?::check)?)\b/i
+];
+
+const HIGH_RISK_DIFF_SIGNALS = [
+  {
+    label: "auth/authz",
+    diffPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b/i,
+    coveragePattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control|401|403|security)\b/i
+  },
+  {
+    label: "secrets/credentials",
+    diffPattern: /\b(?:password|secret|token|credential|api[_-\s]?key)\b/i,
+    coveragePattern: /\b(?:secret|credential|token|api[_-\s]?key|redact|mask|leak|security)\b/i
+  },
+  {
+    label: "billing/payments",
+    diffPattern: /\b(?:payment|billing|invoice|checkout|refund|subscription)\b/i,
+    coveragePattern: /\b(?:payment|billing|invoice|checkout|refund|subscription)\b/i
+  },
+  {
+    label: "database/schema",
+    diffPattern:
+      /\b(?:migration|migrations|database|sql|alter\s+table|create\s+table|db\s+schema|database\s+schema|schema\s+migration|schema\.sql|schema\.prisma)\b/i,
+    coveragePattern:
+      /\b(?:migration|migrations|database|sql|rollback|migrate|db\s+schema|database\s+schema|schema\s+migration|schema\.sql|schema\.prisma)\b/i
+  },
+  {
+    label: "destructive data operation",
+    diffPattern: /\b(?:delete|drop\s+table|truncate|remove all|destroy)\b/i,
+    coveragePattern: /\b(?:delete|drop\s+table|truncate|data loss|backup|rollback|destructive)\b/i
+  }
 ];
 
 export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
@@ -61,6 +106,8 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
 
   collectHardFailures("verify_logs", normalized.verifyLogs, mustFix);
   collectHardFailures("builder_report", normalized.builderReport, mustFix);
+  collectUnexecutedVerification("verify_logs", normalized.verifyLogs, mustFix, shouldFix);
+  collectUnexecutedVerification("builder_report", normalized.builderReport, mustFix, shouldFix);
   collectSoftRisks("verify_logs", normalized.verifyLogs, shouldFix);
   collectSoftRisks("builder_report", normalized.builderReport, shouldFix);
 
@@ -81,18 +128,37 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
       source: "system",
       message: "No verification logs or builder report were provided."
     });
+  } else if (!hasPositiveVerificationEvidence(normalized.verifyLogs)) {
+    shouldFix.push({
+      source: "verify_logs",
+      message: "No positive mechanical verification evidence was provided."
+    });
   }
 
-  const diffRisk = assessDiffRisk(normalized.diff);
-  if (diffRisk) shouldFix.push(diffRisk);
+  const diffRisks = assessDiffRisk(normalized.diff);
+  for (const diffRisk of diffRisks) {
+    if (hasTargetedCoverage(diffRisk.label, normalized.verifyLogs, normalized.builderReport)) {
+      shouldFix.push({
+        source: "diff",
+        message: `Diff touches high-risk ${diffRisk.label} code; targeted verification evidence was found, but reviewers should still inspect it.`
+      });
+    } else {
+      mustFix.push({
+        source: "diff",
+        message: `Diff touches high-risk ${diffRisk.label} code without targeted verification evidence.`,
+        evidence: "Add or report focused verification for this high-risk area before opening a PR."
+      });
+    }
+  }
 
   const verdict = chooseVerdict({
     task: normalized.task,
     diff: normalized.diff,
     mustFix,
-    shouldFix
+    shouldFix,
+    hasVerificationEvidence: hasPositiveVerificationEvidence(normalized.verifyLogs)
   });
-  const risk = chooseRisk(verdict, mustFix, shouldFix, diffRisk !== null);
+  const risk = chooseRisk(verdict, mustFix, shouldFix, diffRisks.length > 0);
   const confidence = calculateConfidence(verdict, {
     task: normalized.task,
     diff: normalized.diff,
@@ -100,7 +166,8 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
     builderReport: normalized.builderReport,
     mustFixCount: mustFix.length,
     shouldFixCount: shouldFix.length,
-    highRiskDiff: diffRisk !== null
+    highRiskDiff: diffRisks.length > 0,
+    hasVerificationEvidence: hasPositiveVerificationEvidence(normalized.verifyLogs)
   });
 
   return {
@@ -112,6 +179,30 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
     risk,
     summary: summarize(verdict, risk, mustFix.length, shouldFix.length)
   };
+}
+
+function collectUnexecutedVerification(
+  source: FindingSource,
+  text: string,
+  mustFix: MinimalFinding[],
+  shouldFix: MinimalFinding[]
+): void {
+  if (!text) return;
+  for (const line of lines(text)) {
+    if (UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(line))) {
+      mustFix.push({
+        source,
+        message: "A configured verification command did not pass.",
+        evidence: truncate(line)
+      });
+    } else if (MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(line))) {
+      shouldFix.push({
+        source,
+        message: "Mechanical verification was not configured or not executed.",
+        evidence: truncate(line)
+      });
+    }
+  }
 }
 
 function collectHardFailures(
@@ -151,16 +242,34 @@ function collectSoftRisks(
   }
 }
 
-function assessDiffRisk(diff: string): MinimalFinding | null {
-  if (!diff) return null;
-  if (HIGH_RISK_DIFF_PATTERNS.some((pattern) => pattern.test(diff))) {
-    return {
-      source: "diff",
-      message:
-        "Diff touches high-risk areas; keep this as should_fix unless verification explicitly covers it."
-    };
+function assessDiffRisk(diff: string): Array<{ label: string }> {
+  if (!diff) return [];
+  return HIGH_RISK_DIFF_SIGNALS.filter((signal) => signal.diffPattern.test(diff)).map((signal) => ({
+    label: signal.label
+  }));
+}
+
+function hasPositiveVerificationEvidence(verifyLogs: string): boolean {
+  if (!verifyLogs) return false;
+  if (
+    UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(verifyLogs)) ||
+    MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(verifyLogs))
+  ) {
+    return false;
   }
-  return null;
+  return POSITIVE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(verifyLogs));
+}
+
+function hasTargetedCoverage(
+  label: string,
+  verifyLogs: string,
+  builderReport: string
+): boolean {
+  const signal = HIGH_RISK_DIFF_SIGNALS.find((candidate) => candidate.label === label);
+  if (!signal) return false;
+  const evidenceText = `${verifyLogs}\n${builderReport}`;
+  if (!signal.coveragePattern.test(evidenceText)) return false;
+  return /\b(?:test|tested|verify|verified|coverage|passed|check|checked)\b/i.test(evidenceText);
 }
 
 function chooseVerdict(input: {
@@ -168,9 +277,11 @@ function chooseVerdict(input: {
   diff: string;
   mustFix: MinimalFinding[];
   shouldFix: MinimalFinding[];
+  hasVerificationEvidence: boolean;
 }): MinimalVerdict["verdict"] {
   if (input.mustFix.length > 0) return "block_pr";
   if (!input.task || !input.diff) return "needs_context";
+  if (!input.hasVerificationEvidence) return "needs_context";
   if (input.shouldFix.length > 0) return "open_pr_with_warning";
   return "open_pr";
 }
@@ -197,6 +308,7 @@ function calculateConfidence(
     mustFixCount: number;
     shouldFixCount: number;
     highRiskDiff: boolean;
+    hasVerificationEvidence: boolean;
   }
 ): number {
   let confidence =
@@ -211,6 +323,7 @@ function calculateConfidence(
   if (!input.diff) confidence -= 12;
   if (!input.verifyLogs) confidence -= 8;
   if (!input.builderReport) confidence -= 6;
+  if (!input.hasVerificationEvidence) confidence -= 16;
   confidence -= Math.min(input.shouldFixCount * 4, 20);
   if (input.highRiskDiff) confidence -= 8;
   if (input.mustFixCount > 0) confidence += Math.min(input.mustFixCount * 3, 9);

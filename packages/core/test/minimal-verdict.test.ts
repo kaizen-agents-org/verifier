@@ -43,7 +43,7 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix.map((item) => item.source)).toContain("diff");
   });
 
-  it("keeps high-risk diffs as should_fix when logs are otherwise clean", () => {
+  it("blocks high-risk diffs without targeted verification evidence", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor billing token handling",
       diff: "diff --git a/billing.ts b/billing.ts\n+const token = req.body.token",
@@ -51,15 +51,53 @@ describe("evaluateMinimalVerdict", () => {
       builderReport: "build successful"
     });
 
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.risk).toBe("high");
+    expect(verdict.must_fix.some((item) => item.source === "diff")).toBe(true);
+  });
+
+  it("opens high-risk diffs with a warning when targeted verification is present", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor billing token handling",
+      diff: "diff --git a/billing.ts b/billing.ts\n+const token = req.body.token",
+      verifyLogs: "billing token tests passed",
+      builderReport: "Verified billing token handling with focused tests."
+    });
+
     expect(verdict.verdict).toBe("open_pr_with_warning");
-    expect(verdict.risk).toBe("medium");
+    expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(true);
+  });
+
+  it("accepts targeted high-risk coverage from the builder report", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Keep authorization checks intact",
+      diff: "diff --git a/api.ts b/api.ts\n+authz.check(req)",
+      verifyLogs: "all tests passed",
+      builderReport: "Verified authz behavior with focused tests."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(true);
+  });
+
+  it("blocks authz shorthand diffs without targeted verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Keep authorization checks intact",
+      diff: "diff --git a/api.ts b/api.ts\n+authz.check(req)",
+      verifyLogs: "all tests passed",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
   it("does not flag high-risk terms embedded inside identifiers", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor verdict parsing",
-      diff: "diff --git a/cli.ts b/cli.ts\n+const input = VerdictInputSchema.parse(raw)",
+      diff: "diff --git a/cli.ts b/cli.ts\n+const input = VerdictInputSchema.parse(raw)\n+await run('pnpm schema:check')\n+writeFile('schemas/verdict.schema.json', schema)",
       verifyLogs: "all tests passed",
       builderReport: "build successful"
     });
@@ -67,6 +105,18 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.verdict).toBe("open_pr");
     expect(verdict.risk).toBe("low");
     expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(false);
+  });
+
+  it("blocks database schema diffs without targeted verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add user email database column",
+      diff: "diff --git a/migrations/001.sql b/migrations/001.sql\n+alter table users add column email text",
+      verifyLogs: "all tests passed",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("database/schema"))).toBe(true);
   });
 
   it("opens PRs with a warning for non-blocking verification risk signals", () => {
@@ -80,5 +130,107 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.verdict).toBe("open_pr_with_warning");
     expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.should_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
+  it("treats intentionally skipped verification as a non-blocking risk", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "all tests passed\npnpm schema:check skipped because schema service is unavailable",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.evidence?.includes("skipped because"))).toBe(true);
+  });
+
+  it("needs context when no positive mechanical verification evidence is available", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "",
+      builderReport: "Implemented the requested copy update."
+    });
+
+    expect(verdict.verdict).toBe("needs_context");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
+  it("does not treat arbitrary success prose as positive verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "manual review successful",
+      builderReport: "Implemented the requested copy update."
+    });
+
+    expect(verdict.verdict).toBe("needs_context");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
+  it("needs context when mechanical verification is not configured", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "Verification commands are not configured",
+      builderReport: "Implemented the requested copy update."
+    });
+
+    expect(verdict.verdict).toBe("needs_context");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.message.includes("not configured"))).toBe(true);
+  });
+
+  it("does not treat unrelated not-configured prose as missing verification", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs:
+        "all tests passed\npreview banner is not configured in this fixture\npreview build is not configured in this fixture\nall verification passed; coverage threshold not configured",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.message.includes("not configured"))).toBe(false);
+  });
+
+  it("blocks when a configured verification command did not pass", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "- [x] pnpm typecheck\n- [ ] pnpm test",
+      builderReport: "Implemented the requested copy update."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
+  it("blocks when a configured verification command was not run", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "pnpm schema:check was not run",
+      builderReport: "Implemented the requested copy update."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.evidence?.includes("not run"))).toBe(true);
+  });
+
+  it("blocks when builder report says a configured verification command was not run", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "all tests passed",
+      builderReport: "pnpm schema:check was not run"
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.source === "builder_report")).toBe(true);
   });
 });
