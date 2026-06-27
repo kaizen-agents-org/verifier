@@ -58,6 +58,7 @@ Useful package commands:
 |---|---|
 | `pnpm typecheck` | Type-check the workspace. |
 | `pnpm test` | Run Vitest tests. |
+| `pnpm eval` | Run the committed verifier eval corpus and print metrics. |
 | `pnpm schema:generate` | Regenerate `schemas/verdict.schema.json` from Zod types. |
 | `pnpm schema:check` | Regenerate the schema and fail if the committed schema is stale. |
 
@@ -213,6 +214,33 @@ The MVP heuristic intentionally stays small and deterministic:
 - missing task, diff, logs, or positive mechanical verification evidence lowers confidence and may require context;
 - high-risk diff terms such as auth, secrets, billing, migration, delete, or database operations block PR creation unless the verification logs or builder report show targeted coverage for that risk area;
 - high-risk changes with targeted coverage still add a reviewer warning.
+
+## Eval Harness
+
+The MVP eval harness runs committed seeded and golden cases against the current
+verdict function and reports agreement plus false-positive metrics:
+
+```sh
+pnpm eval
+```
+
+Corpus files live under `packages/core/eval/corpus/seeded` and
+`packages/core/eval/corpus/golden`. Each JSON case records verifier input,
+expected verdict constraints, and any false-positive allowance. The command
+prints JSON with:
+
+- `metrics.verdictAgreement`: fraction of cases whose verdict matched the
+  expected verdict or allowed verdict set.
+- `metrics.falsePositiveRate`: fraction of clean `open_pr` cases that produced
+  more findings than the case allowed.
+- `cases[].failures`: concrete mismatch messages to investigate when the
+  harness exits non-zero.
+
+Write a metrics snapshot if a CI job or readiness review needs an artifact:
+
+```sh
+pnpm --filter @verifier/core eval --output metrics.json
+```
 
 ## Workspace Evidence Store
 

@@ -1,0 +1,17 @@
+{
+  "id": "sb-002-token-logging-blocks",
+  "kind": "seeded",
+  "description": "Seeded security regression: token logging is surfaced as a blocking verifier finding.",
+  "input": {
+    "task": "Add diagnostic logging around credential refresh.",
+    "diff": "diff --git a/src/auth.ts b/src/auth.ts\n+console.log('refresh token', process.env.API_TOKEN)",
+    "verifyLogs": "typecheck passed\nall tests passed\n0 failures",
+    "builderReport": "build successful"
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 2,
+    "shouldFixMax": 0
+  }
+}

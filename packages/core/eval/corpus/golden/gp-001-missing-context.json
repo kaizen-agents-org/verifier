@@ -1,0 +1,18 @@
+{
+  "id": "gp-001-missing-context",
+  "kind": "golden",
+  "description": "Golden outcome: a change with no task or diff context must request more context even when logs are clean.",
+  "input": {
+    "task": "",
+    "diff": "",
+    "verifyLogs": "all tests passed",
+    "builderReport": "build ok"
+  },
+  "expected": {
+    "verdict": "needs_context",
+    "risk": "medium",
+    "shouldFixMin": 2,
+    "mustFixMax": 0,
+    "confidenceMax": 40
+  }
+}

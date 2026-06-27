@@ -1,0 +1,19 @@
+{
+  "id": "sb-003-clean-refactor",
+  "kind": "seeded",
+  "description": "Seeded clean control: a low-risk refactor with complete evidence should produce no findings.",
+  "input": {
+    "task": "Rename the greeting helper without changing behavior.",
+    "diff": "diff --git a/src/greeting.ts b/src/greeting.ts\n-export function greet(name: string) { return `Hello ${name}` }\n+export function formatGreeting(name: string) { return `Hello ${name}` }",
+    "verifyLogs": "typecheck passed\nall tests passed\n0 failures",
+    "builderReport": "build successful"
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}
