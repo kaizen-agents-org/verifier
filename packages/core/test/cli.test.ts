@@ -319,8 +319,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
   });
 
   it("does not fail conditional gates for inconclusive workspace checks", async () => {
-    const dir = await createChangedRepo();
-    await execFileAsync("git", ["checkout", "--", "greeting.txt"], { cwd: dir });
+    const dir = await createCleanRepo();
 
     const { stdout, code } = await spawnWithInput(
       process.execPath,
@@ -333,8 +332,6 @@ Return "block_pr" when the builder must revise the change before a PR is created
         dir,
         "--task",
         "Update greeting text.",
-        "--verify-command",
-        "node -e \"console.log('all tests passed')\"",
         "--fail-on",
         "conditional"
       ],
@@ -348,8 +345,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
   });
 
   it("fails explicit inconclusive gates for inconclusive workspace checks", async () => {
-    const dir = await createChangedRepo();
-    await execFileAsync("git", ["checkout", "--", "greeting.txt"], { cwd: dir });
+    const dir = await createCleanRepo();
 
     const { stdout, code } = await spawnWithInput(
       process.execPath,
@@ -362,8 +358,6 @@ Return "block_pr" when the builder must revise the change before a PR is created
         dir,
         "--task",
         "Update greeting text.",
-        "--verify-command",
-        "node -e \"console.log('all tests passed')\"",
         "--fail-on",
         "inconclusive"
       ],
@@ -442,6 +436,12 @@ function spawnWithInput(
 }
 
 async function createChangedRepo(): Promise<string> {
+  const dir = await createCleanRepo();
+  await writeFile(join(dir, "greeting.txt"), "hello verifier\n", "utf8");
+  return dir;
+}
+
+async function createCleanRepo(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "verifier-check-"));
   await writeFile(join(dir, "greeting.txt"), "hello\n", "utf8");
   await execFileAsync("git", ["init"], { cwd: dir });
@@ -459,6 +459,5 @@ async function createChangedRepo(): Promise<string> {
     ],
     { cwd: dir }
   );
-  await writeFile(join(dir, "greeting.txt"), "hello verifier\n", "utf8");
   return dir;
 }
