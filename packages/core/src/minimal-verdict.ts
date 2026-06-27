@@ -36,8 +36,7 @@ const POSITIVE_VERIFICATION_PATTERNS = [
   /\b0\s+(?:failures|failed|errors)\b/i,
   /\bno\s+(?:failures|errors)\b/i,
   /\ball\s+(?:tests\s+)?passed\b/i,
-  /\b(?:build|typecheck|lint|tests?)\s+(?:ok|passed|succeeded|successful)\b/i,
-  /\b(?:ok|passed|succeeded|successful)\b/i
+  /\b(?:build|typecheck|lint|tests?)\s+(?:ok|passed|succeeded|successful)\b/i
 ];
 
 const SOFT_RISK_PATTERNS = [
@@ -52,16 +51,22 @@ const SOFT_RISK_PATTERNS = [
 
 const UNEXECUTED_VERIFICATION_PATTERNS = [
   /\[\s\]\s+\S+/,
+  /\b(?:was\s+)?not run\b/i,
+  /\bnot executed\b/i,
+  /\bskipped because\b/i
+];
+
+const MISSING_VERIFICATION_CONFIG_PATTERNS = [
   /\bverification commands are not configured\b/i,
   /\bno verification (?:logs|commands|results)\b/i,
-  /\b(?:not run|not executed|not configured)\b/i
+  /\bnot configured\b/i
 ];
 
 const HIGH_RISK_DIFF_SIGNALS = [
   {
     label: "auth/authz",
-    diffPattern: /\b(?:auth|authorization|authentication|permission|access control)\b/i,
-    coveragePattern: /\b(?:auth|authorization|authentication|permission|access control|401|403|security)\b/i
+    diffPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b/i,
+    coveragePattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control|401|403|security)\b/i
   },
   {
     label: "secrets/credentials",
@@ -179,14 +184,13 @@ function collectUnexecutedVerification(
 ): void {
   if (!text) return;
   for (const line of lines(text)) {
-    if (!UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(line))) continue;
-    if (/\[\s\]\s+\S+/.test(line)) {
+    if (UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(line))) {
       mustFix.push({
         source: "verify_logs",
         message: "A configured verification command did not pass.",
         evidence: truncate(line)
       });
-    } else {
+    } else if (MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(line))) {
       shouldFix.push({
         source: "verify_logs",
         message: "Mechanical verification was not configured or not executed.",
@@ -242,7 +246,12 @@ function assessDiffRisk(diff: string): Array<{ label: string }> {
 
 function hasPositiveVerificationEvidence(verifyLogs: string): boolean {
   if (!verifyLogs) return false;
-  if (UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(verifyLogs))) return false;
+  if (
+    UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(verifyLogs)) ||
+    MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(verifyLogs))
+  ) {
+    return false;
+  }
   return POSITIVE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(verifyLogs));
 }
 
@@ -251,7 +260,6 @@ function hasTargetedCoverage(
   verifyLogs: string,
   builderReport: string
 ): boolean {
-  if (!hasPositiveVerificationEvidence(verifyLogs)) return false;
   const signal = HIGH_RISK_DIFF_SIGNALS.find((candidate) => candidate.label === label);
   if (!signal) return false;
   const evidenceText = `${verifyLogs}\n${builderReport}`;
