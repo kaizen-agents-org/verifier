@@ -8,6 +8,10 @@ import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 
+function nodeEvalCommand(source: string): string {
+  return `${JSON.stringify(process.execPath)} -e ${JSON.stringify(source)}`;
+}
+
 describe("CLI", { timeout: 20_000 }, () => {
   it("supports check with inline task and diff inputs", async () => {
     const { stdout, stderr } = await spawnWithInput(
@@ -174,7 +178,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
         "--task-file",
         taskPath,
         "--verify-command",
-        "node -e \"console.log('all tests passed')\""
+        nodeEvalCommand("console.log('all tests passed')")
       ],
       "",
       { env: process.env }
@@ -212,7 +216,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
         "--task",
         "Update greeting text.",
         "--verify-command",
-        "node -e \"process.exit(0)\""
+        nodeEvalCommand("process.exit(0)")
       ],
       "",
       { env: process.env }
@@ -244,7 +248,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
         "--task",
         "Update greeting text.",
         "--verify-command",
-        "node -e \"process.exit(1)\""
+        nodeEvalCommand("process.exit(1)")
       ],
       "",
       { env: process.env }
@@ -306,7 +310,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
         "--intent",
         "Update greeting text.",
         "--verify-command",
-        "node -e \"console.log('all tests passed')\"",
+        nodeEvalCommand("console.log('all tests passed')"),
         "--markdown"
       ],
       "",
@@ -409,7 +413,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
       join(dir, "verifier.config.json"),
       JSON.stringify({
         intentFile: "task.md",
-        verifyCommands: ["node -e \"console.log('all tests passed')\""]
+        verifyCommands: [nodeEvalCommand("console.log('all tests passed')")]
       }),
       "utf8"
     );

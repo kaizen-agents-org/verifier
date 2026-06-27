@@ -97,7 +97,7 @@ describe("evaluateMinimalVerdict", () => {
   it("does not flag high-risk terms embedded inside identifiers", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor verdict parsing",
-      diff: "diff --git a/cli.ts b/cli.ts\n+const input = VerdictInputSchema.parse(raw)",
+      diff: "diff --git a/cli.ts b/cli.ts\n+const input = VerdictInputSchema.parse(raw)\n+await run('pnpm schema:check')\n+writeFile('schemas/verdict.schema.json', schema)",
       verifyLogs: "all tests passed",
       builderReport: "build successful"
     });
@@ -105,6 +105,18 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.verdict).toBe("open_pr");
     expect(verdict.risk).toBe("low");
     expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(false);
+  });
+
+  it("blocks database schema diffs without targeted verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add user email database column",
+      diff: "diff --git a/migrations/001.sql b/migrations/001.sql\n+alter table users add column email text",
+      verifyLogs: "all tests passed",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("database/schema"))).toBe(true);
   });
 
   it("opens PRs with a warning for non-blocking verification risk signals", () => {
@@ -208,5 +220,17 @@ describe("evaluateMinimalVerdict", () => {
 
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.evidence?.includes("not run"))).toBe(true);
+  });
+
+  it("blocks when builder report says a configured verification command was not run", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update dashboard copy",
+      diff: "diff --git a/dashboard.tsx b/dashboard.tsx\n+const title = 'Current usage'",
+      verifyLogs: "all tests passed",
+      builderReport: "pnpm schema:check was not run"
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.source === "builder_report")).toBe(true);
   });
 });

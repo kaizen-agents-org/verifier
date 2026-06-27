@@ -80,8 +80,10 @@ const HIGH_RISK_DIFF_SIGNALS = [
   },
   {
     label: "database/schema",
-    diffPattern: /\b(?:migration|schema|database|sql|alter table|create table)\b/i,
-    coveragePattern: /\b(?:migration|schema|database|sql|rollback|migrate)\b/i
+    diffPattern:
+      /\b(?:migration|migrations|database|sql|alter\s+table|create\s+table|db\s+schema|database\s+schema|schema\s+migration|schema\.sql|schema\.prisma)\b/i,
+    coveragePattern:
+      /\b(?:migration|migrations|database|sql|rollback|migrate|db\s+schema|database\s+schema|schema\s+migration|schema\.sql|schema\.prisma)\b/i
   },
   {
     label: "destructive data operation",
@@ -103,7 +105,8 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
 
   collectHardFailures("verify_logs", normalized.verifyLogs, mustFix);
   collectHardFailures("builder_report", normalized.builderReport, mustFix);
-  collectUnexecutedVerification(normalized.verifyLogs, mustFix, shouldFix);
+  collectUnexecutedVerification("verify_logs", normalized.verifyLogs, mustFix, shouldFix);
+  collectUnexecutedVerification("builder_report", normalized.builderReport, mustFix, shouldFix);
   collectSoftRisks("verify_logs", normalized.verifyLogs, shouldFix);
   collectSoftRisks("builder_report", normalized.builderReport, shouldFix);
 
@@ -178,6 +181,7 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
 }
 
 function collectUnexecutedVerification(
+  source: FindingSource,
   text: string,
   mustFix: MinimalFinding[],
   shouldFix: MinimalFinding[]
@@ -186,13 +190,13 @@ function collectUnexecutedVerification(
   for (const line of lines(text)) {
     if (UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(line))) {
       mustFix.push({
-        source: "verify_logs",
+        source,
         message: "A configured verification command did not pass.",
         evidence: truncate(line)
       });
     } else if (MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(line))) {
       shouldFix.push({
-        source: "verify_logs",
+        source,
         message: "Mechanical verification was not configured or not executed.",
         evidence: truncate(line)
       });
