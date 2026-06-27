@@ -32,6 +32,7 @@ const CLEAN_RESULT_PATTERNS = [
 
 const POSITIVE_VERIFICATION_PATTERNS = [
   /\[[xX]\]\s+\S+/,
+  /\bexit code 0\b/i,
   /\b0\s+(?:failures|failed|errors)\b/i,
   /\bno\s+(?:failures|errors)\b/i,
   /\ball\s+(?:tests\s+)?passed\b/i,

@@ -197,6 +197,38 @@ Return "block_pr" when the builder must revise the change before a PR is created
     await expect(readFile(join(output.run.artifacts_dir, "report.md"), "utf8")).resolves.toContain("# Verifier Verdict: mergeable");
   });
 
+  it("treats silent successful verification commands as positive evidence", async () => {
+    const dir = await createChangedRepo();
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        "node -e \"process.exit(0)\""
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as {
+      verdict: string;
+      final_verdict: string;
+      conditions: string[];
+    };
+
+    expect(output.verdict).toBe("open_pr");
+    expect(output.final_verdict).toBe("mergeable");
+    expect(output.conditions).not.toContain("No positive mechanical verification evidence was provided.");
+  });
+
   it("rejects check results when a verification command fails", async () => {
     const dir = await createChangedRepo();
 
