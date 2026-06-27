@@ -38,15 +38,15 @@ Use `kaizen-loop` as the fallback when symptoms span multiple projects or the av
    gh issue create --repo kaizen-agents-org/<repo> --title "<title>" --body-file <body-file>
    ```
 
-Only pass `--label` values that exist. Prefer `bug` for ordinary bug reports when it exists. Do not add the configured Kaizen issue-selection label by default. If no useful labels exist, create the issue without labels rather than blocking.
+Only pass `--label` values that exist. Prefer `bug` for ordinary bug reports and add the base `kaizen` label by default when it exists. Treat `kaizen` as a visibility/routing label, not execution authorization. If no useful labels exist, create the issue without labels rather than blocking.
 
-Issue creation and Kaizen selection are separate:
+Issue creation and execution authorization are separate:
 
-- Treat `.kaizen/config.yml` `issues.label` as the configured Kaizen issue-selection label. For this repository, that value is `kaizen`.
-- Add the configured `issues.label` only when the user asks to queue, approve, run, execute, or put the issue on the Kaizen Loop.
-- Before adding the configured `issues.label`, confirm the exact label exists with `gh label list --repo kaizen-agents-org/<repo> --limit 200`; if it is missing, file the issue without that label and report that selection was skipped because the label does not exist.
-- If the user asks for immediate execution, file the issue, add the configured `issues.label` when it exists, then report the explicit command that should run next, such as `kaizen fix <issue>`.
-- If the issue needs human clarification before automation, do not add the configured `issues.label`; state what clarification is needed.
+- Add `kaizen` by default when the label exists, but do not add `kaizen:ready` or any other execution-selection label by default.
+- Add the execution authorization label only when the user asks to queue, approve, run, execute, or put the issue on the Kaizen Loop.
+- In opt-in selection mode, add the repository's configured execution authorization label only when it exists.
+- If the user asks for immediate execution, file the issue, add the execution authorization label when available, then report the explicit command that should run next, such as `kaizen fix <issue>`.
+- If the issue needs human clarification before automation, do not add an execution authorization label; state what clarification is needed.
 
 ## Issue Body
 
