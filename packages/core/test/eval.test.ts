@@ -109,6 +109,34 @@ describe("eval harness", () => {
     expect(metrics.falsePositiveRate).toBe(0.6);
   });
 
+  it("uses expected finding maxima before counting false positives", () => {
+    const verdict: MinimalVerdict = {
+      schemaVersion: 1,
+      verdict: "block_pr",
+      must_fix: [
+        { source: "verify_logs", message: "Verification failed." },
+        { source: "diff", message: "Security-sensitive change." }
+      ],
+      should_fix: [{ source: "builder_report", message: "Reviewer should inspect auth." }],
+      confidence: 78,
+      risk: "high",
+      summary: "Block PR with 2 must_fix item(s); risk is high."
+    };
+
+    expect(
+      compareVerdict(
+        {
+          verdict: "block_pr",
+          mustFixMin: 1,
+          mustFixMax: 2,
+          shouldFixMax: 1,
+          maxFalsePositives: 0
+        },
+        verdict
+      )
+    ).toEqual([]);
+  });
+
   it("reports the corpus path when a case cannot be parsed", async () => {
     const corpusDir = await mkdtemp(join(tmpdir(), "verifier-eval-"));
     const casePath = join(corpusDir, "invalid.json");

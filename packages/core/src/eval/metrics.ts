@@ -112,10 +112,12 @@ export function calculateEvalMetrics(results: EvalCaseResult[]): EvalMetrics {
     const findingCount = result.actual.mustFixCount + result.actual.shouldFixCount;
     if (result.expected.maxFalsePositives !== undefined) {
       totalSurvivedFindings += findingCount;
-      const expectedFindingFloor =
-        (result.expected.mustFixMin ?? 0) + (result.expected.shouldFixMin ?? 0);
-      const unmatchedFindings = Math.max(0, findingCount - expectedFindingFloor);
-      excessFindings = Math.max(0, unmatchedFindings - result.expected.maxFalsePositives);
+      const unexpectedFindings = countUnexpectedFindingCounts(
+        result.expected,
+        result.actual.mustFixCount,
+        result.actual.shouldFixCount
+      );
+      excessFindings = Math.max(0, unexpectedFindings - result.expected.maxFalsePositives);
       excessFalsePositiveFindings += excessFindings;
     }
 
@@ -158,9 +160,20 @@ function isCleanExpected(expected: EvalExpected): boolean {
 }
 
 function countUnexpectedFindings(expected: EvalExpected, actual: MinimalVerdict): number {
-  const expectedFindingFloor = (expected.mustFixMin ?? 0) + (expected.shouldFixMin ?? 0);
-  const actualFindingCount = actual.must_fix.length + actual.should_fix.length;
-  return Math.max(0, actualFindingCount - expectedFindingFloor);
+  return countUnexpectedFindingCounts(expected, actual.must_fix.length, actual.should_fix.length);
+}
+
+function countUnexpectedFindingCounts(
+  expected: EvalExpected,
+  mustFixCount: number,
+  shouldFixCount: number
+): number {
+  const expectedMustFixAllowance = expected.mustFixMax ?? expected.mustFixMin ?? 0;
+  const expectedShouldFixAllowance = expected.shouldFixMax ?? expected.shouldFixMin ?? 0;
+  return (
+    Math.max(0, mustFixCount - expectedMustFixAllowance) +
+    Math.max(0, shouldFixCount - expectedShouldFixAllowance)
+  );
 }
 
 function ratio(numerator: number, denominator: number): number {
