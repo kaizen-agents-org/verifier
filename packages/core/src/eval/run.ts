@@ -101,8 +101,13 @@ async function loadCorpus(corpusDir: string): Promise<EvalCase[]> {
 }
 
 async function loadCase(path: string): Promise<EvalCase> {
-  const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
-  return EvalCaseSchema.parse(parsed);
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+    return EvalCaseSchema.parse(parsed);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to load eval case ${path}: ${message}`);
+  }
 }
 
 async function findJsonFiles(dir: string): Promise<string[]> {

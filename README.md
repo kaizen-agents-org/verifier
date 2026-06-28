@@ -231,8 +231,9 @@ prints JSON with:
 
 - `metrics.verdictAgreement`: fraction of cases whose verdict matched the
   expected verdict or allowed verdict set.
-- `metrics.falsePositiveRate`: fraction of clean `open_pr` cases that produced
-  more findings than the case allowed.
+- `metrics.falsePositiveRate`: for cases with a false-positive allowance,
+  surplus findings beyond expected findings and that allowance, divided by total
+  emitted findings in those cases.
 - `cases[].failures`: concrete mismatch messages to investigate when the
   harness exits non-zero.
 

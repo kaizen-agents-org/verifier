@@ -89,6 +89,8 @@ export function calculateEvalMetrics(results: EvalCaseResult[]): EvalMetrics {
   let verdictMatches = 0;
   let cleanCases = 0;
   let falsePositiveCases = 0;
+  let totalSurvivedFindings = 0;
+  let excessFalsePositiveFindings = 0;
 
   for (const result of results) {
     const bucket = byKind[result.kind];
@@ -96,18 +98,30 @@ export function calculateEvalMetrics(results: EvalCaseResult[]): EvalMetrics {
     if (result.passed) bucket.passed += 1;
     else bucket.failed += 1;
 
-    if (
+    const verdictMatched =
       result.expected.verdictAnyOf?.includes(result.actual.verdict) ||
-      result.expected.verdict === result.actual.verdict
-    ) {
+      result.expected.verdict === result.actual.verdict;
+    const confidenceWithinMax =
+      result.expected.confidenceMax === undefined ||
+      result.actual.confidence <= result.expected.confidenceMax;
+    if (verdictMatched && confidenceWithinMax) {
       verdictMatches += 1;
+    }
+
+    let excessFindings = 0;
+    const findingCount = result.actual.mustFixCount + result.actual.shouldFixCount;
+    if (result.expected.maxFalsePositives !== undefined) {
+      totalSurvivedFindings += findingCount;
+      const expectedFindingFloor =
+        (result.expected.mustFixMin ?? 0) + (result.expected.shouldFixMin ?? 0);
+      const unmatchedFindings = Math.max(0, findingCount - expectedFindingFloor);
+      excessFindings = Math.max(0, unmatchedFindings - result.expected.maxFalsePositives);
+      excessFalsePositiveFindings += excessFindings;
     }
 
     if (isCleanExpected(result.expected)) {
       cleanCases += 1;
-      const findingCount = result.actual.mustFixCount + result.actual.shouldFixCount;
-      const allowedFindings = result.expected.maxFalsePositives ?? 0;
-      if (findingCount > allowedFindings) falsePositiveCases += 1;
+      if (excessFindings > 0) falsePositiveCases += 1;
     }
   }
 
@@ -116,7 +130,7 @@ export function calculateEvalMetrics(results: EvalCaseResult[]): EvalMetrics {
     passedCases: results.filter((result) => result.passed).length,
     failedCases: results.filter((result) => !result.passed).length,
     verdictAgreement: ratio(verdictMatches, results.length),
-    falsePositiveRate: ratio(falsePositiveCases, cleanCases),
+    falsePositiveRate: ratio(excessFalsePositiveFindings, totalSurvivedFindings),
     falsePositiveCases,
     cleanCases,
     byKind

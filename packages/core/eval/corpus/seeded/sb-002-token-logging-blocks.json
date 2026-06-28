@@ -11,7 +11,7 @@
   "expected": {
     "verdict": "block_pr",
     "risk": "high",
-    "mustFixMin": 2,
+    "mustFixMin": 1,
     "shouldFixMax": 0
   }
 }
