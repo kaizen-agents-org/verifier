@@ -18,6 +18,10 @@ expected verdict constraints, and false-positive allowances. The command emits
 JSON metrics, including `verdictAgreement` and `falsePositiveRate`, and exits
 non-zero when any case fails.
 
+The MVP corpus includes seeded/golden cases for `open_pr`,
+`open_pr_with_warning`, `block_pr`, and `needs_context` so readiness reviews can
+cite all currently shipped verdict outcomes from one reproducible command.
+
 The remainder of this document describes the broader staged verifier eval design.
 
 ## 1. ディレクトリ構成
