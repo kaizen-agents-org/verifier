@@ -19,6 +19,7 @@ interface CliOptions {
   workspace: string;
   workspaceExplicit: boolean;
   verifyCommands: string[];
+  verifyTimeoutMs?: number;
   configFile?: string;
   outputDir?: string;
   markdown: boolean;
@@ -32,6 +33,7 @@ interface VerifierConfig {
   intent?: string;
   intentFile?: string;
   verifyCommands?: string[];
+  verifyTimeoutMs?: number;
   outputDir?: string;
   markdown?: boolean;
   failOn?: FinalVerdictKind;
@@ -65,6 +67,7 @@ async function main(argv: string[]): Promise<number> {
       options.taskFile ?? (options.task ? undefined : configIntentFile)
     );
     const outputDir = options.outputDir ?? config.outputDir;
+    const verifyTimeoutMs = options.verifyTimeoutMs ?? config.verifyTimeoutMs;
     const result = await runCheck({
       task,
       workspace: options.workspace,
@@ -72,6 +75,7 @@ async function main(argv: string[]): Promise<number> {
       verifyCommands: options.verifyCommands.length > 0
         ? options.verifyCommands
         : config.verifyCommands ?? [],
+      ...(verifyTimeoutMs ? { verifyTimeoutMs } : {}),
       ...(outputDir ? { outputDir } : {})
     });
     const markdown = options.markdown || config.markdown === true;
@@ -213,6 +217,9 @@ function parseArgs(argv: string[]): CliOptions {
       case "--verify-command":
         options.verifyCommands.push(readFlagValue(args, ++index, arg));
         break;
+      case "--verify-timeout-ms":
+        options.verifyTimeoutMs = parsePositiveInteger(readFlagValue(args, ++index, arg), arg);
+        break;
       case "--config":
         options.configFile = readFlagValue(args, ++index, arg);
         break;
@@ -246,6 +253,7 @@ async function shouldRunWorkspaceCheck(options: CliOptions): Promise<boolean> {
     options.base !== undefined ||
     options.workspaceExplicit ||
     options.verifyCommands.length > 0 ||
+    options.verifyTimeoutMs !== undefined ||
     options.configFile !== undefined ||
     options.outputDir !== undefined ||
     options.markdown ||
@@ -271,6 +279,7 @@ async function shouldRunWorkspaceCheck(options: CliOptions): Promise<boolean> {
       config.intent ||
       config.intentFile ||
       config.verifyCommands ||
+      config.verifyTimeoutMs ||
       config.outputDir ||
       config.markdown ||
       config.failOn
@@ -283,6 +292,14 @@ function readFlagValue(args: string[], index: number, flag: string): string {
     throw new Error(`Missing value for ${flag}`);
   }
   return value;
+}
+
+function parsePositiveInteger(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${flag} must be a positive integer`);
+  }
+  return parsed;
 }
 
 async function readInlineOrFile(
@@ -307,6 +324,9 @@ async function readVerifierConfig(
   if (parsed.failOn !== undefined) parsed.failOn = parseFinalVerdictKind(parsed.failOn);
   if (parsed.verifyCommands !== undefined && !Array.isArray(parsed.verifyCommands)) {
     throw new Error("verifier.config.json verifyCommands must be an array.");
+  }
+  if (parsed.verifyTimeoutMs !== undefined) {
+    parsed.verifyTimeoutMs = parsePositiveInteger(String(parsed.verifyTimeoutMs), "verifier.config.json verifyTimeoutMs");
   }
   return parsed;
 }
@@ -357,6 +377,7 @@ Options:
   --workspace <path>               Repository path for workspace check (default: cwd)
   --config <path>                  JSON config file (default: verifier.config.json)
   --verify-command <cmd>           Command to run during workspace check; repeatable
+  --verify-timeout-ms <ms>         Timeout for each workspace verify command (default: 600000)
   --output-dir <path>              Directory for workspace check artifacts
   --markdown                       Print the Markdown workspace check report to stdout
   --fail-on <kind>                 Exit 1 when workspace check reaches kind or stricter

@@ -7,12 +7,14 @@ import { evaluateMinimalVerdict } from "./minimal-verdict.js";
 import type { FinalVerdictKind, MinimalVerdict, VerdictInput } from "./types.js";
 
 const execFileAsync = promisify(execFile);
+const DEFAULT_VERIFY_TIMEOUT_MS = 10 * 60 * 1000;
 
 export interface CheckInput {
   task: string;
   workspace: string;
   base: string;
   verifyCommands: string[];
+  verifyTimeoutMs?: number;
   outputDir?: string;
 }
 
@@ -28,6 +30,8 @@ interface CommandRunResult {
   stdout: string;
   stderr: string;
   durationMs: number;
+  timedOut: boolean;
+  timeoutMs: number;
 }
 
 interface EvidenceRecord {
@@ -52,7 +56,8 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
     readChangedFiles(base, workspace),
     readHeadRef(workspace)
   ]);
-  const commandResults = await runVerifyCommands(input.verifyCommands, workspace);
+  const verifyTimeoutMs = input.verifyTimeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
+  const commandResults = await runVerifyCommands(input.verifyCommands, workspace, verifyTimeoutMs);
 
   const verifyLogs = commandResults.map(formatCommandResult).join("\n\n");
   const builderReport = buildCheckReport(base, workspace, input.verifyCommands);
@@ -97,7 +102,9 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
         command: result.command,
         exit_code: result.code,
         signal: result.signal,
-        duration_ms: result.durationMs
+        duration_ms: result.durationMs,
+        timed_out: result.timedOut,
+        timeout_ms: result.timeoutMs
       }))
     },
     evidence
@@ -171,24 +178,41 @@ async function readHeadRef(workspace: string): Promise<string> {
   }
 }
 
-async function runVerifyCommands(commands: string[], workspace: string): Promise<CommandRunResult[]> {
+async function runVerifyCommands(
+  commands: string[],
+  workspace: string,
+  timeoutMs: number
+): Promise<CommandRunResult[]> {
   const results: CommandRunResult[] = [];
   for (const command of commands) {
-    results.push(await runShellCommand(command, workspace));
+    results.push(await runShellCommand(command, workspace, timeoutMs));
   }
   return results;
 }
 
-function runShellCommand(command: string, workspace: string): Promise<CommandRunResult> {
+function runShellCommand(
+  command: string,
+  workspace: string,
+  timeoutMs: number
+): Promise<CommandRunResult> {
   const startedAt = Date.now();
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
       cwd: workspace,
       shell: true,
+      detached: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
     let stdout = "";
     let stderr = "";
+    let timedOut = false;
+    let killTimer: NodeJS.Timeout | undefined;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      stderr += `${stderr.endsWith("\n") || stderr.length === 0 ? "" : "\n"}verification command timed out after ${timeoutMs}ms\n`;
+      terminateProcessGroup(child.pid);
+      killTimer = setTimeout(() => terminateProcessGroup(child.pid, "SIGKILL"), 1000);
+    }, timeoutMs);
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
@@ -198,23 +222,46 @@ function runShellCommand(command: string, workspace: string): Promise<CommandRun
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
+      reject(error);
+    });
     child.on("close", (code, signal) => {
+      clearTimeout(timeout);
+      if (killTimer) clearTimeout(killTimer);
       resolve({
         command,
         code,
         signal,
         stdout,
         stderr,
-        durationMs: Date.now() - startedAt
+        durationMs: Date.now() - startedAt,
+        timedOut,
+        timeoutMs
       });
     });
   });
 }
 
+function terminateProcessGroup(pid: number | undefined, signal: NodeJS.Signals = "SIGTERM"): void {
+  if (pid === undefined) return;
+  try {
+    process.kill(-pid, signal);
+  } catch {
+    try {
+      process.kill(pid, signal);
+    } catch {
+      // The process may have exited between timeout and signal delivery.
+    }
+  }
+}
+
 function formatCommandResult(result: CommandRunResult): string {
   const status =
-    result.signal || result.code === null
+    result.timedOut
+      ? `verification failed: timed out after ${result.timeoutMs}ms`
+      : result.signal || result.code === null
       ? `verification failed: exit code ${result.code ?? "null"}${result.signal ? ` signal ${result.signal}` : ""}`
       : `exit code ${result.code}`;
   return [
@@ -287,9 +334,12 @@ function summarizeFinalVerdict(
 function renderMarkdownReport(verdict: MinimalVerdict): string {
   const commandRows = verdict.run?.verify_commands.length
     ? verdict.run.verify_commands
-        .map((command) => `| \`${escapePipes(command.command)}\` | ${command.exit_code ?? "null"} | ${command.duration_ms} |`)
+        .map((command) => {
+          const timedOut = command.timed_out ? `yes (${command.timeout_ms}ms)` : "no";
+          return `| \`${escapePipes(command.command)}\` | ${command.exit_code ?? "null"} | ${command.duration_ms} | ${timedOut} |`;
+        })
         .join("\n")
-    : "| _none_ | - | - |";
+    : "| _none_ | - | - | - |";
   const mustFix = renderFindingList(verdict.must_fix);
   const shouldFix = renderFindingList(verdict.should_fix);
   const conditions = verdict.conditions?.length
@@ -310,8 +360,8 @@ function renderMarkdownReport(verdict: MinimalVerdict): string {
     conditions,
     "",
     "## Verification Commands",
-    "| Command | Exit code | Duration ms |",
-    "|---|---:|---:|",
+    "| Command | Exit code | Duration ms | Timed out |",
+    "|---|---:|---:|---|",
     commandRows,
     "",
     "## Must Fix",
