@@ -295,6 +295,40 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.must_fix.some((item) => item.evidence?.includes("verification failed"))).toBe(true);
   });
 
+  it("times out long-running verification commands", async () => {
+    const dir = await createChangedRepo();
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        nodeEvalCommand("setTimeout(() => {}, 5_000)"),
+        "--verify-timeout-ms",
+        "50"
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as {
+      final_verdict: string;
+      must_fix: Array<{ evidence?: string }>;
+      run: { verify_commands: Array<{ timed_out?: boolean; timeout_ms?: number }> };
+    };
+
+    expect(output.final_verdict).toBe("not_mergeable");
+    expect(output.must_fix.some((item) => item.evidence?.includes("timed out after 50ms"))).toBe(true);
+    expect(output.run.verify_commands[0]).toMatchObject({ timed_out: true, timeout_ms: 50 });
+  });
+
   it("prints markdown reports for check", async () => {
     const dir = await createChangedRepo();
 
