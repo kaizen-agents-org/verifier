@@ -15,6 +15,9 @@ describe("eval harness", () => {
     expect(result.metrics.falsePositiveRate).toBe(0);
     expect(result.metrics.byKind.seeded.total).toBeGreaterThan(0);
     expect(result.metrics.byKind.golden.total).toBeGreaterThan(0);
+    expect(result.cases.map((testCase) => testCase.actual.verdict)).toEqual(
+      expect.arrayContaining(["open_pr", "open_pr_with_warning", "block_pr", "needs_context"])
+    );
   });
 
   it("does not count expected bug findings as false positives", () => {

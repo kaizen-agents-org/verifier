@@ -218,11 +218,17 @@ The MVP heuristic intentionally stays small and deterministic:
 ## Eval Harness
 
 The MVP eval harness runs committed seeded and golden cases against the current
-verdict function and reports agreement plus false-positive metrics:
+deterministic verdict contract:
 
 ```sh
 pnpm eval
 ```
+
+The committed corpus covers the MVP verdict outcomes used by readiness reviews:
+`open_pr`, `open_pr_with_warning`, `block_pr`, and `needs_context`. The JSON
+output includes per-case results plus aggregate `verdictAgreement` and
+`falsePositiveRate` metrics so reports can cite reproducible verifier quality
+signals.
 
 Corpus files live under `packages/core/eval/corpus/seeded` and
 `packages/core/eval/corpus/golden`. Each JSON case records verifier input,

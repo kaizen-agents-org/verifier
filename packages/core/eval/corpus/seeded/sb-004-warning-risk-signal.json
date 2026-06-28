@@ -1,0 +1,19 @@
+{
+  "id": "sb-004-warning-risk-signal",
+  "kind": "seeded",
+  "description": "Seeded non-blocking risk: skipped verification is surfaced as a reviewer warning without blocking PR creation.",
+  "input": {
+    "task": "Update the report rendering styles without changing behavior.",
+    "diff": "diff --git a/src/report.ts b/src/report.ts\n+export const reportClassName = 'report report--compact'",
+    "verifyLogs": "typecheck passed\nunit tests passed\nschema:check skipped because schema generation is unavailable in this fixture",
+    "builderReport": "implementation complete; visual regression checks were skipped for this CSS-only fixture"
+  },
+  "expected": {
+    "verdict": "open_pr_with_warning",
+    "risk": "medium",
+    "mustFixMax": 0,
+    "shouldFixMin": 2,
+    "confidenceMin": 60,
+    "maxFalsePositives": 0
+  }
+}
