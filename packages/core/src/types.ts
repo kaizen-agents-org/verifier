@@ -72,7 +72,9 @@ export const MinimalVerdictSchema = z.object({
           command: z.string(),
           exit_code: z.number().int().nullable(),
           signal: z.string().nullable(),
-          duration_ms: z.number().int().min(0)
+          duration_ms: z.number().int().min(0),
+          timed_out: z.boolean().optional(),
+          timeout_ms: z.number().int().min(1).optional()
         })
       )
     })

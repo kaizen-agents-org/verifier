@@ -22,6 +22,7 @@ verifier check \
   --intent-file task.md \
   --verify-command "pnpm typecheck" \
   --verify-command "pnpm test" \
+  --verify-timeout-ms 600000 \
   --pretty
 ```
 
@@ -29,9 +30,14 @@ verifier check \
 
 1. Read primary intent from `--intent` or `--intent-file`.
 2. Collect `git diff --no-ext-diff --binary <base>` and changed file names.
-3. Run each `--verify-command` in the workspace and capture stdout, stderr,
-   exit code, signal, and duration.
+3. Run each `--verify-command` in the workspace with a bounded timeout and
+   capture stdout, stderr, exit code, signal, duration, and timeout metadata.
 4. Save evidence and emit a verdict.
+
+Each command defaults to a 10 minute timeout. Use `--verify-timeout-ms` or
+`verifyTimeoutMs` in `verifier.config.json` to override it. When a command times
+out, `check` terminates it, records `timed_out` / `timeout_ms` in the verdict,
+and treats the command as failed verification evidence.
 
 ## Evidence Store
 
@@ -92,6 +98,7 @@ The MVP merge-readiness field is `final_verdict`:
   "base": "main",
   "intentFile": "task.md",
   "verifyCommands": ["pnpm typecheck", "pnpm test"],
+  "verifyTimeoutMs": 600000,
   "outputDir": ".verifier/runs",
   "markdown": false,
   "failOn": "not_mergeable"

@@ -101,13 +101,16 @@ node packages/core/dist/cli.js check \
   --intent-file task.md \
   --verify-command "pnpm typecheck" \
   --verify-command "pnpm test" \
+  --verify-timeout-ms 600000 \
   --pretty
 ```
 
 Workspace mode collects `git diff --no-ext-diff --binary <base>` from the target
 workspace, runs each `--verify-command` in that workspace, saves evidence under
 `.verifier/runs/<run-id>/`, then feeds the collected diff and command logs into
-the same verdict contract.
+the same verdict contract. Each verification command has a default 10 minute
+timeout. Timed-out commands are terminated, recorded as failed command evidence,
+and surfaced in `run.verify_commands[].timed_out` and `timeout_ms`.
 
 Configure workspace check defaults in `verifier.config.json`:
 
@@ -116,6 +119,7 @@ Configure workspace check defaults in `verifier.config.json`:
   "base": "main",
   "intentFile": "task.md",
   "verifyCommands": ["pnpm typecheck", "pnpm test"],
+  "verifyTimeoutMs": 600000,
   "failOn": "not_mergeable"
 }
 ```
@@ -175,7 +179,9 @@ The current JSON contract is:
         "command": "pnpm test",
         "exit_code": 0,
         "signal": null,
-        "duration_ms": 1234
+        "duration_ms": 1234,
+        "timed_out": false,
+        "timeout_ms": 600000
       }
     ]
   },

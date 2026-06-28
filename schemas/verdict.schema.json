@@ -145,6 +145,13 @@
                   "duration_ms": {
                     "type": "integer",
                     "minimum": 0
+                  },
+                  "timed_out": {
+                    "type": "boolean"
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "minimum": 1
                   }
                 },
                 "required": [
