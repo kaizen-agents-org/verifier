@@ -2,6 +2,24 @@
 
 [SPEC.md §11](./SPEC.md) の「Verifier自身の検証」を実装に落とす文書。型は [DESIGN.md](./DESIGN.md) のものを使う。
 
+## MVP implementation
+
+The repository now includes an executable MVP harness for the deterministic
+verdict contract:
+
+```sh
+pnpm eval
+```
+
+The initial committed corpus lives under `packages/core/eval/corpus/seeded` and
+`packages/core/eval/corpus/golden`. Cases are JSON for the MVP so the harness can
+run without adding a YAML parser dependency. Each case records verifier input,
+expected verdict constraints, and false-positive allowances. The command emits
+JSON metrics, including `verdictAgreement` and `falsePositiveRate`, and exits
+non-zero when any case fails.
+
+The remainder of this document describes the broader staged verifier eval design.
+
 ## 1. ディレクトリ構成
 
 ```

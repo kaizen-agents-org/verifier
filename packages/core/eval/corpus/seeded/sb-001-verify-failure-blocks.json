@@ -1,0 +1,16 @@
+{
+  "id": "sb-001-verify-failure-blocks",
+  "kind": "seeded",
+  "description": "Seeded regression: verification and builder output both report a blocking failure.",
+  "input": {
+    "task": "Keep admin API authorization intact while refactoring handlers.",
+    "diff": "diff --git a/src/admin.ts b/src/admin.ts\n-requireAdmin(request)\n+return ok({ status: 'updated' })",
+    "verifyLogs": "admin authorization regression failed with exit code 1",
+    "builderReport": "blocker: POST /admin/update accepts unauthenticated requests"
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

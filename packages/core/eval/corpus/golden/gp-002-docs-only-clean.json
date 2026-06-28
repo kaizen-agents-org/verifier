@@ -1,0 +1,19 @@
+{
+  "id": "gp-002-docs-only-clean",
+  "kind": "golden",
+  "description": "Golden outcome: docs-only evidence with clean verification should remain openable.",
+  "input": {
+    "task": "Document how to run the verifier eval harness.",
+    "diff": "diff --git a/README.md b/README.md\n+Run pnpm eval to execute the committed verifier corpus.",
+    "verifyLogs": "pnpm test passed\npnpm typecheck passed\n0 failures",
+    "builderReport": "documentation updated and checks passed"
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}
