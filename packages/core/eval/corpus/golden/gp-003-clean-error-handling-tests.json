@@ -1,0 +1,19 @@
+{
+  "id": "gp-003-clean-error-handling-tests",
+  "kind": "golden",
+  "description": "Golden false-positive control: clean named test suites may include hard-failure words as domain terms.",
+  "input": {
+    "task": "Add parser recovery coverage without changing runtime behavior.",
+    "diff": "diff --git a/src/parser.test.ts b/src/parser.test.ts\n+it('handles parser errors cleanly', () => {})",
+    "verifyLogs": "typecheck passed\nerror handling tests passed\nexception path tests passed\npanic recovery test passed\n0 failures",
+    "builderReport": "build successful"
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}
