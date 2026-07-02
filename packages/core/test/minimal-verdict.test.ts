@@ -42,6 +42,18 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
   });
 
+  it("blocks mixed-status lines that append errors after a clean result", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add regression coverage for verifier logs",
+      diff: "diff --git a/verifier.test.ts b/verifier.test.ts\n+it('reports lint configuration errors', () => {})",
+      verifyLogs: "unit tests passed; lint error: no config found",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
   it("blocks PR creation when verify logs contain blocking failures", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Keep API authorization intact",
