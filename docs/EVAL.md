@@ -20,7 +20,10 @@ non-zero when any case fails.
 
 The MVP corpus includes seeded/golden cases for `open_pr`,
 `open_pr_with_warning`, `block_pr`, and `needs_context` so readiness reviews can
-cite all currently shipped verdict outcomes from one reproducible command.
+cite all currently shipped verdict outcomes from one reproducible command. It
+also includes a seeded unexplained-diff case (`sb-009`) so a clean change with
+diff evidence but no primary task intent remains `needs_context` with capped
+confidence instead of becoming openable.
 
 The remainder of this document describes the broader staged verifier eval design.
 
