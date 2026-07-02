@@ -16,6 +16,44 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.confidence).toBeGreaterThanOrEqual(80);
   });
 
+  it("does not block clean named tests that contain hard-failure domain terms", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add regression coverage for parser recovery",
+      diff: "diff --git a/parser.test.ts b/parser.test.ts\n+it('handles parser errors cleanly', () => {})",
+      verifyLogs:
+        "typecheck passed\nerror handling tests passed\nexception path tests passed\npanic recovery test passed",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
+  it("still blocks mixed-status named test lines with explicit failures", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add regression coverage for parser recovery",
+      diff: "diff --git a/parser.test.ts b/parser.test.ts\n+it('handles parser errors cleanly', () => {})",
+      verifyLogs: "error handling tests passed; 1 error",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
+  it("blocks mixed-status lines that append errors after a clean result", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add regression coverage for verifier logs",
+      diff: "diff --git a/verifier.test.ts b/verifier.test.ts\n+it('reports lint configuration errors', () => {})",
+      verifyLogs: "unit tests passed; lint error: no config found",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
   it("blocks PR creation when verify logs contain blocking failures", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Keep API authorization intact",
