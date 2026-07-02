@@ -23,11 +23,21 @@ const HARD_FAILURE_PATTERNS = [
 ];
 
 const CLEAN_RESULT_PATTERNS = [
-  /\b0\s+(?:failures|failed|errors)\b/i,
-  /\bno\s+(?:failures|errors)\b/i,
-  /\ball\s+(?:tests\s+)?passed\b/i,
-  /\bbuild\s+(?:ok|passed|succeeded|successful)\b/i,
-  /\bsuccess(?:ful)?\b/i
+  /^(?:[^\w\s]+\s*)?0\s+(?:failures|failed|errors)$/i,
+  /^(?:[^\w\s]+\s*)?no\s+(?:failures|errors)$/i,
+  /^(?:[^\w\s]+\s*)?all\s+(?:tests\s+)?passed$/i,
+  /^(?:[^\w\s]+\s*)?(?:[\w:/.-]+\s+)*tests?\s+(?:ok|passed|succeeded|successful)$/i,
+  /^(?:[^\w\s]+\s*)?build\s+(?:ok|passed|succeeded|successful)$/i,
+  /^(?:[^\w\s]+\s*)?success(?:ful)?$/i
+];
+
+const EXPLICIT_FAILURE_RESULT_PATTERNS = [
+  /\b[1-9]\d*\s+(?:failures?|failed|errors?)\b/i,
+  /\b(?:tests?|checks?|build|typecheck|lint|schema(?::check)?)\s+failed\b/i,
+  /\bfailed\s+(?:tests?|checks?|build|typecheck|lint|schema(?::check)?)\b/i,
+  /\bexit code\s+[1-9]\d*\b/i,
+  /\bnpm ERR!\b/i,
+  /\bERR_PNPM\b/i
 ];
 
 const POSITIVE_VERIFICATION_PATTERNS = [
@@ -356,7 +366,10 @@ function lines(text: string): string[] {
 }
 
 function isCleanResultLine(line: string): boolean {
-  return CLEAN_RESULT_PATTERNS.some((pattern) => pattern.test(line));
+  return (
+    CLEAN_RESULT_PATTERNS.some((pattern) => pattern.test(line)) &&
+    !EXPLICIT_FAILURE_RESULT_PATTERNS.some((pattern) => pattern.test(line))
+  );
 }
 
 function truncate(text: string): string {
