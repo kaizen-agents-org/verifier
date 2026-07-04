@@ -168,6 +168,50 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.source === "diff")).toBe(true);
   });
 
+  it("does not block removals of hard-coded secrets when no new secret is added", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Remove a hard-coded database password",
+      diff:
+        "diff --git a/config.ts b/config.ts\n" +
+        "-const password = 'hardcoded-password'\n" +
+        "+const databaseConfig = loadDatabaseConfig()",
+      verifyLogs: "all tests passed",
+      builderReport: "Removed the hard-coded credential and verified config loading."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(false);
+  });
+
+  it("does not block harmless delete wording in added comments", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Document cleanup behavior",
+      diff:
+        "diff --git a/cleanup.ts b/cleanup.ts\n" +
+        "+// Delete stale local fixtures manually when debugging old runs.",
+      verifyLogs: "all tests passed",
+      builderReport: "Updated cleanup documentation."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("destructive"))).toBe(false);
+  });
+
+  it("still blocks removed authorization checks without targeted verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor admin update handler",
+      diff:
+        "diff --git a/admin.ts b/admin.ts\n" +
+        "-requireAuthorization(request)\n" +
+        "+return ok({ status: 'updated' })",
+      verifyLogs: "all tests passed",
+      builderReport: "Refactored the admin update handler."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("opens high-risk diffs with a warning when targeted verification is present", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor billing token handling",
@@ -225,6 +269,18 @@ describe("evaluateMinimalVerdict", () => {
       diff: "diff --git a/migrations/001.sql b/migrations/001.sql\n+alter table users add column email text",
       verifyLogs: "all tests passed",
       builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("database/schema"))).toBe(true);
+  });
+
+  it("still treats migration file changes as high risk even with generic added lines", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update migration metadata",
+      diff: "diff --git a/migrations/001.sql b/migrations/001.sql\n+-- backfill user metadata",
+      verifyLogs: "all tests passed",
+      builderReport: "Updated migration metadata."
     });
 
     expect(verdict.verdict).toBe("block_pr");
