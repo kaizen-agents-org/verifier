@@ -20,6 +20,16 @@ describe("eval harness", () => {
     expect(result.metrics.falsePositiveRate).toBe(0);
     expect(result.metrics.byKind.seeded.total).toBeGreaterThan(0);
     expect(result.metrics.byKind.golden.total).toBeGreaterThan(0);
+    expect(result.cases.find((testCase) => testCase.id === "sb-009-unexplained-diff-needs-context")).toMatchObject({
+      passed: true,
+      actual: {
+        verdict: "needs_context",
+        risk: "medium"
+      },
+      expected: {
+        confidenceMax: 50
+      }
+    });
     expect(result.cases.map((testCase) => testCase.actual.verdict)).toEqual(
       expect.arrayContaining(["open_pr", "open_pr_with_warning", "block_pr", "needs_context"])
     );
