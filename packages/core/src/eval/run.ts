@@ -6,9 +6,11 @@ import { evaluateMinimalVerdict } from "../minimal-verdict.js";
 import { VerdictDecisionSchema, VerdictInputSchema, RiskLevelSchema } from "../types.js";
 import {
   calculateEvalMetrics,
+  compareThresholds,
   compareVerdict,
   type EvalCaseResult,
-  type EvalMetrics
+  type EvalMetrics,
+  type EvalThresholds
 } from "./metrics.js";
 
 const EvalCaseSchema = z.object({
@@ -37,11 +39,20 @@ const EvalCaseSchema = z.object({
     })
 });
 
+const EvalThresholdsSchema = z
+  .object({
+    verdictAgreementMin: z.number().min(0).max(1).optional(),
+    falsePositiveRateMax: z.number().min(0).max(1).optional()
+  })
+  .strict();
+
 type EvalCase = z.infer<typeof EvalCaseSchema>;
 
 export interface EvalRunResult {
   generatedAt: string;
   corpusDir: string;
+  thresholds?: EvalThresholds;
+  thresholdFailures: string[];
   metrics: EvalMetrics;
   cases: EvalCaseResult[];
 }
@@ -49,16 +60,21 @@ export interface EvalRunResult {
 export interface RunEvalOptions {
   corpusDir?: string;
   outputFile?: string;
+  thresholdsFile?: string | false;
 }
 
 export async function runEval(options: RunEvalOptions = {}): Promise<EvalRunResult> {
   const corpusDir = resolve(options.corpusDir ?? defaultCorpusDir());
+  const thresholds = await loadThresholds(options.thresholdsFile);
   const cases = await loadCorpus(corpusDir);
   const results = cases.map(runCase);
+  const metrics = calculateEvalMetrics(results);
   const runResult: EvalRunResult = {
     generatedAt: new Date().toISOString(),
     corpusDir,
-    metrics: calculateEvalMetrics(results),
+    ...(thresholds ? { thresholds } : {}),
+    thresholdFailures: thresholds ? compareThresholds(metrics, thresholds) : [],
+    metrics,
     cases: results
   };
 
@@ -110,6 +126,19 @@ async function loadCase(path: string): Promise<EvalCase> {
   }
 }
 
+async function loadThresholds(thresholdsFile: RunEvalOptions["thresholdsFile"]): Promise<EvalThresholds | undefined> {
+  if (thresholdsFile === false) return undefined;
+
+  const path = resolve(thresholdsFile ?? defaultThresholdsFile());
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+    return EvalThresholdsSchema.parse(parsed);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to load eval thresholds ${path}: ${message}`);
+  }
+}
+
 async function findJsonFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   const nested = await Promise.all(
@@ -126,6 +155,10 @@ function defaultCorpusDir(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../eval/corpus");
 }
 
+function defaultThresholdsFile(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "../../eval/thresholds.json");
+}
+
 function parseArgs(argv: string[]): RunEvalOptions {
   const options: RunEvalOptions = {};
 
@@ -135,6 +168,10 @@ function parseArgs(argv: string[]): RunEvalOptions {
       options.corpusDir = readValue(argv, ++index, arg);
     } else if (arg === "--output") {
       options.outputFile = readValue(argv, ++index, arg);
+    } else if (arg === "--thresholds") {
+      options.thresholdsFile = readValue(argv, ++index, arg);
+    } else if (arg === "--no-thresholds") {
+      options.thresholdsFile = false;
     } else if (arg === "--help" || arg === "-h") {
       process.stdout.write(usage());
       process.exit(0);
@@ -153,9 +190,9 @@ function readValue(argv: string[], index: number, flag: string): string {
 }
 
 function usage(): string {
-  return `Usage: pnpm --filter @verifier/core eval [--corpus <dir>] [--output <file>]
+  return `Usage: pnpm --filter @verifier/core eval [--corpus <dir>] [--output <file>] [--thresholds <file>] [--no-thresholds]
 
-Runs the committed verifier eval corpus and prints metrics plus per-case results as JSON.
+Runs the committed verifier eval corpus and prints metrics, threshold status, and per-case results as JSON.
 `;
 }
 
@@ -163,7 +200,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   runEval(parseArgs(process.argv.slice(2)))
     .then((result) => {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-      process.exitCode = result.metrics.failedCases === 0 ? 0 : 1;
+      process.exitCode = result.metrics.failedCases === 0 && result.thresholdFailures.length === 0 ? 0 : 1;
     })
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);

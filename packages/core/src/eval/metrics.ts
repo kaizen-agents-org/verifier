@@ -42,6 +42,11 @@ export interface EvalMetrics {
   byKind: Record<EvalKind, { total: number; passed: number; failed: number }>;
 }
 
+export interface EvalThresholds {
+  verdictAgreementMin?: number | undefined;
+  falsePositiveRateMax?: number | undefined;
+}
+
 export function compareVerdict(expected: EvalExpected, actual: MinimalVerdict): string[] {
   const failures: string[] = [];
   const expectedVerdicts = expected.verdictAnyOf ?? (expected.verdict ? [expected.verdict] : []);
@@ -76,6 +81,34 @@ export function compareVerdict(expected: EvalExpected, actual: MinimalVerdict): 
         `expected at most ${maxFalsePositives} false-positive finding(s), got ${falsePositiveCount}`
       );
     }
+  }
+
+  return failures;
+}
+
+export function compareThresholds(metrics: EvalMetrics, thresholds: EvalThresholds): string[] {
+  const failures: string[] = [];
+
+  if (
+    thresholds.verdictAgreementMin !== undefined &&
+    metrics.verdictAgreement < thresholds.verdictAgreementMin
+  ) {
+    failures.push(
+      `verdictAgreement ${formatRate(metrics.verdictAgreement)} is below minimum ${formatRate(
+        thresholds.verdictAgreementMin
+      )}`
+    );
+  }
+
+  if (
+    thresholds.falsePositiveRateMax !== undefined &&
+    metrics.falsePositiveRate > thresholds.falsePositiveRateMax
+  ) {
+    failures.push(
+      `falsePositiveRate ${formatRate(metrics.falsePositiveRate)} exceeds maximum ${formatRate(
+        thresholds.falsePositiveRateMax
+      )}`
+    );
   }
 
   return failures;
@@ -178,4 +211,8 @@ function countUnexpectedFindingCounts(
 
 function ratio(numerator: number, denominator: number): number {
   return denominator === 0 ? 0 : Number((numerator / denominator).toFixed(4));
+}
+
+function formatRate(value: number): string {
+  return value.toFixed(4);
 }

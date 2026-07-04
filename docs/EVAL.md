@@ -16,11 +16,19 @@ The initial committed corpus lives under `packages/core/eval/corpus/seeded` and
 run without adding a YAML parser dependency. Each case records verifier input,
 expected verdict constraints, and false-positive allowances. The command emits
 JSON metrics, including `verdictAgreement` and `falsePositiveRate`, and exits
-non-zero when any case fails.
+non-zero when any case fails or the MVP threshold gate is not met.
+
+The committed MVP threshold file is `packages/core/eval/thresholds.json`.
+It currently gates the metrics implemented by the MVP harness:
+`verdictAgreementMin` and `falsePositiveRateMax`. The broader `recall` and
+`reproducibility` gates described below remain future staged-eval work.
 
 The MVP corpus includes seeded/golden cases for `open_pr`,
 `open_pr_with_warning`, `block_pr`, and `needs_context` so readiness reviews can
-cite all currently shipped verdict outcomes from one reproducible command.
+cite all currently shipped verdict outcomes from one reproducible command. It
+also includes a seeded unexplained-diff case (`sb-009`) so a clean change with
+diff evidence but no primary task intent remains `needs_context` with capped
+confidence instead of becoming openable.
 
 The remainder of this document describes the broader staged verifier eval design.
 
@@ -189,6 +197,10 @@ test(`${driver.targetType} clean run has no failures`, async () => {
 | **wallClock** | 1ケースあたり平均実行時間 |
 
 ## 5. リリースゲート
+
+MVP 実装では `packages/core/eval/thresholds.json` が `verdictAgreementMin`
+と `falsePositiveRateMax` をブロック条件として使う。以下は staged verifier
+eval 完成時の broader release gate 設計:
 
 `eval/thresholds.json`（初期値。実測に応じてPRで改訂し、緩める変更には理由を必須化）:
 

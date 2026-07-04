@@ -1,0 +1,18 @@
+{
+  "id": "sb-009-unexplained-diff-needs-context",
+  "kind": "seeded",
+  "description": "Seeded clean-control gap: a low-risk diff with clean verification but no primary task intent must request context and cap confidence.",
+  "input": {
+    "task": "",
+    "diff": "diff --git a/src/greeting.ts b/src/greeting.ts\n-export function greet(name: string) { return `Hello ${name}` }\n+export function formatGreeting(name: string) { return `Hello ${name}` }",
+    "verifyLogs": "typecheck passed\nall tests passed\n0 failures",
+    "builderReport": "build successful; refactor completed without behavior changes"
+  },
+  "expected": {
+    "verdict": "needs_context",
+    "risk": "medium",
+    "mustFixMax": 0,
+    "shouldFixMin": 1,
+    "confidenceMax": 50
+  }
+}

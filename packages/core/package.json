@@ -10,10 +10,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "eval": "tsx src/eval/run.ts",
+    "eval": "node --import tsx src/eval/run.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "schema:generate": "tsx ../../scripts/generate-verdict-schema.ts"
+    "schema:generate": "node --import tsx ../../scripts/generate-verdict-schema.ts"
   },
   "dependencies": {
     "zod": "^3.25.0",
