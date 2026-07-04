@@ -54,7 +54,9 @@ Each `check` run writes artifacts to:
 ```
 
 The JSON output includes `run.artifacts_dir` and an `evidence` list so callers
-can link the final verdict back to the saved files.
+can link the final verdict back to the saved files. Workspace verdict JSON and
+saved artifact contents redact common secret-like values, including API keys,
+bearer tokens, and password/token assignments.
 
 Verdicts also include `evidence_grade`:
 
