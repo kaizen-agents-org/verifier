@@ -124,6 +124,7 @@ async function runKaizenLoopMode(): Promise<{
     status: verdict.verdict,
     summary: verdict.summary,
     notes: [
+      verdict.evidence_grade ? `evidence_grade=${verdict.evidence_grade}` : "",
       `risk=${verdict.risk}`,
       `confidence=${verdict.confidence}`,
       verdict.must_fix.length ? `must_fix=${verdict.must_fix.map((item) => item.message).join("; ")}` : "",

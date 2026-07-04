@@ -1,0 +1,16 @@
+{
+  "id": "sb-006-cargo-failure-blocks",
+  "kind": "seeded",
+  "description": "Seeded regression: cargo failed summaries should remain blocking.",
+  "input": {
+    "task": "Preserve parser error handling.",
+    "diff": "diff --git a/src/parser.rs b/src/parser.rs\n+panic!(\"unexpected input\")",
+    "verifyLogs": "running 42 tests\ntest parser_recovers_from_bad_input ... FAILED\n\ntest result: FAILED. 41 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out",
+    "builderReport": "Parser refactor completed."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

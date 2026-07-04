@@ -11,6 +11,7 @@ describe("evaluateMinimalVerdict", () => {
     });
 
     expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.evidence_grade).toBe("reported");
     expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.risk).toBe("low");
     expect(verdict.confidence).toBeGreaterThanOrEqual(80);

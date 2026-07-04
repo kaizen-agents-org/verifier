@@ -1,0 +1,16 @@
+{
+  "id": "sb-007-eslint-errors-block",
+  "kind": "seeded",
+  "description": "Seeded regression: eslint summaries with errors should block.",
+  "input": {
+    "task": "Keep lint checks green.",
+    "diff": "diff --git a/src/index.ts b/src/index.ts\n+const unused = true",
+    "verifyLogs": "✖ 3 problems (2 errors, 1 warning)",
+    "builderReport": "Implementation completed."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

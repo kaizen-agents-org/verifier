@@ -1,0 +1,19 @@
+{
+  "id": "gp-005-cargo-real-summary",
+  "kind": "golden",
+  "description": "Golden false-positive control: cargo test success summaries include the word failed with a zero count.",
+  "input": {
+    "task": "Refactor parser internals without behavior changes.",
+    "diff": "diff --git a/src/parser.rs b/src/parser.rs\n+let parsed = parse_input(input);",
+    "verifyLogs": "running 42 tests\ntest result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s",
+    "builderReport": "Refactor completed and cargo tests passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "gp-004-vitest-real-summary",
+  "kind": "golden",
+  "description": "Golden false-positive control: vitest-style zero-failure summaries should remain openable.",
+  "input": {
+    "task": "Add unit coverage for report rendering.",
+    "diff": "diff --git a/src/report.test.ts b/src/report.test.ts\n+expect(renderReport()).toContain('Summary')",
+    "verifyLogs": "RUN  v3.2.6 /repo\n\n ✓ test/report.test.ts (42 tests) 120ms\n\n Test Files  1 passed (1)\n      Tests  42 passed (42)\n   Duration  1.24s",
+    "builderReport": "Implemented report rendering coverage."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

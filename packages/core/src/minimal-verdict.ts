@@ -9,7 +9,7 @@ import type {
 const HARD_FAILURE_PATTERNS = [
   /\bfailed?\b/i,
   /\bfailure\b/i,
-  /\berror\b/i,
+  /\berrors?\b/i,
   /\bexception\b/i,
   /\btraceback\b/i,
   /\bpanic\b/i,
@@ -48,8 +48,13 @@ const POSITIVE_VERIFICATION_PATTERNS = [
   /\[[xX]\]\s+\S+/,
   /\bexit code 0\b/i,
   /\b0\s+(?:failures|failed|errors)\b/i,
+  /\b0\s+errors?,\s*\d+\s+warnings?\b/i,
   /\bno\s+(?:failures|errors)\b/i,
   /\ball\s+(?:tests\s+)?passed\b/i,
+  /\b\d+\s+passed\b/i,
+  /\btests?\s+\d+\s+passed\b/i,
+  /\btest files?\s+\d+\s+passed\b/i,
+  /\bok\s+[\w./-]+\s+\d+(?:\.\d+)?s\b/i,
   /\b(?:build|typecheck|lint|tests?)\s+(?:ok|passed|succeeded|successful)\b/i
 ];
 
@@ -186,6 +191,7 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
   return {
     schemaVersion: 1,
     verdict,
+    evidence_grade: "reported",
     must_fix: mustFix,
     should_fix: shouldFix,
     confidence,
@@ -243,7 +249,9 @@ function collectSoftRisks(
 ): void {
   if (!text) return;
   for (const line of lines(text)) {
-    const hasHardFailure = HARD_FAILURE_PATTERNS.some((pattern) => pattern.test(line));
+    const hasHardFailure =
+      !isCleanResultLine(line) &&
+      HARD_FAILURE_PATTERNS.some((pattern) => pattern.test(line));
     if (hasHardFailure) continue;
     if (SOFT_RISK_PATTERNS.some((pattern) => pattern.test(line))) {
       output.push({

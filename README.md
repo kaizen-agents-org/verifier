@@ -112,6 +112,11 @@ the same verdict contract. Each verification command has a default 10 minute
 timeout. Timed-out commands are terminated, recorded as failed command evidence,
 and surfaced in `run.verify_commands[].timed_out` and `timeout_ms`.
 
+Verdicts include `evidence_grade` so callers can distinguish executed local
+checks from reported text. Workspace mode emits `executed`; direct contract
+inputs such as `--verify-logs "all tests passed"` and kaizen-loop stdin mode
+emit `reported`.
+
 Configure workspace check defaults in `verifier.config.json`:
 
 ```json
@@ -161,6 +166,7 @@ The current JSON contract is:
   "must_fix": [],
   "should_fix": [],
   "conditions": [],
+  "evidence_grade": "executed",
   "confidence": 82,
   "risk": "low",
   "summary": "Mergeable with confidence 82; risk is low.",
@@ -214,7 +220,10 @@ Workspace mode also emits `final_verdict`:
 
 The MVP heuristic intentionally stays small and deterministic:
 
-- hard failure patterns in verification logs or builder reports become `must_fix`;
+- hard failure patterns in verification logs become `must_fix`;
+- builder report prose is still scanned for unexecuted verification and
+  non-blocking risk signals, but free-form failure words are not treated as
+  blockers by themselves;
 - unchecked or failed configured verification commands become `must_fix`;
 - warnings, skipped/flaky/todo/risk/manual-review signals become `should_fix`;
 - missing task, diff, logs, or positive mechanical verification evidence lowers confidence and may require context;
@@ -231,10 +240,11 @@ pnpm eval
 ```
 
 The committed corpus covers the MVP verdict outcomes used by readiness reviews:
-`open_pr`, `open_pr_with_warning`, `block_pr`, and `needs_context`. The JSON
-output includes per-case results plus aggregate `verdictAgreement` and
-`falsePositiveRate` metrics so reports can cite reproducible verifier quality
-signals.
+`open_pr`, `open_pr_with_warning`, `block_pr`, and `needs_context`, plus
+real-world success and failure summaries from common tools such as Vitest,
+Cargo, pytest, Go test, and eslint. The JSON output includes per-case results
+plus aggregate `verdictAgreement` and `falsePositiveRate` metrics so reports can
+cite reproducible verifier quality signals.
 
 Corpus files live under `packages/core/eval/corpus/seeded` and
 `packages/core/eval/corpus/golden`. Each JSON case records verifier input,

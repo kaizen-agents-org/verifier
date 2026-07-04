@@ -1,0 +1,16 @@
+{
+  "id": "sb-009-unexecuted-command-blocks",
+  "kind": "seeded",
+  "description": "Seeded regression: explicitly unexecuted verification commands should block.",
+  "input": {
+    "task": "Update report rendering.",
+    "diff": "diff --git a/src/report.ts b/src/report.ts\n+return renderMarkdown(result)",
+    "verifyLogs": "- [x] pnpm typecheck\n- [ ] pnpm test",
+    "builderReport": "Implementation completed."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

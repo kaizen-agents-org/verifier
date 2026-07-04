@@ -1,0 +1,19 @@
+{
+  "id": "gp-007-go-test-real-summary",
+  "kind": "golden",
+  "description": "Golden false-positive control: go test package success lines should be positive verification evidence.",
+  "input": {
+    "task": "Refactor report formatting in the Go helper.",
+    "diff": "diff --git a/report/report.go b/report/report.go\n+return formatSummary(result)",
+    "verifyLogs": "ok  example.com/verifier/report  0.123s",
+    "builderReport": "Go tests passed after the refactor."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

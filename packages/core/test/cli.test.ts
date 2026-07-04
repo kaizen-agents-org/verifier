@@ -34,10 +34,15 @@ describe("CLI", { timeout: 20_000 }, () => {
       { env: process.env }
     );
 
-    const output = JSON.parse(stdout) as { verdict: string; summary: string };
+    const output = JSON.parse(stdout) as {
+      verdict: string;
+      summary: string;
+      evidence_grade?: string;
+    };
 
     expect(stderr).toBe("");
     expect(output.verdict).toBe("open_pr");
+    expect(output.evidence_grade).toBe("reported");
     expect(output.summary).toContain("Open PR");
   });
 
@@ -151,12 +156,14 @@ Return "block_pr" when the builder must revise the change before a PR is created
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
       summary: string;
+      notes: string;
       reason: string;
     };
 
     expect(output.status).toBe("open_pr");
     expect(result.status).toBe("open_pr");
     expect(result.summary).toContain("Open PR");
+    expect(result.notes).toContain("evidence_grade=reported");
     expect(output.reason).toBe("");
     expect(result.reason).toBe("");
   });
@@ -186,6 +193,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
 
     const output = JSON.parse(stdout) as {
       verdict: string;
+      evidence_grade?: string;
       final_verdict: string;
       risk: string;
       run: { artifacts_dir: string; changed_files: string[] };
@@ -193,12 +201,14 @@ Return "block_pr" when the builder must revise the change before a PR is created
     };
 
     expect(output.verdict).toBe("open_pr");
+    expect(output.evidence_grade).toBe("executed");
     expect(output.final_verdict).toBe("mergeable");
     expect(output.risk).toBe("low");
     expect(output.run.changed_files).toEqual(["greeting.txt"]);
     expect(output.evidence.map((item) => item.path)).toContain("verdict.json");
     await expect(readFile(join(output.run.artifacts_dir, "verdict.json"), "utf8")).resolves.toContain("mergeable");
     await expect(readFile(join(output.run.artifacts_dir, "report.md"), "utf8")).resolves.toContain("# Verifier Verdict: mergeable");
+    await expect(readFile(join(output.run.artifacts_dir, "report.md"), "utf8")).resolves.toContain("Evidence grade: executed");
   });
 
   it("treats silent successful verification commands as positive evidence", async () => {
