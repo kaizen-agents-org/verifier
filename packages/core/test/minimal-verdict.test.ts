@@ -30,6 +30,30 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix).toHaveLength(0);
   });
 
+  it("does not block common clean test summaries with zero failures", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update test coverage",
+      diff: "diff --git a/signup.test.ts b/signup.test.ts\n+expect(result).toBe(true)",
+      verifyLogs: "Tests: 42 passed, 0 failed",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
+  it("does not block cargo test summaries with zero failures", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor Rust parser",
+      diff: "diff --git a/src/parser.rs b/src/parser.rs\n+let result = parse(input);",
+      verifyLogs: "test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
   it("still blocks mixed-status named test lines with explicit failures", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Add regression coverage for parser recovery",
@@ -52,6 +76,43 @@ describe("evaluateMinimalVerdict", () => {
 
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
+  it("does not turn builder report prose about fixed errors into blockers", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Fix retry logic",
+      diff: "diff --git a/retry.ts b/retry.ts\n+return retry(operation)",
+      verifyLogs: "all tests passed",
+      builderReport: "Fixed the error in the retry logic and added coverage."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
+  it("does not treat non-blocking builder report prose as a blocking failure", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update cleanup logic",
+      diff: "diff --git a/cleanup.ts b/cleanup.ts\n+cleanupTemporaryFiles()",
+      verifyLogs: "all tests passed",
+      builderReport: "One non-blocking cleanup was deferred."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
+  it("surfaces eslint warning summaries without blocking", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update lint configuration",
+      diff: "diff --git a/eslint.config.js b/eslint.config.js\n+export default []",
+      verifyLogs: "✖ 3 problems (0 errors, 3 warnings)",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.source === "verify_logs")).toBe(true);
   });
 
   it("blocks PR creation when verify logs contain blocking failures", () => {
