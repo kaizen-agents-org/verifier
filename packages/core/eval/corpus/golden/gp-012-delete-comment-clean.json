@@ -1,0 +1,19 @@
+{
+  "id": "gp-012-delete-comment-clean",
+  "kind": "golden",
+  "description": "Golden false-positive control: delete wording in an added comment should not imply a destructive data operation.",
+  "input": {
+    "task": "Document cleanup behavior.",
+    "diff": "diff --git a/cleanup.ts b/cleanup.ts\n+// Delete stale local fixtures manually when debugging old runs.",
+    "verifyLogs": "all tests passed",
+    "builderReport": "Updated cleanup documentation."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

@@ -85,6 +85,10 @@ The compact gate is intentionally conservative:
 - `needs_context` is used when intent, diff, or positive mechanical verification
   evidence is missing.
 
+High-risk diff checks inspect added lines, selected risky removals such as
+auth/billing guard deletion, and schema/migration paths. They do not treat every
+keyword in removed lines or comments as a new high-risk operation.
+
 The MVP merge-readiness field is `final_verdict`:
 
 - `mergeable`: intent, diff, and at least one verification command exist; no

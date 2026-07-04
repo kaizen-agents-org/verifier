@@ -228,7 +228,7 @@ The MVP heuristic intentionally stays small and deterministic:
 - unchecked or failed configured verification commands become `must_fix`;
 - warnings, skipped/flaky/todo/risk/manual-review signals become `should_fix`;
 - missing task, diff, logs, or positive mechanical verification evidence lowers confidence and may require context;
-- high-risk diff terms such as auth, secrets, billing, migration, delete, or database operations block PR creation unless the verification logs or builder report show targeted coverage for that risk area;
+- high-risk diff checks inspect added lines, selected risky removals such as auth/billing guard deletion, and schema/migration paths instead of raw diff text; these risks block PR creation unless the verification logs or builder report show targeted coverage for that risk area;
 - high-risk changes with targeted coverage still add a reviewer warning.
 
 ## Eval Harness

@@ -88,29 +88,33 @@ const MISSING_VERIFICATION_CONFIG_PATTERNS = [
 const HIGH_RISK_DIFF_SIGNALS = [
   {
     label: "auth/authz",
-    diffPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b/i,
+    addedPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b|\brequire(?:Auth|Authorization|Authentication|Permission)\w*\b/i,
+    removedPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b|\brequire(?:Auth|Authorization|Authentication|Permission)\w*\b/i,
     coveragePattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control|401|403|security)\b/i
   },
   {
     label: "secrets/credentials",
-    diffPattern: /\b(?:password|secret|token|credential|api[_-\s]?key)\b/i,
+    addedPattern: /\b(?:password|secret|token|credential|api[_-\s]?key)\b/i,
     coveragePattern: /\b(?:secret|credential|token|api[_-\s]?key|redact|mask|leak|security)\b/i
   },
   {
     label: "billing/payments",
-    diffPattern: /\b(?:payment|billing|invoice|checkout|refund|subscription)\b/i,
+    addedPattern: /\b(?:payment|billing|invoice|checkout|refund|subscription)\b/i,
+    removedPattern: /\b(?:payment|billing|invoice|checkout|refund|subscription)\b/i,
     coveragePattern: /\b(?:payment|billing|invoice|checkout|refund|subscription)\b/i
   },
   {
     label: "database/schema",
-    diffPattern:
+    addedPattern:
       /\b(?:migration|migrations|database|sql|alter\s+table|create\s+table|db\s+schema|database\s+schema|schema\s+migration|schema\.sql|schema\.prisma)\b/i,
+    pathPattern: /\b(?:migration|migrations|schema\.sql|schema\.prisma)\b/i,
     coveragePattern:
       /\b(?:migration|migrations|database|sql|rollback|migrate|db\s+schema|database\s+schema|schema\s+migration|schema\.sql|schema\.prisma)\b/i
   },
   {
     label: "destructive data operation",
-    diffPattern: /\b(?:delete|drop\s+table|truncate|remove all|destroy)\b/i,
+    addedPattern:
+      /\b(?:drop\s+table|truncate|remove all|destroy)\b|\bdelete(?:[A-Z]\w*)?\s*\(|\bdelete\s+from\b|\bdeleteMany\s*\(|\bdeleteAll\s*\(/i,
     coveragePattern: /\b(?:delete|drop\s+table|truncate|data loss|backup|rollback|destructive)\b/i
   }
 ];
@@ -268,9 +272,41 @@ function collectSoftRisks(
 
 function assessDiffRisk(diff: string): Array<{ label: string }> {
   if (!diff) return [];
-  return HIGH_RISK_DIFF_SIGNALS.filter((signal) => signal.diffPattern.test(diff)).map((signal) => ({
-    label: signal.label
-  }));
+  const parsedDiff = parseDiffRiskText(diff);
+  return HIGH_RISK_DIFF_SIGNALS.filter((signal) => {
+    if (signal.addedPattern.test(parsedDiff.addedText)) return true;
+    if (signal.removedPattern?.test(parsedDiff.removedText)) return true;
+    if (signal.pathPattern?.test(parsedDiff.pathText)) return true;
+    return false;
+  }).map((signal) => ({ label: signal.label }));
+}
+
+function parseDiffRiskText(diff: string): {
+  addedText: string;
+  removedText: string;
+  pathText: string;
+} {
+  const addedLines: string[] = [];
+  const removedLines: string[] = [];
+  const pathLines: string[] = [];
+
+  for (const line of diff.split(/\r?\n/)) {
+    if (line.startsWith("diff --git ")) {
+      pathLines.push(line);
+    } else if (line.startsWith("+++ ") || line.startsWith("--- ")) {
+      pathLines.push(line);
+    } else if (line.startsWith("+")) {
+      addedLines.push(line.slice(1));
+    } else if (line.startsWith("-")) {
+      removedLines.push(line.slice(1));
+    }
+  }
+
+  return {
+    addedText: addedLines.join("\n"),
+    removedText: removedLines.join("\n"),
+    pathText: pathLines.join("\n")
+  };
 }
 
 function hasPositiveVerificationEvidence(verifyLogs: string): boolean {
@@ -291,9 +327,12 @@ function hasTargetedCoverage(
 ): boolean {
   const signal = HIGH_RISK_DIFF_SIGNALS.find((candidate) => candidate.label === label);
   if (!signal) return false;
-  const evidenceText = `${verifyLogs}\n${builderReport}`;
-  if (!signal.coveragePattern.test(evidenceText)) return false;
-  return /\b(?:test|tested|verify|verified|coverage|passed|check|checked)\b/i.test(evidenceText);
+  return lines(`${verifyLogs}\n${builderReport}`).some((line) => {
+    return (
+      signal.coveragePattern.test(line) &&
+      /\b(?:test|tested|verify|verified|coverage|passed|check|checked)\b/i.test(line)
+    );
+  });
 }
 
 function chooseVerdict(input: {
