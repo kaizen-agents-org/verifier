@@ -87,6 +87,7 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
     ...compactVerdict,
     final_verdict: finalVerdict,
     conditions,
+    evidence_grade: commandResults.length > 0 ? "executed" : "reported",
     summary: summarizeFinalVerdict(finalVerdict, compactVerdict, conditions),
     run: {
       id: runId,
@@ -353,6 +354,7 @@ function renderMarkdownReport(verdict: MinimalVerdict): string {
     "",
     `Confidence: ${verdict.confidence}`,
     `Risk: ${verdict.risk}`,
+    verdict.evidence_grade ? `Evidence grade: ${verdict.evidence_grade}` : "",
     `Compatibility verdict: ${verdict.verdict}`,
     verdict.run ? `Artifacts: ${verdict.run.artifacts_dir}` : "",
     "",

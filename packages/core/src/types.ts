@@ -31,6 +31,9 @@ export const FindingSourceSchema = z.enum([
 ]);
 export type FindingSource = z.infer<typeof FindingSourceSchema>;
 
+export const EvidenceGradeSchema = z.enum(["reported", "executed"]);
+export type EvidenceGrade = z.infer<typeof EvidenceGradeSchema>;
+
 export const MinimalFindingSchema = z.object({
   source: FindingSourceSchema,
   message: z.string(),
@@ -53,6 +56,7 @@ export const MinimalVerdictSchema = z.object({
   must_fix: z.array(MinimalFindingSchema),
   should_fix: z.array(MinimalFindingSchema),
   conditions: z.array(z.string()).optional(),
+  evidence_grade: EvidenceGradeSchema.optional(),
   confidence: z.number().int().min(0).max(100),
   risk: RiskLevelSchema,
   summary: z.string(),

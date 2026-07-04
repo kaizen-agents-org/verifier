@@ -1,0 +1,16 @@
+{
+  "id": "sb-008-timeout-blocks",
+  "kind": "seeded",
+  "description": "Seeded regression: timed-out verification evidence should block.",
+  "input": {
+    "task": "Update the CLI command runner.",
+    "diff": "diff --git a/src/check.ts b/src/check.ts\n+await runShellCommand(command)",
+    "verifyLogs": "$ pnpm test\nverification failed: timed out after 600000ms",
+    "builderReport": "Command runner update completed."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

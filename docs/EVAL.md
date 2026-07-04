@@ -11,12 +11,14 @@ verdict contract:
 pnpm eval
 ```
 
-The initial committed corpus lives under `packages/core/eval/corpus/seeded` and
+The committed corpus lives under `packages/core/eval/corpus/seeded` and
 `packages/core/eval/corpus/golden`. Cases are JSON for the MVP so the harness can
 run without adding a YAML parser dependency. Each case records verifier input,
-expected verdict constraints, and false-positive allowances. The command emits
-JSON metrics, including `verdictAgreement` and `falsePositiveRate`, and exits
-non-zero when any case fails or the MVP threshold gate is not met.
+expected verdict constraints, and false-positive allowances. The corpus includes
+representative raw summaries from Vitest, Cargo, pytest, Go test, and eslint so
+common clean CI output does not regress into false-positive blockers. The command
+emits JSON metrics, including `verdictAgreement` and `falsePositiveRate`, and
+exits non-zero when any case fails or the MVP threshold gate is not met.
 
 The committed MVP threshold file is `packages/core/eval/thresholds.json`.
 It currently gates the metrics implemented by the MVP harness:
@@ -26,9 +28,9 @@ It currently gates the metrics implemented by the MVP harness:
 The MVP corpus includes seeded/golden cases for `open_pr`,
 `open_pr_with_warning`, `block_pr`, and `needs_context` so readiness reviews can
 cite all currently shipped verdict outcomes from one reproducible command. It
-also includes a seeded unexplained-diff case (`sb-009`) so a clean change with
-diff evidence but no primary task intent remains `needs_context` with capped
-confidence instead of becoming openable.
+also includes clean real-log controls and failure-log regressions so summary
+formats with words such as `failed` and `errors` remain calibrated by counts and
+context instead of raw keyword presence.
 
 The remainder of this document describes the broader staged verifier eval design.
 

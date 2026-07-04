@@ -1,0 +1,19 @@
+{
+  "id": "gp-006-pytest-real-summary",
+  "kind": "golden",
+  "description": "Golden false-positive control: pytest success summaries should count as positive verification evidence.",
+  "input": {
+    "task": "Add validation coverage for the CLI config loader.",
+    "diff": "diff --git a/tests/test_config.py b/tests/test_config.py\n+assert load_config(path).base == 'main'",
+    "verifyLogs": "============================= test session starts =============================\ncollected 18 items\n\ntests/test_config.py ..................\n\n============================== 18 passed in 0.42s ==============================",
+    "builderReport": "Added config loader tests."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

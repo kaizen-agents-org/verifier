@@ -68,6 +68,13 @@
             "type": "string"
           }
         },
+        "evidence_grade": {
+          "type": "string",
+          "enum": [
+            "reported",
+            "executed"
+          ]
+        },
         "confidence": {
           "type": "integer",
           "minimum": 0,

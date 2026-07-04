@@ -1,0 +1,19 @@
+{
+  "id": "gp-008-eslint-warning-summary",
+  "kind": "golden",
+  "description": "Golden warning control: eslint warning-only summaries should warn without blocking.",
+  "input": {
+    "task": "Update lint configuration comments.",
+    "diff": "diff --git a/eslint.config.js b/eslint.config.js\n+// Keep generated files ignored.",
+    "verifyLogs": "✖ 3 problems (0 errors, 3 warnings)",
+    "builderReport": "Lint completed with warnings only."
+  },
+  "expected": {
+    "verdict": "open_pr_with_warning",
+    "risk": "medium",
+    "mustFixMax": 0,
+    "shouldFixMin": 1,
+    "shouldFixMax": 2,
+    "maxFalsePositives": 0
+  }
+}

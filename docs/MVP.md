@@ -56,6 +56,14 @@ Each `check` run writes artifacts to:
 The JSON output includes `run.artifacts_dir` and an `evidence` list so callers
 can link the final verdict back to the saved files.
 
+Verdicts also include `evidence_grade`:
+
+- `executed`: verifier ran at least one workspace verification command and
+  recorded its exit metadata.
+- `reported`: verifier judged caller-supplied text, such as direct
+  `--verify-logs` input or kaizen-loop stdin sections, or no workspace
+  verification command was configured.
+
 ## Verdicts
 
 The legacy compact field remains available as `verdict`:
@@ -83,8 +91,8 @@ The MVP merge-readiness field is `final_verdict`:
   blocker or conditional risk was found.
 - `conditional`: the change may be acceptable, but required evidence is missing
   or a non-blocking risk signal was found.
-- `not_mergeable`: verification logs or the builder report contain a blocking
-  failure.
+- `not_mergeable`: verification logs contain a blocking failure, a configured
+  command did not pass, or high-risk changes lack targeted evidence.
 - `inconclusive`: the diff is empty or insufficient to judge.
 
 `conditions` lists the concrete reasons a result is not immediately mergeable.
@@ -124,6 +132,9 @@ The gate behavior is:
 - `conditional`: fail on `conditional` or `not_mergeable`.
 - `inconclusive`: fail on `inconclusive` or `not_mergeable`.
 - `mergeable`: fail on `conditional` or `not_mergeable`.
+
+Repository CI also runs `pnpm eval` so changes to the deterministic verdict
+logic must continue to satisfy the committed seeded/golden corpus.
 
 ## Explicit Non-goals For This MVP
 

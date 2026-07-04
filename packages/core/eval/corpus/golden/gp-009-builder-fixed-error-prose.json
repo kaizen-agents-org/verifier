@@ -1,0 +1,19 @@
+{
+  "id": "gp-009-builder-fixed-error-prose",
+  "kind": "golden",
+  "description": "Golden false-positive control: builder prose about fixing an error is not itself a blocker.",
+  "input": {
+    "task": "Fix retry handling for transient network failures.",
+    "diff": "diff --git a/src/retry.ts b/src/retry.ts\n+return retryWithBackoff(operation)",
+    "verifyLogs": "all tests passed",
+    "builderReport": "Fixed the error in the retry logic and added regression coverage."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

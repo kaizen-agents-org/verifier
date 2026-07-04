@@ -11,6 +11,7 @@ describe("evaluateMinimalVerdict", () => {
     });
 
     expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.evidence_grade).toBe("reported");
     expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.risk).toBe("low");
     expect(verdict.confidence).toBeGreaterThanOrEqual(80);
@@ -35,6 +36,18 @@ describe("evaluateMinimalVerdict", () => {
       task: "Update test coverage",
       diff: "diff --git a/signup.test.ts b/signup.test.ts\n+expect(result).toBe(true)",
       verifyLogs: "Tests: 42 passed, 0 failed",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
+  it("does not block zero-error summary lines when other positive evidence exists", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update lint reporting",
+      diff: "diff --git a/lint.ts b/lint.ts\n+return formatLintSummary(result)",
+      verifyLogs: "all tests passed\nErrors: 0\nNo errors found",
       builderReport: "build successful"
     });
 

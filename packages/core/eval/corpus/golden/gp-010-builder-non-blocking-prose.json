@@ -1,0 +1,19 @@
+{
+  "id": "gp-010-builder-non-blocking-prose",
+  "kind": "golden",
+  "description": "Golden false-positive control: non-blocking prose in the builder report should not become must_fix.",
+  "input": {
+    "task": "Update cleanup behavior after successful runs.",
+    "diff": "diff --git a/src/cleanup.ts b/src/cleanup.ts\n+cleanupTemporaryArtifacts(runId)",
+    "verifyLogs": "all tests passed",
+    "builderReport": "One non-blocking cleanup was deferred to keep this change focused."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}
