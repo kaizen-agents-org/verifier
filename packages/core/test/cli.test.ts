@@ -275,6 +275,46 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.must_fix).toHaveLength(0);
   });
 
+  it("redacts secret-like values from workspace output and artifacts", async () => {
+    const dir = await createCleanRepo();
+    const gitHubToken = "ghp_123456789012345678901234";
+    const openAiKey = "sk-123456789012345678901234";
+    await writeFile(join(dir, "greeting.txt"), `hello\nexport const token = "${gitHubToken}"\n`, "utf8");
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Add secret fixture.",
+        "--verify-command",
+        nodeEvalCommand(`console.log('api_key=${openAiKey}')`)
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as {
+      run: { artifacts_dir: string };
+    };
+    const diffArtifact = await readFile(join(output.run.artifacts_dir, "diff.patch"), "utf8");
+    const logsArtifact = await readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8");
+    const reportArtifact = await readFile(join(output.run.artifacts_dir, "report.md"), "utf8");
+    const verdictArtifact = await readFile(join(output.run.artifacts_dir, "verdict.json"), "utf8");
+
+    for (const content of [stdout, diffArtifact, logsArtifact, reportArtifact, verdictArtifact]) {
+      expect(content).not.toContain(gitHubToken);
+      expect(content).not.toContain(openAiKey);
+    }
+    expect(diffArtifact).toContain("[REDACTED]");
+    expect(logsArtifact).toContain("api_key=[REDACTED]");
+  });
+
   it("rejects check results when a verification command fails", async () => {
     const dir = await createChangedRepo();
 

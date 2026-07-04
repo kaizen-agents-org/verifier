@@ -8,6 +8,13 @@ import type { FinalVerdictKind, MinimalVerdict, VerdictInput } from "./types.js"
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_VERIFY_TIMEOUT_MS = 10 * 60 * 1000;
+const REDACTED = "[REDACTED]";
+const SECRET_VALUE_PATTERNS = [
+  /((?:api[_-]?key|token|secret|password|credential)\s*[:=]\s*["']?)([^"'\s]+)/gi,
+  /\b(Bearer\s+)([A-Za-z0-9._~+/=-]{12,})\b/g,
+  /\b(gh[pousr]_[A-Za-z0-9_]{20,})\b/g,
+  /\b(sk-[A-Za-z0-9_-]{20,})\b/g
+];
 
 export interface CheckInput {
   task: string;
@@ -111,10 +118,14 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
     evidence
   };
 
-  const markdown = renderMarkdownReport(verdict);
   verdict.evidence = [
     ...evidence,
-    await writeEvidence(runDir, "E-5", "markdown", "report.md", markdown, "Human-readable verifier report."),
+    {
+      id: "E-5",
+      kind: "markdown",
+      path: "report.md",
+      summary: "Human-readable verifier report."
+    },
     {
       id: "E-6",
       kind: "verdict",
@@ -123,10 +134,13 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
     }
   ];
 
-  await writeFile(join(runDir, "verdict.json"), `${JSON.stringify(verdict, null, 2)}\n`, "utf8");
+  const outputVerdict = redactVerdict(verdict);
+  const markdown = renderMarkdownReport(outputVerdict);
+  await writeEvidence(runDir, "E-5", "markdown", "report.md", markdown, "Human-readable verifier report.");
+  await writeFile(join(runDir, "verdict.json"), `${JSON.stringify(outputVerdict, null, 2)}\n`, "utf8");
 
   return {
-    verdict,
+    verdict: outputVerdict,
     markdown
   };
 }
@@ -393,7 +407,7 @@ async function writeEvidence(
   content: string,
   summary: string
 ): Promise<EvidenceRecord> {
-  await writeFile(join(runDir, path), content, "utf8");
+  await writeFile(join(runDir, path), redactSensitiveText(content), "utf8");
   return { id, kind, path, summary };
 }
 
@@ -408,4 +422,23 @@ function unique(values: string[]): string[] {
 
 function escapePipes(value: string): string {
   return value.replace(/\|/g, "\\|");
+}
+
+function redactVerdict(verdict: MinimalVerdict): MinimalVerdict {
+  return JSON.parse(JSON.stringify(verdict, (_key, value: unknown) => {
+    return typeof value === "string" ? redactSensitiveText(value) : value;
+  })) as MinimalVerdict;
+}
+
+function redactSensitiveText(text: string): string {
+  let redacted = text;
+  for (const pattern of SECRET_VALUE_PATTERNS) {
+    redacted = redacted.replace(pattern, (...args: string[]) => {
+      const match = args[0];
+      const prefix = args[1];
+      if (!prefix || prefix === match) return REDACTED;
+      return `${prefix}${REDACTED}`;
+    });
+  }
+  return redacted;
 }
