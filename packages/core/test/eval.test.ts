@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { calculateEvalMetrics, compareVerdict } from "../src/eval/metrics.js";
+import { calculateEvalMetrics, compareThresholds, compareVerdict } from "../src/eval/metrics.js";
 import { runEval } from "../src/eval/run.js";
 import type { MinimalVerdict } from "../src/types.js";
 
@@ -11,6 +11,11 @@ describe("eval harness", () => {
     const result = await runEval();
 
     expect(result.metrics.failedCases).toBe(0);
+    expect(result.thresholds).toEqual({
+      verdictAgreementMin: 0.9,
+      falsePositiveRateMax: 0.1
+    });
+    expect(result.thresholdFailures).toEqual([]);
     expect(result.metrics.verdictAgreement).toBe(1);
     expect(result.metrics.falsePositiveRate).toBe(0);
     expect(result.metrics.byKind.seeded.total).toBeGreaterThan(0);
@@ -120,6 +125,73 @@ describe("eval harness", () => {
     ]);
 
     expect(metrics.falsePositiveRate).toBe(0.6);
+  });
+
+  it("reports threshold failures for metrics outside the release gate", () => {
+    const metrics = calculateEvalMetrics([
+      {
+        id: "clean-with-extra-finding",
+        kind: "golden",
+        description: "Clean case with two unexpected findings.",
+        passed: false,
+        failures: ["expected at most 0 false-positive finding(s), got 2"],
+        actual: {
+          verdict: "open_pr_with_warning",
+          risk: "medium",
+          confidence: 72,
+          mustFixCount: 0,
+          shouldFixCount: 2
+        },
+        expected: {
+          verdict: "open_pr",
+          maxFalsePositives: 0
+        }
+      }
+    ]);
+
+    expect(
+      compareThresholds(metrics, {
+        verdictAgreementMin: 0.9,
+        falsePositiveRateMax: 0.1
+      })
+    ).toEqual([
+      "verdictAgreement 0.0000 is below minimum 0.9000",
+      "falsePositiveRate 1.0000 exceeds maximum 0.1000"
+    ]);
+  });
+
+  it("applies threshold comparisons to run results", async () => {
+    const corpusDir = await mkdtemp(join(tmpdir(), "verifier-eval-"));
+    await writeFile(
+      join(corpusDir, "wrong-verdict.json"),
+      `${JSON.stringify(
+        {
+          id: "wrong-verdict",
+          kind: "golden",
+          description: "Clean evidence with an intentionally wrong expected verdict.",
+          input: {
+            task: "Document how to run the verifier eval harness.",
+            diff: "diff --git a/README.md b/README.md\n+Run pnpm eval.",
+            verifyLogs: "pnpm test passed\npnpm typecheck passed",
+            builderReport: "documentation updated and checks passed"
+          },
+          expected: {
+            verdict: "block_pr"
+          }
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+
+    const result = await runEval({ corpusDir });
+
+    expect(result.metrics.failedCases).toBe(1);
+    expect(result.metrics.verdictAgreement).toBe(0);
+    expect(result.thresholdFailures).toEqual([
+      "verdictAgreement 0.0000 is below minimum 0.9000"
+    ]);
   });
 
   it("uses expected finding maxima before counting false positives", () => {
