@@ -1,0 +1,4 @@
+{
+  "verdictAgreementMin": 0.9,
+  "falsePositiveRateMax": 0.1
+}
