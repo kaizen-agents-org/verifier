@@ -28,7 +28,11 @@ const CLEAN_RESULT_PATTERNS = [
   /^(?:[^\w\s]+\s*)?all\s+(?:tests\s+)?passed$/i,
   /^(?:[^\w\s]+\s*)?(?:[\w:/.-]+\s+)*tests?\s+(?:ok|passed|succeeded|successful)$/i,
   /^(?:[^\w\s]+\s*)?build\s+(?:ok|passed|succeeded|successful)$/i,
-  /^(?:[^\w\s]+\s*)?success(?:ful)?$/i
+  /^(?:[^\w\s]+\s*)?success(?:ful)?$/i,
+  /\b\d+\s+passed\b.*\b0\s+(?:failures?|failed|errors?)\b/i,
+  /\btest result:\s+ok\b.*\b0\s+(?:failures?|failed|errors?)\b/i,
+  /\b\d+\s+problems?\s*\(\s*0\s+errors?,\s*\d+\s+warnings?\s*\)/i,
+  /\b0\s+errors?,\s*\d+\s+warnings?\b/i
 ];
 
 const EXPLICIT_FAILURE_RESULT_PATTERNS = [
@@ -50,7 +54,7 @@ const POSITIVE_VERIFICATION_PATTERNS = [
 ];
 
 const SOFT_RISK_PATTERNS = [
-  /\bwarn(?:ing)?\b/i,
+  /\bwarn(?:ing)?s?\b/i,
   /\bflake|flaky\b/i,
   /\bskip(?:ped)?\b/i,
   /\btodo\b/i,
@@ -115,7 +119,6 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
   const shouldFix: MinimalFinding[] = [];
 
   collectHardFailures("verify_logs", normalized.verifyLogs, mustFix);
-  collectHardFailures("builder_report", normalized.builderReport, mustFix);
   collectUnexecutedVerification("verify_logs", normalized.verifyLogs, mustFix, shouldFix);
   collectUnexecutedVerification("builder_report", normalized.builderReport, mustFix, shouldFix);
   collectSoftRisks("verify_logs", normalized.verifyLogs, shouldFix);

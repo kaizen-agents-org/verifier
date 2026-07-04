@@ -233,6 +233,38 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.conditions).not.toContain("No positive mechanical verification evidence was provided.");
   });
 
+  it("does not block workspace checks for common zero-failure test summaries", async () => {
+    const dir = await createChangedRepo();
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        nodeEvalCommand("console.log('Tests: 42 passed, 0 failed')")
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as {
+      verdict: string;
+      final_verdict: string;
+      must_fix: Array<{ evidence?: string }>;
+    };
+
+    expect(output.verdict).toBe("open_pr");
+    expect(output.final_verdict).toBe("mergeable");
+    expect(output.must_fix).toHaveLength(0);
+  });
+
   it("rejects check results when a verification command fails", async () => {
     const dir = await createChangedRepo();
 
