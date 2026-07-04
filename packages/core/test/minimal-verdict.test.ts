@@ -43,6 +43,18 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix).toHaveLength(0);
   });
 
+  it("does not block zero-error summary lines when other positive evidence exists", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update lint reporting",
+      diff: "diff --git a/lint.ts b/lint.ts\n+return formatLintSummary(result)",
+      verifyLogs: "all tests passed\nErrors: 0\nNo errors found",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
   it("does not block cargo test summaries with zero failures", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor Rust parser",

@@ -430,6 +430,37 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.conditions).toContain("Run at least one verification command.");
   });
 
+  it("does not mark workspace checks as executed when no verify command ran", async () => {
+    const dir = await createChangedRepo();
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--base",
+        "HEAD"
+      ],
+      "",
+      { env: process.env }
+    );
+    const output = JSON.parse(stdout) as {
+      evidence_grade?: string;
+      final_verdict: string;
+      run: { verify_commands: unknown[] };
+    };
+
+    expect(output.evidence_grade).toBe("reported");
+    expect(output.final_verdict).toBe("conditional");
+    expect(output.run.verify_commands).toHaveLength(0);
+  });
+
   it("does not fail conditional gates for inconclusive workspace checks", async () => {
     const dir = await createCleanRepo();
 

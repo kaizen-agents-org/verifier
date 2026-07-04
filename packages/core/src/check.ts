@@ -87,7 +87,7 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
     ...compactVerdict,
     final_verdict: finalVerdict,
     conditions,
-    evidence_grade: "executed",
+    evidence_grade: commandResults.length > 0 ? "executed" : "reported",
     summary: summarizeFinalVerdict(finalVerdict, compactVerdict, conditions),
     run: {
       id: runId,

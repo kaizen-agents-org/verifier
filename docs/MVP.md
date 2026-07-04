@@ -58,10 +58,11 @@ can link the final verdict back to the saved files.
 
 Verdicts also include `evidence_grade`:
 
-- `executed`: verifier ran workspace verification commands and recorded their
-  exit metadata.
+- `executed`: verifier ran at least one workspace verification command and
+  recorded its exit metadata.
 - `reported`: verifier judged caller-supplied text, such as direct
-  `--verify-logs` input or kaizen-loop stdin sections.
+  `--verify-logs` input or kaizen-loop stdin sections, or no workspace
+  verification command was configured.
 
 ## Verdicts
 

@@ -113,9 +113,10 @@ timeout. Timed-out commands are terminated, recorded as failed command evidence,
 and surfaced in `run.verify_commands[].timed_out` and `timeout_ms`.
 
 Verdicts include `evidence_grade` so callers can distinguish executed local
-checks from reported text. Workspace mode emits `executed`; direct contract
-inputs such as `--verify-logs "all tests passed"` and kaizen-loop stdin mode
-emit `reported`.
+checks from reported text. Workspace mode emits `executed` only after at least
+one `--verify-command` ran; direct contract inputs such as
+`--verify-logs "all tests passed"`, kaizen-loop stdin mode, and workspace checks
+with no verification commands emit `reported`.
 
 Configure workspace check defaults in `verifier.config.json`:
 
