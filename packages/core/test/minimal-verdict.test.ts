@@ -31,6 +31,20 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix).toHaveLength(0);
   });
 
+  it("does not block clean per-test pass lines that mention blocked failures", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add provider fallback regression tests",
+      diff: "diff --git a/AgentRunner.test.ts b/AgentRunner.test.ts\n+it('stops fallback for provider-blocked failures unless the provider opts in', () => {})",
+      verifyLogs:
+        "✔ stops fallback for provider-blocked failures unless the provider opts in (368.120834ms)\n✔ returns exit code 2 for blocked build results (30.516458ms)",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
   it("does not block common clean test summaries with zero failures", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Update test coverage",

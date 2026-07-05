@@ -22,7 +22,10 @@ const HARD_FAILURE_PATTERNS = [
   /\bERR_PNPM\b/i
 ];
 
+const CLEAN_PASS_MARKER_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√|PASS\b|ok\b)\s+\S+/i;
+
 const CLEAN_RESULT_PATTERNS = [
+  CLEAN_PASS_MARKER_PATTERN,
   /^(?:[^\w\s]+\s*)?0\s+(?:failures|failed|errors)$/i,
   /^(?:[^\w\s]+\s*)?errors?:\s*0$/i,
   /^(?:[^\w\s]+\s*)?found\s+0\s+errors?$/i,
@@ -49,6 +52,7 @@ const EXPLICIT_FAILURE_RESULT_PATTERNS = [
 
 const POSITIVE_VERIFICATION_PATTERNS = [
   /\[[xX]\]\s+\S+/,
+  /^(?:[^\w\s]+\s*)?(?:✓|✔|√|PASS\b|ok\b)\s+\S+/im,
   /\bexit code 0\b/i,
   /\b0\s+(?:failures|failed|errors)\b/i,
   /\b0\s+errors?,\s*\d+\s+warnings?\b/i,
@@ -419,6 +423,7 @@ function lines(text: string): string[] {
 }
 
 function isCleanResultLine(line: string): boolean {
+  if (CLEAN_PASS_MARKER_PATTERN.test(line)) return true;
   return (
     CLEAN_RESULT_PATTERNS.some((pattern) => pattern.test(line)) &&
     !EXPLICIT_FAILURE_RESULT_PATTERNS.some((pattern) => pattern.test(line))
