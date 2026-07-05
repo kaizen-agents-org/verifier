@@ -105,6 +105,18 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
   });
 
+  it("blocks pass-prefixed summary lines with explicit failures", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Tighten verification log parsing",
+      diff: "diff --git a/verifier.ts b/verifier.ts\n+collectHardFailures(logs)",
+      verifyLogs: "PASS integration: 1 failed\nok pnpm test exit code 1",
+      builderReport: "Updated verifier parsing."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.filter((item) => item.source === "verify_logs")).toHaveLength(2);
+  });
+
   it("does not turn builder report prose about fixed errors into blockers", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Fix retry logic",

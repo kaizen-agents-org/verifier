@@ -23,6 +23,7 @@ const HARD_FAILURE_PATTERNS = [
 ];
 
 const CLEAN_PASS_MARKER_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√|PASS\b|ok\b)\s+\S+/i;
+const CLEAN_PASS_TEST_LINE_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√)\s+\S+.*\(\d+(?:\.\d+)?m?s\)$/i;
 
 const CLEAN_RESULT_PATTERNS = [
   CLEAN_PASS_MARKER_PATTERN,
@@ -423,7 +424,7 @@ function lines(text: string): string[] {
 }
 
 function isCleanResultLine(line: string): boolean {
-  if (CLEAN_PASS_MARKER_PATTERN.test(line)) return true;
+  if (CLEAN_PASS_TEST_LINE_PATTERN.test(line)) return true;
   return (
     CLEAN_RESULT_PATTERNS.some((pattern) => pattern.test(line)) &&
     !EXPLICIT_FAILURE_RESULT_PATTERNS.some((pattern) => pattern.test(line))
