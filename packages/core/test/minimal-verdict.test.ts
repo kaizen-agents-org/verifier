@@ -31,6 +31,20 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix).toHaveLength(0);
   });
 
+  it("does not block clean per-test pass lines that mention blocked failures", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add provider fallback regression tests",
+      diff: "diff --git a/AgentRunner.test.ts b/AgentRunner.test.ts\n+it('stops fallback for provider-blocked failures unless the provider opts in', () => {})",
+      verifyLogs:
+        "✔ stops fallback for provider-blocked failures unless the provider opts in (368.120834ms)\n✔ returns exit code 2 for blocked build results (30.516458ms)",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
   it("does not block common clean test summaries with zero failures", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Update test coverage",
@@ -89,6 +103,18 @@ describe("evaluateMinimalVerdict", () => {
 
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
+  });
+
+  it("blocks pass-prefixed summary lines with explicit failures", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Tighten verification log parsing",
+      diff: "diff --git a/verifier.ts b/verifier.ts\n+collectHardFailures(logs)",
+      verifyLogs: "PASS integration: 1 failed\nok pnpm test exit code 1",
+      builderReport: "Updated verifier parsing."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.filter((item) => item.source === "verify_logs")).toHaveLength(2);
   });
 
   it("does not turn builder report prose about fixed errors into blockers", () => {
