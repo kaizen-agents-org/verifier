@@ -121,6 +121,11 @@ The MVP merge-readiness field is `final_verdict`:
 
 CLI flags override config values. `--verify-command` is repeatable; when at
 least one is supplied on the CLI, it replaces `verifyCommands` from config.
+When neither CLI nor config commands are provided, workspace mode infers a
+conservative default from root `package.json` scripts: existing `typecheck`,
+`test`, and `build` scripts run in that order through the package manager named
+by `packageManager` or lockfile metadata. Configure `verifyCommands`, including
+an empty array, to override inference.
 
 ## CI Gate
 
@@ -182,7 +187,7 @@ stable.
 - The MVP is TypeScript/Node-only internally and ships only `@verifier/core`.
 - Workspace verification is CLI-command based; there is no structured driver
   coverage beyond spawning configured shell commands.
-- The verifier does not infer project test commands from manifests yet.
+- Manifest inference is limited to root `package.json` scripts.
 - Log classification is heuristic and pattern-based.
 - Evidence is local filesystem output only; no remote artifact upload is
   implemented.
