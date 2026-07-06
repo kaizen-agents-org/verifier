@@ -168,6 +168,65 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(result.reason).toBe("");
   });
 
+  it("blocks high-risk kaizen-loop prompts without targeted verification evidence", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-"));
+    const resultPath = join(dir, "verify-result.json");
+    const prompt = `You are the verifier for the kaizen-loop run in "repo".
+
+# Issue #2: Preserve billing token handling
+
+Keep payment token handling covered by focused verification.
+
+# Builder result
+
+Changed billing token extraction and ran generic project checks.
+
+# Mechanical verification
+
+- [x] pnpm test
+- [x] pnpm typecheck
+
+# Changed files
+
+- src/billing.ts
+
+# Diff
+
+diff --git a/src/billing.ts b/src/billing.ts
++const token = req.body.token
+
+# Decision rules
+
+Return "block_pr" when the builder must revise the change before a PR is created.
+`;
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      prompt,
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_WORKSPACE_DIR: dir
+        }
+      }
+    );
+
+    const output = JSON.parse(stdout) as { status: string; reason: string };
+    const result = JSON.parse(await readFile(resultPath, "utf8")) as {
+      status: string;
+      notes: string;
+      reason: string;
+    };
+
+    expect(output.status).toBe("block_pr");
+    expect(result.status).toBe("block_pr");
+    expect(output.reason).toContain("focused verification");
+    expect(result.reason).toContain("focused verification");
+    expect(result.notes).toContain("Diff touches high-risk billing/payments code");
+  });
+
   it("checks a workspace by collecting git diff and running verification commands", async () => {
     const dir = await createChangedRepo();
     const taskPath = join(dir, "task.md");
