@@ -39,6 +39,10 @@ interface VerifierConfig {
   failOn?: FinalVerdictKind;
 }
 
+type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
+
+const INFERRED_SCRIPT_ORDER = ["typecheck", "test", "build"] as const;
+
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === "--version" || argv[0] === "-v") {
     process.stdout.write("verifier 0.0.0\n");
@@ -68,13 +72,12 @@ async function main(argv: string[]): Promise<number> {
     );
     const outputDir = options.outputDir ?? config.outputDir;
     const verifyTimeoutMs = options.verifyTimeoutMs ?? config.verifyTimeoutMs;
+    const verifyCommands = await selectVerifyCommands(options, config);
     const result = await runCheck({
       task,
       workspace: options.workspace,
       base: options.base ?? config.base ?? "HEAD",
-      verifyCommands: options.verifyCommands.length > 0
-        ? options.verifyCommands
-        : config.verifyCommands ?? [],
+      verifyCommands,
       ...(verifyTimeoutMs ? { verifyTimeoutMs } : {}),
       ...(outputDir ? { outputDir } : {})
     });
@@ -285,6 +288,66 @@ async function shouldRunWorkspaceCheck(options: CliOptions): Promise<boolean> {
       config.markdown ||
       config.failOn
   );
+}
+
+async function selectVerifyCommands(
+  options: CliOptions,
+  config: VerifierConfig
+): Promise<string[]> {
+  if (options.verifyCommands.length > 0) return options.verifyCommands;
+  if (config.verifyCommands !== undefined) return config.verifyCommands;
+  return inferWorkspaceVerifyCommands(options.workspace);
+}
+
+async function inferWorkspaceVerifyCommands(workspace: string): Promise<string[]> {
+  const packageJsonPath = join(workspace, "package.json");
+  if (!(await fileExists(packageJsonPath))) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(packageJsonPath, "utf8"));
+  } catch {
+    return [];
+  }
+
+  if (!isRecord(parsed) || !isRecord(parsed.scripts)) return [];
+
+  const scripts = parsed.scripts;
+  const packageManager = await inferPackageManager(workspace, parsed.packageManager);
+  return INFERRED_SCRIPT_ORDER
+    .filter((scriptName) => {
+      const script = scripts[scriptName];
+      return typeof script === "string" && script.trim().length > 0;
+    })
+    .map((scriptName) => packageScriptCommand(packageManager, scriptName));
+}
+
+async function inferPackageManager(
+  workspace: string,
+  packageManagerMetadata: unknown
+): Promise<PackageManager> {
+  if (typeof packageManagerMetadata === "string") {
+    if (packageManagerMetadata.startsWith("pnpm@")) return "pnpm";
+    if (packageManagerMetadata.startsWith("yarn@")) return "yarn";
+    if (packageManagerMetadata.startsWith("bun@")) return "bun";
+    if (packageManagerMetadata.startsWith("npm@")) return "npm";
+  }
+
+  if (await fileExists(join(workspace, "pnpm-lock.yaml"))) return "pnpm";
+  if (await fileExists(join(workspace, "yarn.lock"))) return "yarn";
+  if (await fileExists(join(workspace, "bun.lockb")) || await fileExists(join(workspace, "bun.lock"))) return "bun";
+  return "npm";
+}
+
+function packageScriptCommand(packageManager: PackageManager, scriptName: string): string {
+  if (packageManager === "pnpm") return `pnpm ${scriptName}`;
+  if (packageManager === "yarn") return `yarn ${scriptName}`;
+  if (packageManager === "bun") return `bun run ${scriptName}`;
+  return `npm run ${scriptName}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readFlagValue(args: string[], index: number, flag: string): string {

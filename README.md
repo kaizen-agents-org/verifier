@@ -112,6 +112,13 @@ the same verdict contract. Each verification command has a default 10 minute
 timeout. Timed-out commands are terminated, recorded as failed command evidence,
 and surfaced in `run.verify_commands[].timed_out` and `timeout_ms`.
 
+When neither `--verify-command` nor `verifier.config.json` `verifyCommands` is
+provided, workspace mode infers a conservative default from root `package.json`
+scripts. It runs existing `typecheck`, `test`, and `build` scripts in that order,
+using `packageManager` or lockfile metadata to choose `pnpm`, `yarn`, `bun`, or
+`npm`. Set `verifyCommands` in config, including an empty array, to override
+inference.
+
 Verdicts include `evidence_grade` so callers can distinguish executed local
 checks from reported text. Workspace mode emits `executed` only after at least
 one `--verify-command` ran; direct contract inputs such as

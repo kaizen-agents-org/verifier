@@ -270,6 +270,99 @@ Return "block_pr" when the builder must revise the change before a PR is created
     await expect(readFile(join(output.run.artifacts_dir, "report.md"), "utf8")).resolves.toContain("Evidence grade: executed");
   });
 
+  it("infers package.json verification scripts when commands are omitted", async () => {
+    const dir = await createChangedRepo();
+    await writePackageManifest(dir, {
+      packageManager: "pnpm@10.26.0",
+      scripts: {
+        build: "node -e \"console.log('build passed')\"",
+        test: "node -e \"console.log('test passed')\"",
+        typecheck: "node -e \"console.log('typecheck passed')\""
+      }
+    });
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text."
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as {
+      evidence_grade?: string;
+      final_verdict: string;
+      run: {
+        artifacts_dir: string;
+        verify_commands: Array<{ command: string; exit_code: number | null }>;
+      };
+    };
+
+    expect(output.evidence_grade).toBe("executed");
+    expect(output.final_verdict).toBe("mergeable");
+    expect(output.run.verify_commands).toEqual([
+      expect.objectContaining({ command: "pnpm typecheck", exit_code: 0 }),
+      expect.objectContaining({ command: "pnpm test", exit_code: 0 }),
+      expect.objectContaining({ command: "pnpm build", exit_code: 0 })
+    ]);
+
+    const logsArtifact = await readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8");
+    const verdictArtifact = await readFile(join(output.run.artifacts_dir, "verdict.json"), "utf8");
+    expect(logsArtifact).toContain("$ pnpm typecheck");
+    expect(logsArtifact).toContain("typecheck passed");
+    expect(verdictArtifact).toContain("\"command\": \"pnpm typecheck\"");
+  });
+
+  it("uses explicit CLI verification commands instead of inferred package.json scripts", async () => {
+    const dir = await createChangedRepo();
+    await writePackageManifest(dir, {
+      packageManager: "pnpm@10.26.0",
+      scripts: {
+        test: "node -e \"console.log('manifest test passed')\"",
+        typecheck: "node -e \"console.log('manifest typecheck passed')\""
+      }
+    });
+    const explicitCommand = nodeEvalCommand("console.log('explicit passed')");
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        explicitCommand
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as {
+      run: {
+        artifacts_dir: string;
+        verify_commands: Array<{ command: string }>;
+      };
+    };
+
+    expect(output.run.verify_commands.map((command) => command.command)).toEqual([explicitCommand]);
+    const logsArtifact = await readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8");
+    expect(logsArtifact).toContain("explicit passed");
+    expect(logsArtifact).not.toContain("manifest test passed");
+  });
+
   it("treats silent successful verification commands as positive evidence", async () => {
     const dir = await createChangedRepo();
 
@@ -498,6 +591,12 @@ Return "block_pr" when the builder must revise the change before a PR is created
 
   it("loads verifier.config.json and fails CI gates with --fail-on", async () => {
     const dir = await createChangedRepo();
+    await writePackageManifest(dir, {
+      packageManager: "pnpm@10.26.0",
+      scripts: {
+        test: "node -e \"console.log('manifest test passed')\""
+      }
+    });
     await writeFile(
       join(dir, "verifier.config.json"),
       JSON.stringify({
@@ -642,6 +741,13 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.final_verdict).toBe("mergeable");
   });
 });
+
+async function writePackageManifest(
+  dir: string,
+  manifest: { packageManager?: string; scripts: Record<string, string> }
+): Promise<void> {
+  await writeFile(join(dir, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+}
 
 function spawnWithInput(
   command: string,
