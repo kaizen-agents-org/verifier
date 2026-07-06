@@ -1,0 +1,19 @@
+{
+  "id": "gp-013-provider-blocked-pass-lines",
+  "kind": "golden",
+  "description": "Golden false-positive control: passing Node test lines may mention provider-blocked behavior without representing a failed verifier result.",
+  "input": {
+    "task": "Add fallback classification coverage for provider-blocked behavior.",
+    "diff": "diff --git a/test/agents/AgentRunner.test.ts b/test/agents/AgentRunner.test.ts\n+it('stops fallback for provider-blocked failures unless the provider opts in', () => {})\n+it('returns exit code 2 for blocked build results', () => {})",
+    "verifyLogs": "✔ stops fallback for provider-blocked failures unless the provider opts in (368.120834ms)\n✔ returns exit code 2 for blocked build results (30.516458ms)\nℹ tests 44\nℹ pass 44\nℹ fail 0",
+    "builderReport": "Added focused regression tests and the suite passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}
