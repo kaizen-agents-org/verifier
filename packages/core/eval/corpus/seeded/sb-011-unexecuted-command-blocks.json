@@ -1,5 +1,5 @@
 {
-  "id": "sb-009-unexecuted-command-blocks",
+  "id": "sb-011-unexecuted-command-blocks",
   "kind": "seeded",
   "description": "Seeded regression: explicitly unexecuted verification commands should block.",
   "input": {
