@@ -62,7 +62,7 @@ describe("evaluateMinimalVerdict", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Add block-classification regression tests",
       diff: "diff --git a/test/block-classification.test.ts b/test/block-classification.test.ts\n+it('classifies block correctly', () => {})",
-      verifyLogs: "all tests passed\n\x1b[32m✓\x1b[0m test/block-classification.test.ts (6 tests) 145ms",
+      verifyLogs: "\x1b[32m✓\x1b[0m test/block-classification.test.ts (6 tests) 145ms",
       builderReport: "build successful"
     });
 

@@ -317,13 +317,14 @@ function parseDiffRiskText(diff: string): {
 
 function hasPositiveVerificationEvidence(verifyLogs: string): boolean {
   if (!verifyLogs) return false;
+  const normalized = stripAnsiCodes(verifyLogs);
   if (
-    UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(verifyLogs)) ||
-    MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(verifyLogs))
+    UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(normalized)) ||
+    MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(normalized))
   ) {
     return false;
   }
-  return POSITIVE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(verifyLogs));
+  return POSITIVE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 function hasTargetedCoverage(
