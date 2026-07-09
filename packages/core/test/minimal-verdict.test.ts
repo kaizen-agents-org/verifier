@@ -71,6 +71,20 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix).toHaveLength(0);
   });
 
+  it("does not block prefixed verifier reasons that quote colored Vitest pass fragments", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add block-classification regression tests",
+      diff: "diff --git a/test/block-classification.test.ts b/test/block-classification.test.ts\n+it('classifies block correctly', () => {})",
+      verifyLogs:
+        "npm test passed\nnpm run typecheck passed\nnpm run build passed\nReason | Verifier blocked PR: \x1b[32m✓\x1b[0m test/block-classification.test.ts (6 tests) 145ms",
+      builderReport: "build successful"
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
   it("does not block common clean test summaries with zero failures", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Update test coverage",
