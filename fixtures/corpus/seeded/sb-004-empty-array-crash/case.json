@@ -1,0 +1,17 @@
+{
+  "id": "sb-004-empty-array-crash",
+  "kind": "seeded",
+  "description": "maxValue() drops its empty-array default and throws TypeError on empty input.",
+  "intent": {
+    "text": "Simplify maxValue's reduce call while keeping the same behavior for all inputs, including empty arrays."
+  },
+  "expected": {
+    "verdict": "not_mergeable"
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node --test test/stats.test.js", "node test/check-empty-input.js"]
+  },
+  "timeoutMinutes": 5
+}

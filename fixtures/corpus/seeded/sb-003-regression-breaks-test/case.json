@@ -1,0 +1,17 @@
+{
+  "id": "sb-003-regression-breaks-test",
+  "kind": "seeded",
+  "description": "formatCurrency divides by 1000 instead of 100, breaking the existing currency-formatting tests.",
+  "intent": {
+    "text": "Refactor formatCurrency for readability without changing its output."
+  },
+  "expected": {
+    "verdict": "not_mergeable"
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node --test test/format-currency.test.js"]
+  },
+  "timeoutMinutes": 5
+}

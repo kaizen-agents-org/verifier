@@ -1,0 +1,17 @@
+{
+  "id": "sb-002-pagination-off-by-one",
+  "kind": "seeded",
+  "description": "totalPages() uses floor instead of ceil, dropping the final partial page.",
+  "intent": {
+    "text": "Compute the total number of pages for the item list, including a final partial page."
+  },
+  "expected": {
+    "verdict": "conditional"
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node --test test/paginate.test.js", "node test/check-boundary.js"]
+  },
+  "timeoutMinutes": 5
+}

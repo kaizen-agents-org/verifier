@@ -1,0 +1,10 @@
+diff --git a/src/format-currency.js b/src/format-currency.js
+index 0000000..1111111 100644
+--- a/src/format-currency.js
++++ b/src/format-currency.js
+@@ -1,4 +1,4 @@
+ export function formatCurrency(cents) {
+-  const dollars = cents / 100;
++  const dollars = cents / 1000;
+   return `$${dollars.toFixed(2)}`;
+ }
