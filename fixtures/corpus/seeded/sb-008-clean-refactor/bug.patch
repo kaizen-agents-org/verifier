@@ -2,7 +2,7 @@ diff --git a/src/slugify.js b/src/slugify.js
 index 0000000..1111111 100644
 --- a/src/slugify.js
 +++ b/src/slugify.js
-@@ -1,12 +1,8 @@
+@@ -1,11 +1,7 @@
  export function slugify(text) {
 -  let result = "";
 -  for (const char of text.toLowerCase()) {
