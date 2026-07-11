@@ -6,7 +6,7 @@
     "text": "Keep the admin update handler consistent with the admin status handler; both must require an admin session."
   },
   "expected": {
-    "verdict": "conditional"
+    "verdict": "not_mergeable"
   },
   "setup": {
     "baseDir": "repo",

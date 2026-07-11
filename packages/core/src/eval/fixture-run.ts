@@ -134,7 +134,8 @@ async function runFixtureCase(fixtureCase: FixtureCase, caseDir: string): Promis
       task: fixtureCase.intent?.text ?? "",
       workspace,
       base: baseSha,
-      verifyCommands
+      verifyCommands,
+      verifyTimeoutMs: fixtureCase.timeoutMinutes * 60_000
     });
 
     const actual = {
