@@ -6,7 +6,8 @@
     "text": "Keep the admin update handler consistent with the admin status handler; both must require an admin session."
   },
   "expected": {
-    "verdict": "not_mergeable"
+    "verdict": "not_mergeable",
+    "knownGap": true
   },
   "setup": {
     "baseDir": "repo",

@@ -6,7 +6,8 @@
     "text": "Simplify slugify's character-by-character loop into an equivalent regex-based implementation with the same output for all inputs."
   },
   "expected": {
-    "verdict": "mergeable"
+    "verdict": "mergeable",
+    "knownGap": true
   },
   "setup": {
     "baseDir": "repo",

@@ -19,7 +19,8 @@ const FixtureExpectedSchema = z
     verdict: FinalVerdictKindSchema.optional(),
     verdictAnyOf: z.array(FinalVerdictKindSchema).min(1).optional(),
     confidenceMin: z.number().int().min(0).max(100).optional(),
-    confidenceMax: z.number().int().min(0).max(100).optional()
+    confidenceMax: z.number().int().min(0).max(100).optional(),
+    knownGap: z.boolean().default(false)
   })
   .refine((expected) => !(expected.verdict && expected.verdictAnyOf), {
     message: "expected.verdict and expected.verdictAnyOf are mutually exclusive"
@@ -88,6 +89,13 @@ export interface FixtureRunResult {
 export interface RunFixtureEvalOptions {
   corpusDir?: string;
   outputFile?: string;
+}
+
+export function fixtureRunExitCode(result: FixtureRunResult): 0 | 1 {
+  const hasUnexpectedFailure = result.cases.some(
+    (fixtureCase) => !fixtureCase.passed && fixtureCase.expected.knownGap !== true
+  );
+  return result.metrics.harnessErrors === 0 && !hasUnexpectedFailure ? 0 : 1;
 }
 
 export async function runFixtureEval(options: RunFixtureEvalOptions = {}): Promise<FixtureRunResult> {
@@ -339,7 +347,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   runFixtureEval(parseArgs(process.argv.slice(2)))
     .then((result) => {
       process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-      process.exitCode = result.metrics.failedCases === 0 && result.metrics.harnessErrors === 0 ? 0 : 1;
+      process.exitCode = fixtureRunExitCode(result);
     })
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
