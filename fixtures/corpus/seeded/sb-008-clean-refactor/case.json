@@ -1,0 +1,18 @@
+{
+  "id": "sb-008-clean-refactor",
+  "kind": "seeded",
+  "description": "Rewrites slugify() with an equivalent regex-based implementation; no behavior change.",
+  "intent": {
+    "text": "Simplify slugify's character-by-character loop into an equivalent regex-based implementation with the same output for all inputs."
+  },
+  "expected": {
+    "verdict": "mergeable",
+    "knownGap": true
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node --test test/slugify.test.js"]
+  },
+  "timeoutMinutes": 5
+}

@@ -1,0 +1,105 @@
+{
+  "generatedAt": "2026-07-11T02:37:29.307Z",
+  "corpusDir": "/Volumes/SSD/ghq/github.com/kaizen-agents-org/_pr-work/resume/verifier-pr-102/fixtures/corpus",
+  "metrics": {
+    "totalCases": 5,
+    "passedCases": 3,
+    "failedCases": 2,
+    "harnessErrors": 0,
+    "verdictAgreement": 0.6,
+    "byKind": {
+      "seeded": {
+        "total": 5,
+        "passed": 3,
+        "failed": 2
+      },
+      "golden": {
+        "total": 0,
+        "passed": 0,
+        "failed": 0
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "sb-001-authz-missing",
+      "kind": "seeded",
+      "description": "POST admin update route drops its authorization check while GET keeps it.",
+      "passed": false,
+      "failures": [
+        "expected verdict not_mergeable, got conditional"
+      ],
+      "actual": {
+        "verdict": "conditional",
+        "confidence": 60
+      },
+      "expected": {
+        "verdict": "not_mergeable",
+        "knownGap": true
+      }
+    },
+    {
+      "id": "sb-002-pagination-off-by-one",
+      "kind": "seeded",
+      "description": "totalPages() uses floor instead of ceil, dropping the final partial page.",
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "conditional",
+        "confidence": 56
+      },
+      "expected": {
+        "verdict": "conditional",
+        "knownGap": false
+      }
+    },
+    {
+      "id": "sb-003-regression-breaks-test",
+      "kind": "seeded",
+      "description": "formatCurrency divides by 1000 instead of 100, breaking the existing currency-formatting tests.",
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "not_mergeable",
+        "confidence": 73
+      },
+      "expected": {
+        "verdict": "not_mergeable",
+        "knownGap": false
+      }
+    },
+    {
+      "id": "sb-004-empty-array-crash",
+      "kind": "seeded",
+      "description": "maxValue() drops its empty-array default and throws TypeError on empty input.",
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "not_mergeable",
+        "confidence": 76
+      },
+      "expected": {
+        "verdict": "not_mergeable",
+        "knownGap": false
+      }
+    },
+    {
+      "id": "sb-008-clean-refactor",
+      "kind": "seeded",
+      "description": "Rewrites slugify() with an equivalent regex-based implementation; no behavior change.",
+      "passed": false,
+      "failures": [
+        "expected verdict mergeable, got conditional"
+      ],
+      "actual": {
+        "verdict": "conditional",
+        "confidence": 60
+      },
+      "expected": {
+        "verdict": "mergeable",
+        "knownGap": true
+      }
+    }
+  ],
+  "harnessErrorDetails": []
+}

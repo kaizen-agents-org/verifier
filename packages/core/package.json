@@ -11,6 +11,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "eval": "node --import tsx src/eval/run.ts",
+    "eval:fixtures": "node --import tsx src/eval/fixture-run.ts --output ../../fixtures/metrics.json",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "schema:generate": "node --import tsx ../../scripts/generate-verdict-schema.ts"

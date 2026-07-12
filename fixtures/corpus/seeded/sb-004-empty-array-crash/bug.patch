@@ -1,0 +1,11 @@
+diff --git a/src/stats.js b/src/stats.js
+index 0000000..1111111 100644
+--- a/src/stats.js
++++ b/src/stats.js
+@@ -4,5 +4,5 @@ export function average(numbers) {
+ }
+
+ export function maxValue(numbers) {
+-  return numbers.reduce((max, value) => (value > max ? value : max), numbers[0]);
++  return numbers.reduce((max, value) => (value > max ? value : max));
+ }

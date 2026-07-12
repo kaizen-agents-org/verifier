@@ -1,0 +1,9 @@
+{
+  "name": "sb-003-regression-breaks-test-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/"
+  }
+}
