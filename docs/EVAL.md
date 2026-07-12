@@ -79,6 +79,12 @@ expected:
                           # 指定時は列挙した区分のいずれかに一致すれば期待判定とみなす。
                           # verdict と同時指定しない（混在結果ケースは verdictAnyOf を使う）
   confidenceMax: 95       # 任意。確信度の上限期待（「確信度が下がること」の検証用）
+  knownGap: false          # 任意。デフォルトfalse。trueの場合、このケースがfailしても
+                          # eval:fixturesの終了コードには反映されない（既知の未実装ギャップ
+                          # を赤いまま可視化して記録するためのフラグ）。
+                          # 現在パイプラインが到達できない正しい期待値を設定しつつ、
+                          # 「expectedを実装の現在の出力に合わせて書き換える」ことを防ぐ。
+                          # 追跡issueをdescriptionまたはコメントで参照すること（例: #104）。
   findings:               # 期待Finding（検出率の分母）
     - category: security
       locationFile: src/routes/admin.ts
