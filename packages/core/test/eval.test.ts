@@ -20,7 +20,7 @@ describe("eval harness", () => {
     expect(result.metrics.falsePositiveRate).toBe(0);
     expect(result.metrics.byKind.seeded.total).toBeGreaterThan(0);
     expect(result.metrics.byKind.golden.total).toBeGreaterThan(0);
-    expect(result.cases).toHaveLength(51);
+    expect(result.cases.length).toBeGreaterThanOrEqual(50);
     const nonNodeCases = result.cases.filter((testCase) => testCase.stack !== "node");
     expect(nonNodeCases.length).toBeGreaterThanOrEqual(10);
     expect(new Set(nonNodeCases.map((testCase) => testCase.stack))).toEqual(

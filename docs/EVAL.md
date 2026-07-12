@@ -14,11 +14,13 @@ pnpm eval
 The committed corpus lives under `packages/core/eval/corpus/seeded` and
 `packages/core/eval/corpus/golden`. Cases are JSON for the MVP so the harness can
 run without adding a YAML parser dependency. Each case records verifier input,
-expected verdict constraints, and false-positive allowances. The corpus includes
-representative raw summaries from Vitest, Cargo, pytest, Go test, and eslint so
-common clean CI output does not regress into false-positive blockers. The command
-emits JSON metrics, including `verdictAgreement` and `falsePositiveRate`, and
-exits non-zero when any case fails or the MVP threshold gate is not met.
+expected verdict constraints, false-positive allowances, and a `stack` identifier.
+Golden cases also require `labelSource` so their expected outcome remains
+traceable to a reviewed source. The corpus includes representative raw summaries
+from Vitest, Cargo, pytest, Go test, Gradle, and eslint so common clean CI output
+does not regress into false-positive blockers. The command emits JSON metrics,
+including `verdictAgreement` and `falsePositiveRate`, and exits non-zero when any
+case fails or the MVP threshold gate is not met.
 
 The committed MVP threshold file is `packages/core/eval/thresholds.json`.
 It currently gates the metrics implemented by the MVP harness:
