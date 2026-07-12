@@ -1,6 +1,8 @@
 {
   "id": "gp-007-go-test-real-summary",
   "kind": "golden",
+  "stack": "go",
+  "labelSource": "Curated verifier MVP corpus case gp-007-go-test-real-summary.json",
   "description": "Golden false-positive control: go test package success lines should be positive verification evidence.",
   "input": {
     "task": "Refactor report formatting in the Go helper.",

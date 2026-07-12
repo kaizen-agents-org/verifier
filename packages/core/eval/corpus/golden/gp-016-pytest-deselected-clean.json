@@ -1,0 +1,21 @@
+{
+  "id": "gp-016-pytest-deselected-clean",
+  "kind": "golden",
+  "stack": "pytest",
+  "labelSource": "Curated Playbook B-1 corpus expansion for issue #97 (gp-016-pytest-deselected-clean)",
+  "description": "Golden pytest clean-output control.",
+  "input": {
+    "task": "Make the requested focused maintenance change.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+focused change",
+    "verifyLogs": "================ 18 passed, 2 deselected in 0.31s ================",
+    "builderReport": "Updated Python serializer and tests passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

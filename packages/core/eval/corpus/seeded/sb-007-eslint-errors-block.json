@@ -1,6 +1,7 @@
 {
   "id": "sb-007-eslint-errors-block",
   "kind": "seeded",
+  "stack": "node",
   "description": "Seeded regression: eslint summaries with errors should block.",
   "input": {
     "task": "Keep lint checks green.",

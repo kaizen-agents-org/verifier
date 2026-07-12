@@ -1,6 +1,7 @@
 {
   "id": "sb-005-pytest-failure-blocks",
   "kind": "seeded",
+  "stack": "pytest",
   "description": "Seeded regression: pytest failure summaries should block PR creation.",
   "input": {
     "task": "Keep config validation behavior intact.",

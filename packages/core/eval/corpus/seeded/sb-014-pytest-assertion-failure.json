@@ -1,0 +1,17 @@
+{
+  "id": "sb-014-pytest-assertion-failure",
+  "kind": "seeded",
+  "stack": "pytest",
+  "description": "Seeded pytest blocking regression.",
+  "input": {
+    "task": "Preserve existing behavior.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+regression",
+    "verifyLogs": "FAILED tests/test_parser.py::test_empty_input\n1 failed, 18 passed in 0.32s",
+    "builderReport": "Focused change implemented."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

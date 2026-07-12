@@ -1,0 +1,17 @@
+{
+  "id": "sb-016-cargo-panic",
+  "kind": "seeded",
+  "stack": "cargo",
+  "description": "Seeded cargo blocking regression.",
+  "input": {
+    "task": "Preserve existing behavior.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+regression",
+    "verifyLogs": "test parser::empty ... FAILED\nthread 'parser::empty' panicked\n1 failed; 12 passed",
+    "builderReport": "Focused change implemented."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

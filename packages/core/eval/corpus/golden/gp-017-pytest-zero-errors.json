@@ -1,0 +1,21 @@
+{
+  "id": "gp-017-pytest-zero-errors",
+  "kind": "golden",
+  "stack": "pytest",
+  "labelSource": "Curated Playbook B-1 corpus expansion for issue #97 (gp-017-pytest-zero-errors)",
+  "description": "Golden pytest clean-output control.",
+  "input": {
+    "task": "Make the requested focused maintenance change.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+focused change",
+    "verifyLogs": "24 passed, 0 errors in 0.44s",
+    "builderReport": "Updated Python CLI and tests passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

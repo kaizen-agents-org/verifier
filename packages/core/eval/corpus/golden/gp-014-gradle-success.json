@@ -1,0 +1,21 @@
+{
+  "id": "gp-014-gradle-success",
+  "kind": "golden",
+  "stack": "gradle",
+  "labelSource": "Curated Playbook B-1 corpus expansion for issue #97 (gp-014-gradle-success)",
+  "description": "Golden gradle clean-output control.",
+  "input": {
+    "task": "Make the requested focused maintenance change.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+focused change",
+    "verifyLogs": "BUILD SUCCESSFUL in 3s\n8 actionable tasks: 8 executed",
+    "builderReport": "Updated Java formatter and Gradle checks passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

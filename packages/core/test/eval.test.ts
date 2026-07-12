@@ -20,6 +20,17 @@ describe("eval harness", () => {
     expect(result.metrics.falsePositiveRate).toBe(0);
     expect(result.metrics.byKind.seeded.total).toBeGreaterThan(0);
     expect(result.metrics.byKind.golden.total).toBeGreaterThan(0);
+    expect(result.cases.length).toBeGreaterThanOrEqual(50);
+    const nonNodeCases = result.cases.filter((testCase) => testCase.stack !== "node");
+    expect(nonNodeCases.length).toBeGreaterThanOrEqual(10);
+    expect(new Set(nonNodeCases.map((testCase) => testCase.stack))).toEqual(
+      new Set(["cargo", "pytest", "go", "gradle"])
+    );
+    expect(
+      result.cases
+        .filter((testCase) => testCase.kind === "golden")
+        .every((testCase) => testCase.labelSource)
+    ).toBe(true);
     expect(result.cases.find((testCase) => testCase.id === "sb-009-unexplained-diff-needs-context")).toMatchObject({
       passed: true,
       actual: {
@@ -168,6 +179,8 @@ describe("eval harness", () => {
         {
           id: "wrong-verdict",
           kind: "golden",
+          stack: "node",
+          labelSource: "Synthetic harness regression case in eval.test.ts",
           description: "Clean evidence with an intentionally wrong expected verdict.",
           input: {
             task: "Document how to run the verifier eval harness.",

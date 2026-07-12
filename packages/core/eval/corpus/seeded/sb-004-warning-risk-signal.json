@@ -1,6 +1,7 @@
 {
   "id": "sb-004-warning-risk-signal",
   "kind": "seeded",
+  "stack": "node",
   "description": "Seeded non-blocking risk: skipped verification is surfaced as a reviewer warning without blocking PR creation.",
   "input": {
     "task": "Update the report rendering styles without changing behavior.",

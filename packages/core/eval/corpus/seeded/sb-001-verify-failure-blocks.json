@@ -1,6 +1,7 @@
 {
   "id": "sb-001-verify-failure-blocks",
   "kind": "seeded",
+  "stack": "node",
   "description": "Seeded regression: verification and builder output both report a blocking failure.",
   "input": {
     "task": "Keep admin API authorization intact while refactoring handlers.",
