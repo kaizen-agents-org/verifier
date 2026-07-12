@@ -297,7 +297,7 @@ describe("evaluateMinimalVerdict", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor slug generation without changing behavior",
       diff: "diff --git a/slug.ts b/slug.ts\n-return oldSlug(text)\n+return newSlug(text)",
-      verifyLogs: "✔ slugifies a title (1ms)\nfail 0\ncancelled 0\nskipped 0\ntodo 0",
+      verifyLogs: "✔ slugifies a title (1ms)\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0",
       builderReport: "Refactored slug generation."
     });
 
