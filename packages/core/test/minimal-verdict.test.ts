@@ -278,6 +278,33 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("blocks removed admin guards without targeted verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Keep the admin update handler protected",
+      diff:
+        "diff --git a/admin.ts b/admin.ts\n" +
+        "-requireAdmin(request)\n" +
+        "+return { status: 'updated' }",
+      verifyLogs: "all tests passed",
+      builderReport: "Updated the admin handler."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
+  it("does not treat zero skipped, todo, or cancelled tests as risks", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor slug generation without changing behavior",
+      diff: "diff --git a/slug.ts b/slug.ts\n-return oldSlug(text)\n+return newSlug(text)",
+      verifyLogs: "✔ slugifies a title (1ms)\nfail 0\ncancelled 0\nskipped 0\ntodo 0",
+      builderReport: "Refactored slug generation."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
   it("opens high-risk diffs with a warning when targeted verification is present", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor billing token handling",
