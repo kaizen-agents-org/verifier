@@ -293,6 +293,21 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("accepts targeted admin guard coverage for removed admin guards", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor the protected admin update handler",
+      diff:
+        "diff --git a/admin.ts b/admin.ts\n" +
+        "-requireAdmin(request)\n" +
+        "+return requireRole(request, 'admin')",
+      verifyLogs: "admin guard tests passed",
+      builderReport: "Verified the replacement role check."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
   it("does not treat zero skipped, todo, or cancelled tests as risks", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor slug generation without changing behavior",

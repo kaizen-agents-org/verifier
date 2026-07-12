@@ -99,7 +99,7 @@ const HIGH_RISK_DIFF_SIGNALS = [
     label: "auth/authz",
     addedPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b|\brequire(?:Auth|Authorization|Authentication|Permission)\w*\b/i,
     removedPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b|\brequire(?:Admin|Auth|Authorization|Authentication|Permission|Role)\w*\b/i,
-    coveragePattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control|401|403|security)\b/i
+    coveragePattern: /\b(?:admin|auth|authz|authn|authorization|authentication|guard|permission|role|access control|401|403|security)\b/i
   },
   {
     label: "secrets/credentials",
