@@ -16,6 +16,8 @@ import {
 const EvalCaseSchema = z.object({
   id: z.string().min(1),
   kind: z.enum(["seeded", "golden"]),
+  stack: z.string().min(1),
+  labelSource: z.string().min(1).optional(),
   description: z.string().min(1),
   input: VerdictInputSchema,
   expected: z
@@ -37,6 +39,14 @@ const EvalCaseSchema = z.object({
     .refine((expected) => expected.verdict !== undefined || expected.verdictAnyOf !== undefined, {
       message: "expected.verdict or expected.verdictAnyOf is required"
     })
+}).superRefine((testCase, context) => {
+  if (testCase.kind === "golden" && !testCase.labelSource) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["labelSource"],
+      message: "labelSource is required for golden cases"
+    });
+  }
 });
 
 const EvalThresholdsSchema = z
@@ -92,6 +102,8 @@ function runCase(testCase: EvalCase): EvalCaseResult {
   return {
     id: testCase.id,
     kind: testCase.kind,
+    stack: testCase.stack,
+    ...(testCase.labelSource ? { labelSource: testCase.labelSource } : {}),
     description: testCase.description,
     passed: failures.length === 0,
     failures,

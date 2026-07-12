@@ -1,0 +1,21 @@
+{
+  "id": "gp-025-node-refactor-clean",
+  "kind": "golden",
+  "stack": "node",
+  "labelSource": "Curated Playbook B-1 corpus expansion for issue #97 (gp-025-node-refactor-clean)",
+  "description": "Golden node clean-output control.",
+  "input": {
+    "task": "Make the requested focused maintenance change.",
+    "diff": "diff --git a/src/example.ts b/src/example.ts\n+focused change",
+    "verifyLogs": "Test Files 3 passed\nTests 27 passed",
+    "builderReport": "Refactored path utilities and tests passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

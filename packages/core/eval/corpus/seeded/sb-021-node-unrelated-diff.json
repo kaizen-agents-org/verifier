@@ -1,0 +1,18 @@
+{
+  "id": "sb-021-node-unrelated-diff",
+  "kind": "seeded",
+  "stack": "node",
+  "description": "Seeded node blocking regression.",
+  "input": {
+    "task": "",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+regression",
+    "verifyLogs": "typecheck passed\nTests 4 passed",
+    "builderReport": "Focused change implemented."
+  },
+  "expected": {
+    "verdict": "needs_context",
+    "risk": "medium",
+    "shouldFixMin": 1,
+    "confidenceMax": 50
+  }
+}

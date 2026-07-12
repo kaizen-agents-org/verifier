@@ -1,6 +1,7 @@
 {
   "id": "sb-002-token-logging-blocks",
   "kind": "seeded",
+  "stack": "node",
   "description": "Seeded security regression: token logging is surfaced as a blocking verifier finding.",
   "input": {
     "task": "Add diagnostic logging around credential refresh.",

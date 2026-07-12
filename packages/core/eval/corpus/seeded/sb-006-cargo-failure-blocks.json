@@ -1,6 +1,7 @@
 {
   "id": "sb-006-cargo-failure-blocks",
   "kind": "seeded",
+  "stack": "cargo",
   "description": "Seeded regression: cargo failed summaries should remain blocking.",
   "input": {
     "task": "Preserve parser error handling.",

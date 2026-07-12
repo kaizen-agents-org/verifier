@@ -1,6 +1,7 @@
 {
   "id": "sb-003-clean-refactor",
   "kind": "seeded",
+  "stack": "node",
   "description": "Seeded clean control: a low-risk refactor with complete evidence should produce no findings.",
   "input": {
     "task": "Rename the greeting helper without changing behavior.",

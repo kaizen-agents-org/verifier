@@ -18,6 +18,8 @@ export interface EvalExpected {
 export interface EvalCaseResult {
   id: string;
   kind: EvalKind;
+  stack?: string;
+  labelSource?: string;
   description: string;
   passed: boolean;
   failures: string[];

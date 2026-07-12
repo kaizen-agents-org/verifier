@@ -1,0 +1,21 @@
+{
+  "id": "gp-022-node-failure-word-test-name",
+  "kind": "golden",
+  "stack": "node",
+  "labelSource": "Curated Playbook B-1 corpus expansion for issue #97 (gp-022-node-failure-word-test-name)",
+  "description": "Golden node clean-output control.",
+  "input": {
+    "task": "Make the requested focused maintenance change.",
+    "diff": "diff --git a/src/example.ts b/src/example.ts\n+focused change",
+    "verifyLogs": "✔ reports failure details to callers (12ms)\nℹ tests 1\nℹ pass 1\nℹ fail 0",
+    "builderReport": "Added focused coverage and checks passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

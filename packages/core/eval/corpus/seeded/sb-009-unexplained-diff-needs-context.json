@@ -1,6 +1,7 @@
 {
   "id": "sb-009-unexplained-diff-needs-context",
   "kind": "seeded",
+  "stack": "node",
   "description": "Seeded clean-control gap: a low-risk diff with clean verification but no primary task intent must request context and cap confidence.",
   "input": {
     "task": "",

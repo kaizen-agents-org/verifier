@@ -1,0 +1,17 @@
+{
+  "id": "sb-012-gradle-test-failure",
+  "kind": "seeded",
+  "stack": "gradle",
+  "description": "Seeded gradle blocking regression.",
+  "input": {
+    "task": "Preserve existing behavior.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+regression",
+    "verifyLogs": "3 tests completed, 1 failed\nFAILURE: Build failed with an exception.",
+    "builderReport": "Focused change implemented."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}
