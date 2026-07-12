@@ -1,6 +1,8 @@
 {
   "id": "gp-003-clean-error-handling-tests",
   "kind": "golden",
+  "stack": "node",
+  "labelSource": "Curated verifier MVP corpus case gp-003-clean-error-handling-tests.json",
   "description": "Golden false-positive control: clean named test suites may include hard-failure words as domain terms.",
   "input": {
     "task": "Add parser recovery coverage without changing runtime behavior.",

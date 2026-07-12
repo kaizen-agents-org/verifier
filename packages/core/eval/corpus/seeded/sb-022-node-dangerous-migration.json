@@ -1,0 +1,17 @@
+{
+  "id": "sb-022-node-dangerous-migration",
+  "kind": "seeded",
+  "stack": "node",
+  "description": "Seeded node blocking regression.",
+  "input": {
+    "task": "Add a nullable display-name column safely.",
+    "diff": "diff --git a/migrations/001.sql b/migrations/001.sql\n+DROP TABLE users;",
+    "verifyLogs": "Tests 8 passed",
+    "builderReport": "Focused change implemented."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

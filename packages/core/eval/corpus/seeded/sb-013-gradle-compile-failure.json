@@ -1,0 +1,17 @@
+{
+  "id": "sb-013-gradle-compile-failure",
+  "kind": "seeded",
+  "stack": "gradle",
+  "description": "Seeded gradle blocking regression.",
+  "input": {
+    "task": "Preserve existing behavior.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+regression",
+    "verifyLogs": "> Task :compileJava FAILED\nBUILD FAILED in 2s",
+    "builderReport": "Focused change implemented."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

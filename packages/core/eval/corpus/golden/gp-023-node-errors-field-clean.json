@@ -1,0 +1,21 @@
+{
+  "id": "gp-023-node-errors-field-clean",
+  "kind": "golden",
+  "stack": "node",
+  "labelSource": "Curated Playbook B-1 corpus expansion for issue #97 (gp-023-node-errors-field-clean)",
+  "description": "Golden node clean-output control.",
+  "input": {
+    "task": "Make the requested focused maintenance change.",
+    "diff": "diff --git a/src/example.ts b/src/example.ts\n+focused change",
+    "verifyLogs": "PASS test/result.test.js\nErrors: 0",
+    "builderReport": "Updated result formatting and tests passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

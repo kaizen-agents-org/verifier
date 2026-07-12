@@ -1,0 +1,21 @@
+{
+  "id": "gp-015-gradle-zero-failures",
+  "kind": "golden",
+  "stack": "gradle",
+  "labelSource": "Curated Playbook B-1 corpus expansion for issue #97 (gp-015-gradle-zero-failures)",
+  "description": "Golden gradle clean-output control.",
+  "input": {
+    "task": "Make the requested focused maintenance change.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+focused change",
+    "verifyLogs": "12 passed, 0 failed\nBUILD SUCCESSFUL",
+    "builderReport": "Updated Kotlin parser and checks passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}

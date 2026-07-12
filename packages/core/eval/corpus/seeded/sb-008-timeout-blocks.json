@@ -1,6 +1,7 @@
 {
   "id": "sb-008-timeout-blocks",
   "kind": "seeded",
+  "stack": "node",
   "description": "Seeded regression: timed-out verification evidence should block.",
   "input": {
     "task": "Update the CLI command runner.",

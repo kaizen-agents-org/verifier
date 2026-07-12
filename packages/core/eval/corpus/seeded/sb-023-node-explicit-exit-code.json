@@ -1,0 +1,17 @@
+{
+  "id": "sb-023-node-explicit-exit-code",
+  "kind": "seeded",
+  "stack": "node",
+  "description": "Seeded node blocking regression.",
+  "input": {
+    "task": "Preserve existing behavior.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+regression",
+    "verifyLogs": "test command exited with exit code 2",
+    "builderReport": "Focused change implemented."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

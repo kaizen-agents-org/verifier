@@ -1,0 +1,17 @@
+{
+  "id": "sb-020-node-tests-deleted-false-green",
+  "kind": "seeded",
+  "stack": "node",
+  "description": "Seeded node blocking regression.",
+  "input": {
+    "task": "Preserve existing behavior.",
+    "diff": "diff --git a/src/example.txt b/src/example.txt\n+regression",
+    "verifyLogs": "Verification command was not run",
+    "builderReport": "Focused change implemented."
+  },
+  "expected": {
+    "verdict": "block_pr",
+    "risk": "high",
+    "mustFixMin": 1
+  }
+}

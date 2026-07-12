@@ -1,6 +1,7 @@
 {
   "id": "sb-010-removed-auth-check-blocks",
   "kind": "seeded",
+  "stack": "node",
   "description": "Seeded regression: removing an authorization check remains high risk without targeted verification.",
   "input": {
     "task": "Refactor the admin update handler.",

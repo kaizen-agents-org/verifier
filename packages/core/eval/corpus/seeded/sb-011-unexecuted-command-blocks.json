@@ -1,6 +1,7 @@
 {
   "id": "sb-011-unexecuted-command-blocks",
   "kind": "seeded",
+  "stack": "node",
   "description": "Seeded regression: explicitly unexecuted verification commands should block.",
   "input": {
     "task": "Update report rendering.",

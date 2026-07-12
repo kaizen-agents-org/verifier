@@ -1,6 +1,8 @@
 {
   "id": "gp-002-docs-only-clean",
   "kind": "golden",
+  "stack": "node",
+  "labelSource": "Curated verifier MVP corpus case gp-002-docs-only-clean.json",
   "description": "Golden outcome: docs-only evidence with clean verification should remain openable.",
   "input": {
     "task": "Document how to run the verifier eval harness.",
