@@ -26,12 +26,14 @@ const CLEAN_PASS_MARKER_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√|PASS\b|ok\b)\
 const CLEAN_PASS_TEST_LINE_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√)\s+\S+.*\(\d+(?:\.\d+)?m?s\)$/i;
 const CLEAN_PASS_TEST_FILE_SUMMARY_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√)\s+\S+\s+\(\d+\s+tests?\)\s*(?:\d+(?:\.\d+)?m?s)?$/i;
 const CLEAN_PASS_TEST_FILE_SUMMARY_FRAGMENT_PATTERN = /(?:^|\s)(?:✓|✔|√)\s+\S+\s+\(\d+\s+tests?\)\s*(?:\d+(?:\.\d+)?m?s)?(?:$|\s)/i;
+const ZERO_SOFT_RISK_COUNT_PATTERN = /^(?:[^\w\s]+\s*)?(?:cancelled|skipped|todo)\s+0$/i;
 
 const CLEAN_RESULT_PATTERNS = [
   CLEAN_PASS_MARKER_PATTERN,
   /^(?:[^\w\s]+\s*)?0\s+(?:failures|failed|errors)$/i,
   /^(?:[^\w\s]+\s*)?errors?:\s*0$/i,
   /^(?:[^\w\s]+\s*)?found\s+0\s+errors?$/i,
+  ZERO_SOFT_RISK_COUNT_PATTERN,
   /^(?:[^\w\s]+\s*)?no\s+(?:failures|errors)$/i,
   /^(?:[^\w\s]+\s*)?no\s+errors?\s+found$/i,
   /^(?:[^\w\s]+\s*)?all\s+(?:tests\s+)?passed$/i,
@@ -96,8 +98,8 @@ const HIGH_RISK_DIFF_SIGNALS = [
   {
     label: "auth/authz",
     addedPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b|\brequire(?:Auth|Authorization|Authentication|Permission)\w*\b/i,
-    removedPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b|\brequire(?:Auth|Authorization|Authentication|Permission)\w*\b/i,
-    coveragePattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control|401|403|security)\b/i
+    removedPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b|\brequire(?:Admin|Auth|Authorization|Authentication|Permission|Role)\w*\b/i,
+    coveragePattern: /\b(?:admin|auth|authz|authn|authorization|authentication|guard|permission|role|access control|401|403|security)\b/i
   },
   {
     label: "secrets/credentials",
@@ -263,6 +265,7 @@ function collectSoftRisks(
 ): void {
   if (!text) return;
   for (const line of lines(text)) {
+    if (ZERO_SOFT_RISK_COUNT_PATTERN.test(stripAnsiCodes(line))) continue;
     const hasHardFailure =
       !isCleanResultLine(line) &&
       HARD_FAILURE_PATTERNS.some((pattern) => pattern.test(line));
