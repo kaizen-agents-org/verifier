@@ -76,6 +76,20 @@ async function readBuildInfo(moduleDir: string): Promise<BuildInfo | undefined> 
 
 async function readRuntimeCheckout(packageRoot: string): Promise<{ commit: string | null; dirty: boolean | null }> {
   try {
+    const { stdout: topLevelOutput } = await execFileAsync(
+      "git",
+      ["-C", packageRoot, "rev-parse", "--show-toplevel"],
+      { encoding: "utf8" }
+    );
+    const topLevel = await realpath(topLevelOutput.trim());
+    const expectedPackageRoot = await realpath(resolve(topLevel, "packages/core"));
+    if (expectedPackageRoot !== packageRoot) {
+      return { commit: null, dirty: null };
+    }
+    const repositoryPackage = JSON.parse(await readFile(resolve(topLevel, "package.json"), "utf8")) as { name?: unknown };
+    if (repositoryPackage.name !== "verifier") {
+      return { commit: null, dirty: null };
+    }
     const [{ stdout: commit }, { stdout: status }] = await Promise.all([
       execFileAsync("git", ["-C", packageRoot, "rev-parse", "HEAD"], { encoding: "utf8" }),
       execFileAsync("git", ["-C", packageRoot, "status", "--porcelain", "--untracked-files=no"], { encoding: "utf8" })

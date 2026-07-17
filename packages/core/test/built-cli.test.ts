@@ -1,7 +1,8 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -42,6 +43,37 @@ describe("built verifier CLI", () => {
     } finally {
       await writeFile(buildInfoPath, original, "utf8");
     }
+  });
+
+  it("does not compare a copied package with its consumer repository HEAD", async () => {
+    const consumer = await mkdtemp(join(tmpdir(), "verifier-consumer-"));
+    const installedCore = join(consumer, "node_modules", "@verifier", "core");
+    await mkdir(installedCore, { recursive: true });
+    await cp("dist", join(installedCore, "dist"), { recursive: true });
+    await writeFile(join(consumer, "package.json"), '{"name":"consumer"}\n', "utf8");
+    await execFileAsync("git", ["init"], { cwd: consumer });
+    await execFileAsync("git", ["add", "package.json"], { cwd: consumer });
+    await execFileAsync(
+      "git",
+      ["-c", "user.name=Verifier Test", "-c", "user.email=verifier@example.test", "commit", "-m", "initial"],
+      { cwd: consumer }
+    );
+
+    const versionModule = pathToFileURL(join(installedCore, "dist", "version.js")).href;
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--input-type=module",
+      "-e",
+      `import { readVersionInfo } from ${JSON.stringify(versionModule)}; console.log(JSON.stringify(await readVersionInfo()));`
+    ], { encoding: "utf8" });
+    const result = JSON.parse(stdout) as {
+      status: string;
+      stale: boolean | null;
+      runtime: { commit: string | null };
+    };
+
+    expect(result.status).toBe("unverifiable");
+    expect(result.stale).toBeNull();
+    expect(result.runtime.commit).toBeNull();
   });
 
   it("does not block ANSI-colored passing Vitest lines containing failure words", async () => {
