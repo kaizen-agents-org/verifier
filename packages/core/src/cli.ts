@@ -4,6 +4,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict, VerdictInputSchema } from "./index.js";
 import type { FinalVerdictKind } from "./types.js";
+import { readVersionInfo } from "./version.js";
 
 interface CliOptions {
   command: "verdict" | "check";
@@ -45,7 +46,10 @@ const INFERRED_SCRIPT_ORDER = ["typecheck", "test", "build"] as const;
 
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === "--version" || argv[0] === "-v") {
-    process.stdout.write("verifier 0.0.0\n");
+    const version = await readVersionInfo();
+    process.stdout.write(argv.includes("--json")
+      ? `${JSON.stringify(version)}\n`
+      : `verifier ${version.version}\n`);
     return 0;
   }
 

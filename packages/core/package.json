@@ -9,10 +9,11 @@
     "verifier": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/write-build-info.mjs",
     "eval": "node --import tsx src/eval/run.ts",
     "eval:fixtures": "node --import tsx src/eval/fixture-run.ts --output ../../fixtures/metrics.json",
-    "test": "vitest run",
+    "test": "vitest run --exclude test/built-cli.test.ts",
+    "test:built-cli": "vitest run test/built-cli.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "schema:generate": "node --import tsx ../../scripts/generate-verdict-schema.ts"
   },

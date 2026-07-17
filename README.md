@@ -49,6 +49,8 @@ build.
 pnpm install
 pnpm typecheck
 pnpm test
+pnpm build
+pnpm test:built-cli
 pnpm schema:check
 ```
 
@@ -58,6 +60,8 @@ Useful package commands:
 |---|---|
 | `pnpm typecheck` | Type-check the workspace. |
 | `pnpm test` | Run Vitest tests. |
+| `pnpm build` | Build the CLI and embed its source commit in `dist/build-info.json`. |
+| `pnpm test:built-cli` | Exercise the built CLI, including provenance and ANSI-log regressions. |
 | `pnpm eval` | Run the committed verifier eval corpus and print metrics. |
 | `pnpm schema:generate` | Regenerate `schemas/verdict.schema.json` from Zod types. |
 | `pnpm schema:check` | Regenerate the schema and fail if the committed schema is stale. |
@@ -68,6 +72,24 @@ Check installation:
 
 ```sh
 node packages/core/dist/cli.js --version
+```
+
+For machine-readable build provenance and stale-link detection, use:
+
+```sh
+node packages/core/dist/cli.js --version --json
+```
+
+Linked development installations report `status: "stale"` when the source
+checkout HEAD no longer matches the commit embedded by `pnpm build`. Rebuild
+before linking or running scheduled automation:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+pnpm test:built-cli
+pnpm --filter @verifier/core link --global
+verifier --version --json
 ```
 
 Run the canonical contract check with files:
