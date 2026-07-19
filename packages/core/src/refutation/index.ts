@@ -36,10 +36,15 @@ export type ReproCommandExecutor = (
   options: ExecuteReproCommandOptions
 ) => Promise<ReproCommandResult>;
 
+export type ReproCommandAuthorizer = (
+  command: string,
+  finding: Finding
+) => boolean | Promise<boolean>;
+
 export interface RunRefutationGateOptions extends ExecuteReproCommandOptions {
   runDir: string;
   evidenceId: string;
-  allowCommandExecution: boolean;
+  authorizeCommand: ReproCommandAuthorizer;
   executor?: ReproCommandExecutor;
 }
 
@@ -75,13 +80,13 @@ export async function runRefutationGate(
       finding: withRefuterOutcome(finding, refuterOutput, undefined)
     };
   }
-  if (!options.allowCommandExecution) {
+  if (!(await options.authorizeCommand(command, finding))) {
     return {
       finding: withRefuterOutcome(
         finding,
         {
           ...refuterOutput,
-          reasoning: `${refuterOutput.reasoning} Reproduction command was not executed by policy.`
+          reasoning: `${refuterOutput.reasoning} Reproduction command was not authorized by the orchestrator.`
         },
         undefined
       )

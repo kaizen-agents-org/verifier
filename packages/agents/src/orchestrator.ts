@@ -3,6 +3,7 @@ import type {
   Claim,
   Evidence,
   Finding,
+  ReproCommandAuthorizer,
   ReproCommandExecutor,
   RunMeta
 } from "@verifier/core";
@@ -130,6 +131,17 @@ export function materializeCorrectnessReview(
   for (const assessment of review.claimAssessments) {
     assertKnownClaimIds([assessment.claimId], knownClaimIds);
   }
+  const assessedClaimIds = new Set<string>();
+  for (const assessment of review.claimAssessments) {
+    if (assessedClaimIds.has(assessment.claimId)) {
+      throw new Error(`Agent returned duplicate claim assessment: ${assessment.claimId}`);
+    }
+    assessedClaimIds.add(assessment.claimId);
+  }
+  const missingClaim = claims.find((claim) => !assessedClaimIds.has(claim.id));
+  if (missingClaim) {
+    throw new Error(`Agent omitted claim assessment: ${missingClaim.id}`);
+  }
 
   return {
     findings: review.findings.map((finding, index) => ({
@@ -171,7 +183,7 @@ export function materializeCorrectnessReview(
 export interface RunRefutationStageOptions {
   workspace: string;
   getRelatedCode: (finding: Finding) => string;
-  allowCommandExecution?: boolean;
+  authorizeCommand?: ReproCommandAuthorizer;
   runsRoot?: string;
   transport?: RefuterTransport;
   executor?: ReproCommandExecutor;
@@ -209,7 +221,7 @@ export async function runRefutationStage(
           workspace,
           runDir,
           evidenceId: `E-S4-${index + 1}`,
-          allowCommandExecution: false,
+          authorizeCommand: () => false,
           ...(options.executor ? { executor: options.executor } : {})
         }
       );
@@ -233,7 +245,7 @@ export async function runRefutationStage(
       workspace,
       runDir,
       evidenceId: `E-S4-${index + 1}`,
-      allowCommandExecution: options.allowCommandExecution === true,
+      authorizeCommand: options.authorizeCommand ?? (() => false),
       ...(options.executor ? { executor: options.executor } : {}),
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
       ...(options.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {})

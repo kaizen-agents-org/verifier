@@ -215,7 +215,7 @@ export function deriveClaimStatus(claim: Claim, survived: Finding[],
 |---|---|
 | Stage 1 static成功 | `plannedChecks` に `static` を含む全Claimに static Evidence を紐付け |
 | Stage 2 既存テスト全パス | `plannedChecks` に `test` を含む全Claimに test Evidence を紐付け。※v1の意図的な単純化（無関係なテストで検証済み扱いになり得る）。Phase 2のカバレッジ差分導入後は「変更行に触れたテストが存在する」場合に限定する |
-| Stage 3 レンズ読解 | lens-reviewer が返す `claimAssessments`（supported=true）のClaimに reading Evidence（§9） |
+| Stage 3 レンズ読解 | lens-reviewer は全Claimを `claimAssessments` に重複なく1回ずつ返す。`supported=true` のClaimに reading Evidence（§9） |
 | Stage 5 シナリオ全stepパス | `Scenario.claimIds` のClaimに runtime Evidence |
 | 生成テストパス（Phase 2） | test-generator の `targetClaim` に test Evidence |
 

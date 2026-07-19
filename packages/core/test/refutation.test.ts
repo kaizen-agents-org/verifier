@@ -31,7 +31,7 @@ describe("refutation gate", () => {
         workspace,
         runDir: join(workspace, ".verifier/runs/run-1"),
         evidenceId: "E-R1",
-        allowCommandExecution: true,
+        authorizeCommand: async (command) => command === "pnpm test edge",
         executor
       }
     );
@@ -114,7 +114,7 @@ describe("refutation gate", () => {
         workspace,
         runDir,
         evidenceId: "E-R1",
-        allowCommandExecution: true,
+        authorizeCommand: () => true,
         executor: async (command) =>
           commandResult({ command, code: 0, stdout: "token=super-secret-value\n" })
       }
@@ -135,7 +135,7 @@ describe("refutation gate", () => {
           workspace,
           runDir: join(workspace, "..", "outside"),
           evidenceId: "E-R1",
-          allowCommandExecution: true,
+          authorizeCommand: () => true,
           executor: async (command) => commandResult({ command, code: 0 })
         }
       )
@@ -152,7 +152,7 @@ describe("refutation gate", () => {
           workspace,
           runDir: join(workspace, ".verifier/runs/run-1"),
           evidenceId: "../../outside",
-          allowCommandExecution: true,
+          authorizeCommand: () => true,
           executor: async (command) => commandResult({ command, code: 0 })
         }
       )
@@ -171,13 +171,13 @@ describe("refutation gate", () => {
         workspace,
         runDir: join(workspace, ".verifier/runs/run-1"),
         evidenceId: "E-R1",
-        allowCommandExecution: false,
+        authorizeCommand: () => false,
         executor
       }
     );
 
     expect(result.execution).toBeUndefined();
-    expect(result.finding.refutation.notes).toContain("not executed by policy");
+    expect(result.finding.refutation.notes).toContain("not authorized by the orchestrator");
   });
 
   it("rejects symlinked evidence directories that resolve outside the workspace", async () => {
@@ -194,7 +194,7 @@ describe("refutation gate", () => {
           workspace,
           runDir: join(workspace, ".verifier/runs/run-1"),
           evidenceId: "E-R1",
-          allowCommandExecution: true,
+          authorizeCommand: () => true,
           executor: async (command) => commandResult({ command, code: 0 })
         }
       )
@@ -223,7 +223,7 @@ function gateOptions(workspace: string, executor: ReproCommandExecutor) {
     workspace,
     runDir: join(workspace, ".verifier/runs/run-1"),
     evidenceId: "E-R1",
-    allowCommandExecution: true,
+    authorizeCommand: () => true,
     executor
   };
 }

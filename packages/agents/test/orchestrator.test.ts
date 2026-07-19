@@ -165,6 +165,26 @@ describe("correctness and refutation orchestration", () => {
         [claim]
       )
     ).toThrow("unknown claim ID");
+
+    expect(() =>
+      materializeCorrectnessReview(
+        { findings: [], claimAssessments: [] },
+        [claim]
+      )
+    ).toThrow("omitted claim assessment");
+
+    expect(() =>
+      materializeCorrectnessReview(
+        {
+          findings: [],
+          claimAssessments: [
+            { claimId: claim.id, supported: true, note: "First." },
+            { claimId: claim.id, supported: true, note: "Duplicate." }
+          ]
+        },
+        [claim]
+      )
+    ).toThrow("duplicate claim assessment");
   });
 
   it("persists the lens output and links supported claims to reading evidence", async () => {
@@ -198,7 +218,7 @@ describe("correctness and refutation orchestration", () => {
     const result = await runRefutationStage([finding], makeRunMeta(), {
       workspace,
       getRelatedCode: () => "code",
-      allowCommandExecution: true,
+      authorizeCommand: (command) => command === "pnpm test empty",
       transport: async () => ({
         parsed_output: {
           outcome: "survived",

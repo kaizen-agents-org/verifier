@@ -104,8 +104,9 @@ deterministic and network-free.
 refuter. Both use strict structured outputs. The lens requires a concrete
 `scenario` and contains no `severity`; core derives severity. The refuter can
 propose a `reproCommand`, but only `runRefutationStage` passes that string to
-the bounded core executor when `allowCommandExecution: true` is explicit, then
-records redacted command evidence.
+the bounded core executor after a caller-supplied `authorizeCommand` approves
+that exact command, then records redacted command evidence. Production callers
+remain responsible for applying their sandbox and side-effect policy.
 
 The semantic eval replays committed lens/refuter outputs for all 14 repository
 fixtures, so CI needs no API key or billable network call. Its comparison is
