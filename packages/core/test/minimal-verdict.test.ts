@@ -230,6 +230,19 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.source === "verify_logs")).toBe(true);
   });
 
+  it("splits carriage-return status updates before classifying failures", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Run lint verification",
+      diff: "diff --git a/lint.ts b/lint.ts\n+runLint()",
+      verifyLogs: "0 errors\r1 error",
+      builderReport: "Lint was executed."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix).toHaveLength(1);
+    expect(verdict.must_fix[0]?.evidence).toBe("1 error");
+  });
+
   it("blocks pass-prefixed summary lines with explicit failures", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Tighten verification log parsing",
@@ -361,6 +374,19 @@ describe("evaluateMinimalVerdict", () => {
 
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
+  it("blocks disabling a bare auth flag without targeted verification", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update route configuration",
+      diff: "diff --git a/src/route.ts b/src/route.ts\n+auth: false",
+      verifyLogs: "all tests passed",
+      builderReport: "Updated route configuration."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+    expect(verdict.must_fix.some((item) => item.evidence?.includes("src/route.ts: +auth: false"))).toBe(true);
   });
 
   it("blocks removed admin guards without targeted verification evidence", () => {
