@@ -16,7 +16,6 @@ export interface IntentExtractorInput {
 
 export interface IntentExtractorRequest {
   model: string;
-  effort: typeof INTENT_AGENT_CONFIG.effort;
   max_tokens: number;
   system: Array<{
     type: "text";
@@ -25,6 +24,7 @@ export interface IntentExtractorRequest {
   }>;
   messages: Array<{ role: "user"; content: string }>;
   output_config: {
+    effort: typeof INTENT_AGENT_CONFIG.effort;
     format: ReturnType<typeof zodOutputFormat<typeof IntentExtractionSchema>>;
   };
 }
@@ -49,6 +49,16 @@ export interface ExtractIntentResult {
   usage: AgentUsage;
 }
 
+export class IntentSchemaMismatchError extends Error {
+  constructor(
+    message: string,
+    readonly usage: AgentUsage
+  ) {
+    super(message);
+    this.name = "IntentSchemaMismatchError";
+  }
+}
+
 export async function extractIntent(
   input: IntentExtractorInput,
   options: ExtractIntentOptions = {}
@@ -64,6 +74,12 @@ export async function extractIntent(
     } catch (error) {
       if (attempt < INTENT_AGENT_CONFIG.maxSchemaRetries && isStructuredOutputError(error)) {
         continue;
+      }
+      if (isStructuredOutputError(error)) {
+        throw new IntentSchemaMismatchError(
+          "Intent extractor returned invalid structured output after retries.",
+          usage
+        );
       }
       throw error;
     }
@@ -84,7 +100,10 @@ export async function extractIntent(
       return { extraction: parsed.data, usage };
     }
     if (attempt >= INTENT_AGENT_CONFIG.maxSchemaRetries) {
-      throw parsed.error;
+      throw new IntentSchemaMismatchError(
+        "Intent extractor returned output that violates the schema after retries.",
+        usage
+      );
     }
   }
 }
@@ -92,7 +111,6 @@ export async function extractIntent(
 export function createIntentExtractorRequest(input: IntentExtractorInput): IntentExtractorRequest {
   return {
     model: INTENT_AGENT_CONFIG.model,
-    effort: INTENT_AGENT_CONFIG.effort,
     max_tokens: INTENT_AGENT_CONFIG.maxTokens,
     system: [
       {
@@ -108,6 +126,7 @@ export function createIntentExtractorRequest(input: IntentExtractorInput): Inten
       }
     ],
     output_config: {
+      effort: INTENT_AGENT_CONFIG.effort,
       format: zodOutputFormat(IntentExtractionSchema)
     }
   };

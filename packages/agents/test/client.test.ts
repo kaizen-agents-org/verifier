@@ -26,8 +26,8 @@ describe("intent extractor client", () => {
 
     expect(request).toMatchObject({
       model: "claude-opus-4-8",
-      effort: "medium",
       max_tokens: 4096,
+      output_config: { effort: "medium" },
       system: [
         {
           type: "text",
@@ -83,13 +83,13 @@ describe("intent extractor client", () => {
     ).rejects.toThrow(message);
   });
 
-  it("rejects a response that violates the Zod contract", async () => {
+  it("reports a response that violates the Zod contract after retries", async () => {
     const response = makeResponse({
       parsed_output: { claims: [{ statement: "missing fields" }], conflicts: [] } as never
     });
     await expect(
       extractIntent({ sources: [], diffSummary: "diff" }, { transport: async () => response })
-    ).rejects.toThrow();
+    ).rejects.toThrow("violates the schema after retries");
   });
 
   it("retries schema failures at most twice", async () => {

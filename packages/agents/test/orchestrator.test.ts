@@ -131,6 +131,35 @@ describe("intent stage orchestration", () => {
     expect(result.runMeta.stagesExecuted).toContain(0);
     expect(JSON.parse(await readFile(result.claimsPath, "utf8"))).toEqual(result.claims);
   });
+
+  it("continues with empty output and an info finding after schema retries", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "verifier-runs-"));
+    const result = await runIntentStage(
+      { sources: [], diffSummary: "diff" },
+      makeRunMeta(),
+      {
+        runsRoot,
+        transport: async () => ({
+          parsed_output: { claims: "invalid", conflicts: [] } as never,
+          stop_reason: "end_turn",
+          usage: {
+            input_tokens: 10,
+            output_tokens: 5,
+            cache_creation_input_tokens: null,
+            cache_read_input_tokens: null
+          }
+        })
+      }
+    );
+
+    expect(result.extraction).toEqual({ claims: [], conflicts: [] });
+    expect(result.claims).toMatchObject([
+      { id: "C-0", status: "unverified", source: { ref: "synthetic:missing-primary-source" } }
+    ]);
+    expect(result.findings).toMatchObject([
+      { severity: "info", origin: "system", title: "Intent agent output unavailable" }
+    ]);
+  });
 });
 
 function makeRunMeta(): RunMeta {
