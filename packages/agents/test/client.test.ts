@@ -26,8 +26,8 @@ describe("intent extractor client", () => {
 
     expect(request).toMatchObject({
       model: "claude-opus-4-8",
-      effort: "medium",
       max_tokens: 4096,
+      output_config: { effort: "medium" },
       system: [
         {
           type: "text",
