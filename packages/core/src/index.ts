@@ -1,5 +1,6 @@
 export * from "./types.js";
 export * from "./minimal-verdict.js";
+export * from "./refutation/index.js";
 export {
   calculateConfidence,
   createSyntheticPrimaryClaim,
