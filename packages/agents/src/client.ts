@@ -17,7 +17,6 @@ export interface IntentExtractorInput {
 
 export interface IntentExtractorRequest {
   model: string;
-  effort: typeof INTENT_AGENT_CONFIG.effort;
   max_tokens: number;
   system: Array<{
     type: "text";
@@ -26,6 +25,7 @@ export interface IntentExtractorRequest {
   }>;
   messages: Array<{ role: "user"; content: string }>;
   output_config: {
+    effort: typeof INTENT_AGENT_CONFIG.effort;
     format: ReturnType<typeof zodOutputFormat<typeof IntentExtractionSchema>>;
   };
 }
@@ -69,7 +69,6 @@ export async function extractIntent(
 export function createIntentExtractorRequest(input: IntentExtractorInput): IntentExtractorRequest {
   return {
     model: INTENT_AGENT_CONFIG.model,
-    effort: INTENT_AGENT_CONFIG.effort,
     max_tokens: INTENT_AGENT_CONFIG.maxTokens,
     system: [
       {
@@ -85,6 +84,7 @@ export function createIntentExtractorRequest(input: IntentExtractorInput): Inten
       }
     ],
     output_config: {
+      effort: INTENT_AGENT_CONFIG.effort,
       format: zodOutputFormat(IntentExtractionSchema)
     }
   };

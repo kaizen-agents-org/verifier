@@ -7,6 +7,16 @@ export interface StructuredAgentResponse<T> {
   usage: AgentUsage;
 }
 
+export class StructuredOutputSchemaError extends Error {
+  constructor(
+    message: string,
+    readonly usage: AgentUsage
+  ) {
+    super(message);
+    this.name = "StructuredOutputSchemaError";
+  }
+}
+
 export async function runStructuredAgent<Request, Output>(options: {
   agentName: string;
   request: Request;
@@ -22,6 +32,12 @@ export async function runStructuredAgent<Request, Output>(options: {
       response = await options.transport(options.request);
     } catch (error) {
       if (attempt < options.maxSchemaRetries && isStructuredOutputError(error)) continue;
+      if (isStructuredOutputError(error)) {
+        throw new StructuredOutputSchemaError(
+          `${options.agentName} returned invalid structured output after retries.`,
+          usage
+        );
+      }
       throw error;
     }
     usage = addUsage(usage, response.usage);
@@ -38,7 +54,12 @@ export async function runStructuredAgent<Request, Output>(options: {
 
     const parsed = options.schema.safeParse(response.parsed_output);
     if (parsed.success) return { output: parsed.data, usage };
-    if (attempt >= options.maxSchemaRetries) throw parsed.error;
+    if (attempt >= options.maxSchemaRetries) {
+      throw new StructuredOutputSchemaError(
+        `${options.agentName} returned output that violates the schema after retries.`,
+        usage
+      );
+    }
   }
 }
 
