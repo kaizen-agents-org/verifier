@@ -56,19 +56,7 @@ query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
   if [[ -n "${cursor}" ]]; then
     args+=(-f "cursor=${cursor}")
   fi
-  if ! page="$(gh "${args[@]}")"; then
-    echo 'failed to fetch review threads' >&2
-    exit 1
-  fi
-  if ! jq -e '
-    .data.repository.pullRequest.reviewThreads as $threads
-    | ($threads | type == "object")
-      and ($threads.nodes | type == "array")
-      and ($threads.pageInfo.hasNextPage | type == "boolean")
-  ' >/dev/null <<<"${page}"; then
-    echo 'reviewThreads returned an invalid or incomplete response' >&2
-    exit 1
-  fi
+  page="$(gh "${args[@]}")"
   jq -c '.data.repository.pullRequest.reviewThreads.nodes[]' <<<"${page}"
   if [[ "$(jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage' <<<"${page}")" != true ]]; then
     break
@@ -105,19 +93,7 @@ query($threadId:ID!, $cursor:String) {
   if [[ -n "${cursor}" ]]; then
     args+=(-f "cursor=${cursor}")
   fi
-  if ! page="$(gh "${args[@]}")"; then
-    echo 'failed to fetch review comments' >&2
-    exit 1
-  fi
-  if ! jq -e '
-    .data.node.comments as $comments
-    | ($comments | type == "object")
-      and ($comments.nodes | type == "array")
-      and ($comments.pageInfo.hasNextPage | type == "boolean")
-  ' >/dev/null <<<"${page}"; then
-    echo 'review comments returned an invalid or incomplete response' >&2
-    exit 1
-  fi
+  page="$(gh "${args[@]}")"
   jq -c '.data.node.comments.nodes[]' <<<"${page}"
   if [[ "$(jq -r '.data.node.comments.pageInfo.hasNextPage' <<<"${page}")" != true ]]; then
     break
