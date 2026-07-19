@@ -261,7 +261,7 @@ class ApiProbeSession implements ProbeSession {
           this.options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES
         );
         const artifact = await this.writeResponseArtifact(response, body.text, body.truncated);
-        if (response.status >= 500) {
+        if (response.status >= 500 && !isExpectedStatus(step, response.status)) {
           this.networkFailures.push({
             method: step.method.toUpperCase(),
             url: this.url(step.path),
@@ -339,6 +339,17 @@ class ApiProbeSession implements ProbeSession {
   private timeoutError(): string {
     return `timeout after ${this.context.timeoutMs}ms scenario budget`;
   }
+}
+
+function isExpectedStatus(
+  step: Extract<Scenario["steps"][number], { op: "request" }>,
+  status: number
+): boolean {
+  const expectation = step.expect;
+  if (expectation?.status === undefined && expectation?.statusAnyOf === undefined) return false;
+  if (expectation.status !== undefined && expectation.status !== status) return false;
+  if (expectation.statusAnyOf !== undefined && !expectation.statusAnyOf.includes(status)) return false;
+  return true;
 }
 
 async function readBoundedBody(

@@ -100,6 +100,39 @@ describe("Stage 5 probe orchestration", () => {
     expect(result.claims[0]?.evidenceIds).toEqual([]);
   });
 
+  it("preserves an earlier mismatch when a later step times out", async () => {
+    const result = await runProbeStage({
+      driver: {
+        targetType: "cli",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => ({
+          interact: async () => [
+            { stepIndex: 0, ok: false, error: "assertion failed", artifacts: [] },
+            { stepIndex: 1, ok: false, error: "timeout after 10ms", artifacts: [] }
+          ],
+          observe: async () => ({
+            consoleErrors: [], networkFailures: [], screenshots: [], crashed: false, artifacts: []
+          }),
+          teardown: async () => {}
+        })
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [{
+        ...cliScenario(),
+        steps: [{ op: "wait", forMs: 0 }, { op: "wait", forMs: 0 }]
+      }],
+      claims: [claim()],
+      runMeta: runMeta()
+    });
+
+    expect(result.findings).toMatchObject([
+      { reproduced: true, scenario: expect.stringContaining("assertion failed") }
+    ]);
+    expect(result.findings[0]?.scenario).not.toContain("timeout");
+    expect(result.evidence).toMatchObject([{ reproducible: true }]);
+  });
+
   it("adds runtime evidence for a clean CLI run without false positives", async () => {
     const result = await runCli("");
     expect(result.findings).toEqual([]);

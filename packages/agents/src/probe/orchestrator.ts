@@ -157,23 +157,35 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
         redactProbeArtifact({ scenario, stepResults, observation, responseArtifacts, mismatches }),
         options.runsRoot
       );
-      const timedOut = stepResults.some(({ error }) => error?.startsWith("timeout"));
+      const timedOutSteps = new Set(
+        stepResults
+          .filter(({ error }) => error?.startsWith("timeout"))
+          .map(({ stepIndex }) => stepIndex)
+      );
+      const timedOut = timedOutSteps.size > 0;
+      const firstTimedOutStep = timedOut ? Math.min(...timedOutSteps) : undefined;
+      const materialMismatches = firstTimedOutStep === undefined
+        ? mismatches
+        : mismatches.filter((mismatch) => {
+            const match = /^step (\d+) /.exec(mismatch);
+            return match !== null && Number(match[1]) < firstTimedOutStep;
+          });
       const item: Evidence = {
         id: evidenceId,
         kind: options.driver.targetType === "api" ? "network-log" : "command-output",
         checkKind: "runtime",
-        summary: timedOut
-          ? `Runtime scenario ${scenario.id} timed out and remains unverified.`
-          : mismatches.length > 0
-            ? `Runtime scenario ${scenario.id} reproduced ${mismatches.length} mismatch(es).`
+        summary: materialMismatches.length > 0
+          ? `Runtime scenario ${scenario.id} reproduced ${materialMismatches.length} mismatch(es).`
+          : timedOut
+            ? `Runtime scenario ${scenario.id} timed out and remains unverified.`
             : `Runtime scenario ${scenario.id} completed without mismatches.`,
         path: artifactName,
-        reproducible: !timedOut
+        reproducible: materialMismatches.length > 0 || !timedOut
       };
       evidence.push(item);
       observations.push({ scenario, stepResults, observation });
 
-      if (mismatches.length > 0 && !timedOut) {
+      if (materialMismatches.length > 0) {
         const category = scenario.failCategory ?? (observation.crashed ? "crash" : "logic");
         findings.push({
           id: `F-S5-${index + 1}`,
@@ -181,7 +193,7 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
           reproduced: true,
           severity: deriveSeverity({ category, reproduced: true }, false),
           title: `Runtime scenario failed: ${scenario.description}`,
-          scenario: mismatches.join("; "),
+          scenario: materialMismatches.join("; "),
           claimIds: [...scenario.claimIds],
           evidenceIds: [evidenceId],
           refutation: {

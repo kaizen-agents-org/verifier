@@ -52,6 +52,17 @@ describe("API probe driver", () => {
     expect(run.responses.at(-1)).toMatchObject({ status: 200 });
   });
 
+  it("does not classify an expected 5xx response as a network failure", async () => {
+    const run = await runFixture("flaky-500", requestScenario({
+      method: "GET",
+      path: "/health?fail=1",
+      expect: { statusAnyOf: [500, 503] }
+    }));
+    expect(run.responses).toHaveLength(1);
+    expect(run.responses[0]).toMatchObject({ status: 500 });
+    expect(run.observation.networkFailures).toEqual([]);
+  });
+
   it("keeps clean requests free of failure observations", async () => {
     const scenario: Scenario = {
       id: "api-clean",
