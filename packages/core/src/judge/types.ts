@@ -1,13 +1,6 @@
-export type TargetType =
-  | "cli"
-  | "api"
-  | "web"
-  | "electron"
-  | "tauri"
-  | "macos-native"
-  | "windows-native"
-  | "tui"
-  | "mobile";
+import type { TargetType } from "@verifier/probe-sdk";
+
+export type { TargetType } from "@verifier/probe-sdk";
 
 export type TrustLevel = "trusted" | "untrusted";
 

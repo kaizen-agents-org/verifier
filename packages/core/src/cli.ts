@@ -2,7 +2,8 @@
 import { access, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
-import { evaluateMinimalVerdict, VerdictInputSchema } from "./index.js";
+import { evaluateMinimalVerdict } from "./minimal-verdict.js";
+import { VerdictInputSchema } from "./types.js";
 import type { FinalVerdictKind } from "./types.js";
 import { readVersionInfo } from "./version.js";
 

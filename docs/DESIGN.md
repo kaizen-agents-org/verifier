@@ -484,6 +484,8 @@ export interface ProbeConfig {
 - `detect` は副作用禁止（ファイル読み取りのみ）。
 - ドライバ登録: 同梱は `probe-drivers/` から静的登録。サードパーティは `verifier.config` の `probe.drivers: ["@scope/verifier-driver-x"]` でnpmパッケージ名指定。
 
+実装済みのcli/apiドライバでは、scenario-generatorの `exec.command` をshell文字列として扱わず、caller登録済みの論理IDから固定の実行ファイルと引数列へ解決する。APIはcallerが許可したhostへの相対pathだけを受け付け、redirectは追従しない。期待値比較、baseとの差分化、Evidence/Finding化は `@verifier/agents` が行い、再現済みStage 5 FindingもStage 4と同じrefutation実装を通る。timeoutはFinding化せずClaimをunverifiedのままにする。
+
 ## 7. CLI仕様
 
 ```

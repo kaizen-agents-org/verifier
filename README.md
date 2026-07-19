@@ -115,6 +115,21 @@ agent, judge, refutation, prompt, and threshold changes run the full gate.
 Batch submission is available through the injected `submitSemanticEvalBatch`
 boundary and is never called by CI.
 
+## Opt-in Runtime Probes
+
+`@verifier/probe-sdk` exposes the dependency-free Probe Driver contract from
+`docs/DESIGN.md` §6. Bundled `@verifier/probe-driver-cli` and
+`@verifier/probe-driver-api` packages execute CLI and loopback HTTP scenarios;
+drivers return observations only. `@verifier/agents` owns scenario generation,
+expected-result comparison, runtime Evidence/Finding creation, and the shared
+refutation-gate handoff.
+
+Generated CLI steps name caller-registered command IDs, which are resolved to
+fixed executable/argument arrays and spawned without a shell. API steps are
+restricted to relative paths on a caller-authorized host; redirects are not
+followed. The default `verifier check` CLI does not enable Stage 5 yet, and
+production callers remain responsible for sandboxing target code.
+
 ## CLI Usage
 
 Check installation:

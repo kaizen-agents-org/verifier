@@ -20,6 +20,10 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
     "@verifier/core": "workspace:*",
+    "@verifier/probe-driver-api": "workspace:*",
+    "@verifier/probe-driver-cli": "workspace:*",
+    "@verifier/probe-sdk": "workspace:*",
+    "ajv": "^8.20.0",
     "zod": "^3.25.0"
   }
 }

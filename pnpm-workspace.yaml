@@ -1,5 +1,6 @@
 packages:
   - "packages/*"
+  - "packages/probe-drivers/*"
 allowBuilds:
   esbuild: true
 onlyBuiltDependencies:

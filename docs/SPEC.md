@@ -2,7 +2,7 @@
 
 > 関連文書: [DESIGN.md](./DESIGN.md)（詳細設計 — 型定義・スキーマ・Driver SDK・図解）/ [EVAL.md](./EVAL.md)（Evalハーネス実装仕様 — コーパス・fixtureアプリ・リリースゲート）
 
-> 実装状況: 現在の実装済みMVPは [MVP.md](./MVP.md) に定義する。本文書は最終構想を含む上位仕様であり、AI Claim分解・多視点レビュー・反証・Probe DriverはまだMVP範囲外である。
+> 実装状況: 現在の実装済みMVPは [MVP.md](./MVP.md) に定義する。本文書は最終構想を含む上位仕様であり、Claim分解・correctnessレビュー・反証・cli/api Probe Driverはopt-in実装済みだが、デフォルトCLIへの段階パイプライン統合と他target driverはまだMVP範囲外である。
 
 ## 1. 背景と課題
 

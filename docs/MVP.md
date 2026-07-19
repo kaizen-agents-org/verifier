@@ -170,7 +170,7 @@ stable.
 | Stage 1/2 verification | Implemented as user-supplied `--verify-command` execution with captured logs and exit metadata. |
 | Stage 3 review agents | One opt-in correctness lens is implemented; default CLI and the other three lenses remain deferred. |
 | Stage 4 refutation | Opt-in structured refuter plus orchestrator-owned bounded repro execution is implemented; default CLI remains unchanged. |
-| Stage 5 probe drivers | Not implemented; no web/API/TUI/Electron/native driver orchestration. |
+| Stage 5 probe drivers | Opt-in dependency-free SDK, CLI/API drivers, scenario generator, deterministic Observation mapping, and shared refutation handoff are implemented; default CLI wiring and other targets remain deferred. |
 | Stage 6 verdict integration | Implemented as deterministic compact verdict plus workspace `final_verdict`. |
 | Evidence store | Implemented for local workspace runs under `.verifier/runs/<run-id>/`. |
 
@@ -179,17 +179,18 @@ stable.
 - Default-pipeline wiring for the opt-in AI stages.
 - Remaining security, regression, and performance lenses.
 - Generated tests and coverage-aware evidence linking.
-- Probe Driver SDK and bundled drivers for web, API, CLI, TUI, Electron, Tauri,
-  and native apps.
+- Probe drivers for web, TUI, Electron, Tauri, and native apps.
+- Default-pipeline and `--stages` wiring for the opt-in CLI/API probes.
 - GitHub App / Action publishing, PR comments, and branch protection status.
 - Untrusted-code execution in isolated containers.
 
 ## Known Limitations
 
-- The MVP is TypeScript/Node-only internally and ships `@verifier/core` plus
-  the opt-in `@verifier/agents` workspace package.
-- Workspace verification is CLI-command based; there is no structured driver
-  coverage beyond spawning configured shell commands.
+- The MVP is TypeScript/Node-only internally and ships core, agents, Probe SDK,
+  and opt-in CLI/API probe workspace packages.
+- Probe execution is trusted-local only. CLI commands require a caller-owned
+  registry and API probes are restricted to an allowed host; container
+  isolation for untrusted PRs is not implemented.
 - Manifest inference is limited to root `package.json` scripts.
 - Log classification is heuristic and pattern-based.
 - Evidence is local filesystem output only; no remote artifact upload is
@@ -198,7 +199,7 @@ stable.
 ## Phase 2 Unlock Conditions
 
 - Container isolation for untrusted PRs and reproducible command execution.
-- A stable Probe Driver SDK with at least CLI, API, and web driver coverage.
+- Web driver coverage on top of the stable SDK and current CLI/API coverage.
 - Claim/evidence data model promotion beyond the compact MVP schema.
 - Evaluation fixtures that measure false positives, false negatives, and
   verdict stability before AI review/refutation is enabled by default.

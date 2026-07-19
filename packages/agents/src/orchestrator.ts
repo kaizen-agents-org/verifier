@@ -189,6 +189,8 @@ export interface RunRefutationStageOptions {
   executor?: ReproCommandExecutor;
   timeoutMs?: number;
   maxOutputBytes?: number;
+  stage?: 4 | 5;
+  evidencePrefix?: string;
 }
 
 export interface RefutationStageResult {
@@ -207,7 +209,8 @@ export async function runRefutationStage(
   const runDir = resolve(runsRoot, runMeta.runId);
   const outputFindings: Finding[] = [];
   const evidence: Evidence[] = [];
-  let updatedRunMeta = withStage(runMeta, 4);
+  let updatedRunMeta = withStage(runMeta, options.stage ?? 4);
+  const evidencePrefix = options.evidencePrefix ?? "E-S4";
 
   for (let index = 0; index < findings.length; index += 1) {
     const finding = findings[index];
@@ -220,7 +223,7 @@ export async function runRefutationStage(
         {
           workspace,
           runDir,
-          evidenceId: `E-S4-${index + 1}`,
+          evidenceId: `${evidencePrefix}-${index + 1}`,
           authorizeCommand: () => false,
           ...(options.executor ? { executor: options.executor } : {})
         }
@@ -244,7 +247,7 @@ export async function runRefutationStage(
     const gated = await runRefutationGate(finding, refuterOutput, {
       workspace,
       runDir,
-      evidenceId: `E-S4-${index + 1}`,
+      evidenceId: `${evidencePrefix}-${index + 1}`,
       authorizeCommand: options.authorizeCommand ?? (() => false),
       ...(options.executor ? { executor: options.executor } : {}),
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
