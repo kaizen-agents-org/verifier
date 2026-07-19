@@ -68,3 +68,19 @@ export {
   type RefuterTransport
 } from "./refuter/client.js";
 export { RefuterOutputSchema, type RefuterOutput } from "./refuter/schema.js";
+export {
+  createSemanticBatchItems,
+  submitSemanticEvalBatch,
+  type SemanticBatchItem,
+  type SemanticBatchSubmission,
+  type SemanticBatchSubmitter
+} from "./eval/batch.js";
+export {
+  calculateSemanticMetrics,
+  compareSemanticThresholds,
+  runSemanticEval,
+  semanticEvalExitCode,
+  type RunSemanticEvalOptions,
+  type SemanticEvalResult,
+  type SemanticMetrics
+} from "./eval/run.js";

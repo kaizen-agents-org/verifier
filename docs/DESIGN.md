@@ -555,13 +555,17 @@ export interface VerifierConfig {
 | エージェント | 入力 | 出力スキーマ（要点） |
 |---|---|---|
 | intent-extractor | Intentソース（tier付き）+ diff要約 | `{ claims: {statement, priority, plannedChecks, sourceRef}[], conflicts: string[] }` |
-| lens-reviewer ×4 | diff + 周辺コード + レンズ定義 + Claim一覧 | `{ findings: {category, title, location, scenario, suggestedRepro?, claimIds}[], claimAssessments: {claimId, supported, note}[] }` ※severityフィールドは存在しない。claimAssessmentsは正の証拠（reading強度）の紐付けに使う |
+| lens-reviewer ×4（現在はcorrectness ×1） | diff + 周辺コード + レンズ定義 + Claim一覧 | `{ findings: {category, title, location, scenario, suggestedRepro?, claimIds}[], claimAssessments: {claimId, supported, note}[] }` ※severityフィールドは存在しない。claimAssessmentsは正の証拠（reading強度）の紐付けに使う |
 | test-generator | 変更関数のシグネチャ + 既存テスト例 | `{ tests: {name, code, targetClaim?}[] }` |
-| refuter | Finding + 関連コード + 実行権限 | `{ outcome: 'survived'\|'refuted', reasoning, reproCommand? }` |
+| refuter | Finding + 関連コード + 実行方針（提案可・直接実行不可） | `{ outcome: 'survived'\|'refuted', reasoning, reproCommand? }`。コマンド実行はorchestratorのみ |
 | scenario-generator | diff + 検出ターゲット + Claim | `{ scenarios: Scenario[] }` |
 | vision-judge | スクリーンショット + 自然言語アサーション | `{ pass: boolean, observation: string }` |
 
 共通規約: 生成パラメータ・モデルIDは `agents/config.ts` で固定しrunMetaに記録（再現性）。Opus 4.8ではsampling parameterが非対応のため、temperature相当の固定設定として`effort`を使用する。リトライはスキーマ不一致時のみ最大2回。トークン・コストを呼び出し単位で計測し `RunMeta.cost` に集計。
+
+並列レンズ追加時は、共通system prefixに`cache_control`を置いたcorrectness
+リクエストを先に開始し、最初のストリーム開始を待ってから残りを並列発射する。
+現状はレンズ1本のため直列実行である。
 
 ## 10. エラーハンドリング方針
 

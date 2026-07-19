@@ -63,6 +63,9 @@ Useful package commands:
 | `pnpm build` | Build the CLI and embed its source commit in `dist/build-info.json`. |
 | `pnpm test:built-cli` | Exercise the built CLI, including provenance and ANSI-log regressions. |
 | `pnpm eval` | Run the committed verifier eval corpus and print metrics. |
+| `pnpm eval:fixtures` | Run the hermetic repository-fixture baseline and update `fixtures/metrics.json`. |
+| `pnpm eval:semantic -- --mode smoke` | Replay sb-001/003/008 with refutation on and off. |
+| `pnpm eval:semantic -- --mode full --output fixtures/semantic-metrics.json` | Replay the full semantic corpus and enforce `eval/thresholds.json`. |
 | `pnpm schema:generate` | Regenerate `schemas/verdict.schema.json` from Zod types. |
 | `pnpm schema:check` | Regenerate the schema and fail if the committed schema is stale. |
 
@@ -94,6 +97,22 @@ The default transport reads `ANTHROPIC_API_KEY` through `@anthropic-ai/sdk`.
 Callers can inject a transport for tests or controlled execution. The existing
 `verifier check` CLI does not import or invoke this package and remains fully
 deterministic and network-free.
+
+## Opt-in Correctness Review And Refutation
+
+`@verifier/agents` also exposes one correctness lens plus an adversarial
+refuter. Both use strict structured outputs. The lens requires a concrete
+`scenario` and contains no `severity`; core derives severity. The refuter can
+propose a `reproCommand`, but only `runRefutationStage` passes that string to
+the bounded core executor when `allowCommandExecution: true` is explicit, then
+records redacted command evidence.
+
+The semantic eval replays committed lens/refuter outputs for all 14 repository
+fixtures, so CI needs no API key or billable network call. Its comparison is
+stored in `fixtures/semantic-metrics.json`. Normal changes run the smoke subset;
+agent, judge, refutation, prompt, and threshold changes run the full gate.
+Batch submission is available through the injected `submitSemanticEvalBatch`
+boundary and is never called by CI.
 
 ## CLI Usage
 
