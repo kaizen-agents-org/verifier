@@ -1,0 +1,18 @@
+{
+  "id": "sb-006-api-key-logging",
+  "kind": "seeded",
+  "description": "A diagnostic change prints the API key read from the environment.",
+  "groundTruth": { "defect": true },
+  "intent": {
+    "text": "Add a startup diagnostic without exposing credentials or other sensitive configuration."
+  },
+  "expected": {
+    "verdict": "not_mergeable"
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node --test test/logger.test.js"]
+  },
+  "timeoutMinutes": 5
+}

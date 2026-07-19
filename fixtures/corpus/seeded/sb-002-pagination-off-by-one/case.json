@@ -2,6 +2,7 @@
   "id": "sb-002-pagination-off-by-one",
   "kind": "seeded",
   "description": "totalPages() uses floor instead of ceil, dropping the final partial page.",
+  "groundTruth": { "defect": true },
   "intent": {
     "text": "Compute the total number of pages for the item list, including a final partial page."
   },

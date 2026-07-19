@@ -1,0 +1,14 @@
+$ pytest -q
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________________________ test_divide_round_down __________________________
+
+    def test_divide_round_down() -> None:
+>       assert divide_round_down(5, 2) == 2
+E       assert 3 == 2
+E        +  where 3 = divide_round_down(5, 2)
+
+test/test_calculator.py:5: AssertionError
+=========================== short test summary info ============================
+FAILED test/test_calculator.py::test_divide_round_down - assert 3 == 2
+1 failed in 0.05s

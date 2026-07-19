@@ -1,0 +1,19 @@
+{
+  "id": "sb-010-intent-implementation-mismatch",
+  "kind": "seeded",
+  "description": "The issue requests feature A but the patch implements feature B; semantic intent comparison is tracked by #81.",
+  "groundTruth": { "defect": true },
+  "intent": {
+    "text": "Implement feature A by exporting featureA() with the value requested by the issue."
+  },
+  "expected": {
+    "verdictAnyOf": ["conditional", "not_mergeable"],
+    "knownGap": true
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node --test test/feature-b.test.js"]
+  },
+  "timeoutMinutes": 5
+}

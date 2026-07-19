@@ -1,0 +1,9 @@
+diff --git a/src/logger.js b/src/logger.js
+index 0df5f55..5b5998d 100644
+--- a/src/logger.js
++++ b/src/logger.js
+@@ -1,3 +1,4 @@
+ export function logStartup(env, output = console.log) {
+   output(`service=${env.SERVICE_NAME ?? "unknown"}`);
++  output(`apiKey=${env.API_KEY}`);
+ }

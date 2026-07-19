@@ -1,0 +1,24 @@
+{
+  "id": "gp-002-pr-102-needed-fix",
+  "kind": "golden",
+  "description": "Hermetic replay of verifier PR #102 at the reviewed pre-fix revision where per-fixture timeouts were not passed to runCheck.",
+  "groundTruth": { "defect": true },
+  "intent": {
+    "text": "Run repository fixtures with each case's configured timeout budget."
+  },
+  "expected": {
+    "verdict": "not_mergeable"
+  },
+  "golden": {
+    "repoUrl": "https://github.com/kaizen-agents-org/verifier.git",
+    "baseSha": "9ea3fb089d764c19415b0da9299d19ec24ee9e62",
+    "headSha": "cee7039f9c0f8d330b4195615fb7b65ba1418441",
+    "labelSource": "https://github.com/kaizen-agents-org/verifier/pull/102#issuecomment-4941577073",
+    "replay": {
+      "baseDir": "repo",
+      "patch": "change.patch"
+    },
+    "verifyCommands": ["node test/verify-timeout-wiring.js"]
+  },
+  "timeoutMinutes": 5
+}

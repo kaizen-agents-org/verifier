@@ -1,0 +1,16 @@
+{
+  "id": "sb-009-unexplained-clean-diff",
+  "kind": "seeded",
+  "description": "A behavior-preserving cleanup has no primary intent, so the diff remains conditional with low confidence.",
+  "groundTruth": { "defect": false },
+  "expected": {
+    "verdict": "conditional",
+    "confidenceMax": 50
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node --test test/normalize.test.js"]
+  },
+  "timeoutMinutes": 5
+}

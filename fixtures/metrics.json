@@ -1,62 +1,76 @@
 {
-  "generatedAt": "2026-07-11T02:37:29.307Z",
-  "corpusDir": "/Volumes/SSD/ghq/github.com/kaizen-agents-org/_pr-work/resume/verifier-pr-102/fixtures/corpus",
+  "generatedAt": "2026-07-19T04:29:05.445Z",
+  "corpusDir": "fixtures/corpus",
   "metrics": {
-    "totalCases": 5,
-    "passedCases": 3,
-    "failedCases": 2,
+    "totalCases": 14,
+    "passedCases": 11,
+    "failedCases": 3,
+    "knownGapFailures": 3,
+    "unexpectedFailures": 0,
     "harnessErrors": 0,
-    "verdictAgreement": 0.6,
+    "defectCases": 11,
+    "cleanCases": 3,
+    "recall": 0.7273,
+    "fpRate": 0,
+    "falsePositiveCases": 0,
+    "verdictAgreement": 0.7857,
     "byKind": {
       "seeded": {
-        "total": 5,
-        "passed": 3,
-        "failed": 2
+        "total": 12,
+        "passed": 9,
+        "failed": 3
       },
       "golden": {
-        "total": 0,
-        "passed": 0,
+        "total": 2,
+        "passed": 2,
         "failed": 0
       }
     }
   },
   "cases": [
     {
-      "id": "sb-001-authz-missing",
-      "kind": "seeded",
-      "description": "POST admin update route drops its authorization check while GET keeps it.",
-      "passed": false,
-      "failures": [
-        "expected verdict not_mergeable, got conditional"
-      ],
-      "actual": {
-        "verdict": "conditional",
-        "confidence": 60
+      "id": "gp-001-pr-75-merged-success",
+      "kind": "golden",
+      "description": "Hermetic replay of the evidence-grade change from verifier PR #75, whose final revision passed CI and review without blockers.",
+      "groundTruth": {
+        "defect": false
       },
-      "expected": {
-        "verdict": "not_mergeable",
-        "knownGap": true
-      }
-    },
-    {
-      "id": "sb-002-pagination-off-by-one",
-      "kind": "seeded",
-      "description": "totalPages() uses floor instead of ceil, dropping the final partial page.",
       "passed": true,
       "failures": [],
       "actual": {
-        "verdict": "conditional",
-        "confidence": 56
+        "verdict": "mergeable",
+        "confidence": 82
       },
       "expected": {
-        "verdict": "conditional",
+        "verdict": "mergeable",
         "knownGap": false
       }
     },
     {
-      "id": "sb-003-regression-breaks-test",
+      "id": "gp-002-pr-102-needed-fix",
+      "kind": "golden",
+      "description": "Hermetic replay of verifier PR #102 at the reviewed pre-fix revision where per-fixture timeouts were not passed to runCheck.",
+      "groundTruth": {
+        "defect": true
+      },
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "not_mergeable",
+        "confidence": 61
+      },
+      "expected": {
+        "verdict": "not_mergeable",
+        "knownGap": false
+      }
+    },
+    {
+      "id": "sb-001-authz-missing",
       "kind": "seeded",
-      "description": "formatCurrency divides by 1000 instead of 100, breaking the existing currency-formatting tests.",
+      "description": "POST admin update route drops its authorization check while GET keeps it.",
+      "groundTruth": {
+        "defect": true
+      },
       "passed": true,
       "failures": [],
       "actual": {
@@ -69,9 +83,86 @@
       }
     },
     {
+      "id": "sb-002-pagination-off-by-one",
+      "kind": "seeded",
+      "description": "totalPages() uses floor instead of ceil, dropping the final partial page.",
+      "groundTruth": {
+        "defect": true
+      },
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "conditional",
+        "confidence": 64
+      },
+      "expected": {
+        "verdict": "conditional",
+        "knownGap": false
+      }
+    },
+    {
+      "id": "sb-003-regression-breaks-test",
+      "kind": "seeded",
+      "description": "formatCurrency divides by 1000 instead of 100, breaking the existing currency-formatting tests.",
+      "groundTruth": {
+        "defect": true
+      },
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "not_mergeable",
+        "confidence": 81
+      },
+      "expected": {
+        "verdict": "not_mergeable",
+        "knownGap": false
+      }
+    },
+    {
       "id": "sb-004-empty-array-crash",
       "kind": "seeded",
       "description": "maxValue() drops its empty-array default and throws TypeError on empty input.",
+      "groundTruth": {
+        "defect": true
+      },
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "not_mergeable",
+        "confidence": 84
+      },
+      "expected": {
+        "verdict": "not_mergeable",
+        "knownGap": false
+      }
+    },
+    {
+      "id": "sb-005-file-handle-leak",
+      "kind": "seeded",
+      "description": "Error-path file handle cleanup is removed; detecting the leak requires the Stage 4 reproduction capability tracked by #81.",
+      "groundTruth": {
+        "defect": true
+      },
+      "passed": false,
+      "failures": [
+        "expected verdict conditional, got mergeable"
+      ],
+      "actual": {
+        "verdict": "mergeable",
+        "confidence": 82
+      },
+      "expected": {
+        "verdict": "conditional",
+        "knownGap": true
+      }
+    },
+    {
+      "id": "sb-006-api-key-logging",
+      "kind": "seeded",
+      "description": "A diagnostic change prints the API key read from the environment.",
+      "groundTruth": {
+        "defect": true
+      },
       "passed": true,
       "failures": [],
       "actual": {
@@ -84,20 +175,119 @@
       }
     },
     {
+      "id": "sb-007-multibyte-cache-collision",
+      "kind": "seeded",
+      "description": "Cache keys truncate UTF-8 bytes and collide for multibyte input; reproduction requires the Stage 4 capability tracked by #81.",
+      "groundTruth": {
+        "defect": true
+      },
+      "passed": false,
+      "failures": [
+        "expected verdict conditional, got mergeable"
+      ],
+      "actual": {
+        "verdict": "mergeable",
+        "confidence": 82
+      },
+      "expected": {
+        "verdict": "conditional",
+        "knownGap": true
+      }
+    },
+    {
       "id": "sb-008-clean-refactor",
       "kind": "seeded",
       "description": "Rewrites slugify() with an equivalent regex-based implementation; no behavior change.",
-      "passed": false,
-      "failures": [
-        "expected verdict mergeable, got conditional"
-      ],
+      "groundTruth": {
+        "defect": false
+      },
+      "passed": true,
+      "failures": [],
       "actual": {
-        "verdict": "conditional",
-        "confidence": 60
+        "verdict": "mergeable",
+        "confidence": 82
       },
       "expected": {
         "verdict": "mergeable",
+        "knownGap": false
+      }
+    },
+    {
+      "id": "sb-009-unexplained-clean-diff",
+      "kind": "seeded",
+      "description": "A behavior-preserving cleanup has no primary intent, so the diff remains conditional with low confidence.",
+      "groundTruth": {
+        "defect": false
+      },
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "conditional",
+        "confidence": 39
+      },
+      "expected": {
+        "verdict": "conditional",
+        "confidenceMax": 50,
+        "knownGap": false
+      }
+    },
+    {
+      "id": "sb-010-intent-implementation-mismatch",
+      "kind": "seeded",
+      "description": "The issue requests feature A but the patch implements feature B; semantic intent comparison is tracked by #81.",
+      "groundTruth": {
+        "defect": true
+      },
+      "passed": false,
+      "failures": [
+        "expected verdict conditional or not_mergeable, got mergeable"
+      ],
+      "actual": {
+        "verdict": "mergeable",
+        "confidence": 82
+      },
+      "expected": {
+        "verdictAnyOf": [
+          "conditional",
+          "not_mergeable"
+        ],
         "knownGap": true
+      }
+    },
+    {
+      "id": "sb-011-pytest-failure-log",
+      "kind": "seeded",
+      "description": "Replays a captured pytest assertion failure, including command identity, output channel, and exit status.",
+      "groundTruth": {
+        "defect": true
+      },
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "not_mergeable",
+        "confidence": 67
+      },
+      "expected": {
+        "verdict": "not_mergeable",
+        "knownGap": false
+      }
+    },
+    {
+      "id": "sb-012-cargo-failure-log",
+      "kind": "seeded",
+      "description": "Replays a captured cargo test failure with separate stdout/stderr and the original exit status.",
+      "groundTruth": {
+        "defect": true
+      },
+      "passed": true,
+      "failures": [],
+      "actual": {
+        "verdict": "not_mergeable",
+        "confidence": 87
+      },
+      "expected": {
+        "verdict": "not_mergeable",
+        "knownGap": false
       }
     }
   ],

@@ -2,6 +2,7 @@
   "id": "sb-003-regression-breaks-test",
   "kind": "seeded",
   "description": "formatCurrency divides by 1000 instead of 100, breaking the existing currency-formatting tests.",
+  "groundTruth": { "defect": true },
   "intent": {
     "text": "Refactor formatCurrency for readability without changing its output."
   },

@@ -1,0 +1,20 @@
+diff --git a/packages/core/src/check.ts b/packages/core/src/check.ts
+index 7d0c210..055d90c 100644
+--- a/packages/core/src/check.ts
++++ b/packages/core/src/check.ts
+@@ -3,6 +3,7 @@ export function buildVerdict(compactVerdict, finalVerdict, conditions) {
+     ...compactVerdict,
+     final_verdict: finalVerdict,
+     conditions,
++    evidence_grade: commandResults.length > 0 ? "executed" : "reported",
+     summary: "verifier summary"
+   };
+ }
+@@ -11,6 +12,7 @@ export function renderMarkdownReport(verdict) {
+   return [
+     `Confidence: ${verdict.confidence}`,
+     `Risk: ${verdict.risk}`,
++    verdict.evidence_grade ? `Evidence grade: ${verdict.evidence_grade}` : "",
+     `Compatibility verdict: ${verdict.verdict}`
+   ].join("\n");
+ }

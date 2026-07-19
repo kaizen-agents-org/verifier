@@ -22,10 +22,14 @@ does not regress into false-positive blockers. The command emits JSON metrics,
 including `verdictAgreement` and `falsePositiveRate`, and exits non-zero when any
 case fails or the MVP threshold gate is not met.
 
+The repository-fixture pipeline described in §2 is available separately as
+`pnpm eval:fixtures`; it writes its measured baseline to `fixtures/metrics.json`.
+
 The committed MVP threshold file is `packages/core/eval/thresholds.json`.
 It currently gates the metrics implemented by the MVP harness:
 `verdictAgreementMin` and `falsePositiveRateMax`. The broader `recall` and
-`reproducibility` gates described below remain future staged-eval work.
+Finding-level `recall` and `reproducibility` gates described below remain future
+staged-eval work; `eval:fixtures` reports the case-level recall proxy defined in §4.
 
 The MVP corpus includes seeded/golden cases for `open_pr`,
 `open_pr_with_warning`, `block_pr`, and `needs_context` so readiness reviews can
@@ -43,34 +47,38 @@ fixtures/
   corpus/                      # ベンチマークコーパス（§2）
     seeded/
       sb-001-auth-bypass/
-        case.yaml              # ケース定義（§2.1）
+        case.json              # ケース定義（§2.1）
         repo/                  # ベースとなる正常なミニプロジェクト
         bug.patch              # 注入するバグ
       sb-002-off-by-one/
       ...
     golden/
       gp-001/
-        case.yaml              # 外部リポジトリ参照（repo URL + base/head SHA）
+        case.json              # 外部provenance + hermetic replay
+        repo/
+        change.patch
   apps/                        # ドライバ検証用fixtureアプリ（§3）
     web-spa/
     electron-min/
     cli-tool/
     tui-min/
     api-server/
-eval/
-  run.ts                       # コーパス全実行 → metrics.json
-  metrics.ts                   # §4の指標算出
-  thresholds.json              # リリースゲート閾値
+packages/core/src/eval/
+  fixture-run.ts               # repo-fixture全実行 → fixtures/metrics.json
 ```
 
 ## 2. ベンチマークコーパス
 
-### 2.1 case.yaml スキーマ
+### 2.1 case.json スキーマ
+
+実行ハーネスは以下と同等の JSON を読む（説明上はコメント可能な YAML 表記で示す）。
 
 ```yaml
 id: sb-001-auth-bypass
 kind: seeded            # seeded | golden
 description: 管理APIの認可チェックがPOSTに適用されない
+groundTruth:
+  defect: true          # 注入欠陥/過去レビューで確認済み欠陥があるか
 intent:                 # Verifierに渡すIntent（一次ソースとして扱う）
   text: "管理APIに認可チェックを追加する"
 expected:
@@ -98,24 +106,30 @@ setup:                  # seededのみ
   patch: bug.patch
 golden:                 # goldenのみ
   repoUrl: https://github.com/...
-  baseSha: abc123
-  headSha: def456
-  labelSource: "revert PR #99 に理由記載"   # ラベル根拠（必須）
+  baseSha: 0123456789abcdef0123456789abcdef01234567  # full SHA
+  headSha: 89abcdef0123456789abcdef0123456789abcdef  # full SHA
+  labelSource: https://github.com/org/repo/pull/99#discussion_r123  # immutableなラベル根拠
+  replay:                # 任意。通常evalをoffline/hermeticにする縮小再現
+    baseDir: repo/
+    patch: change.patch
+  verifyCommands:
+    - node test/verify-replay.js
 timeoutMinutes: 15
 ```
 
-### 2.2 1ケースの実行手順（eval/run.ts）
+### 2.2 1ケースの実行手順（packages/core/src/eval/fixture-run.ts）
 
 seededケースは `repo/` がgitリポジトリではないため、ハーネスが毎回構成する:
 
 ```
 1. tmpdirへ repo/ をコピーし git init → 全ファイルcommit（= baseSha）
-2. bug.patch を適用して commit（= headSha）。kind=golden の場合は repoUrl をclone
-   して baseSha/headSha をチェックアウトするだけ
+2. bug.patch を適用して commit（= headSha）。kind=golden で replay がある場合も同じ
+   ローカル構成を使い、repoUrl/baseSha/headSha/labelSource は過去PRの provenance として
+   固定する。replay がない golden のみ repoUrl をcloneして baseSha/headSha をcheckoutする
    ※コミットメッセージは中立固定値（"base" / "apply changes"）とする。
      ハーネスがIntent情報をコミットメッセージ（二次ソース）経由で漏らさないため
 3. verifier check --base <baseSha> --json --budget-minutes <timeoutMinutes> を実行。
-   case.yaml に intent があれば --intent "<intent.text>" を付与（一次ソース扱い）。
+   case.json に intent があれば --intent "<intent.text>" を付与（一次ソース扱い）。
    sb-009 のような意図欠如ケースでは --intent を渡さない
 4. stdout の Verdict JSON（verdict.schema.json 準拠）をパースし、expected と照合
 5. exit code 70（内部エラー）はケース失敗ではなくハーネスエラーとして別カウント
@@ -149,6 +163,11 @@ fixtureを先に追加する場合は期待値を変更せず`knownGap: true`と
 後続実装を追跡するissue（現在は#81）をdescriptionまたはコメントで参照する。
 
 sb-008/009のような**正常ケースを必ず含める**（検出率だけ最適化して偽陽性が壊れるのを防ぐ）。
+
+Phase 1 の外部ハーネス準備ケースとして sb-011（pytest）と sb-012（cargo test）も
+保持する。実行環境へ Python/Rust toolchain を要求しないよう、最小の対象ソースに加えて
+実コマンド名・stdout/stderr・exit code・captureMethod を fixture 内へ保存し、Node の
+replay helper はその capture を改変せず再生する transport としてのみ使う。
 
 ## 3. ドライバ検証用fixtureアプリ
 
@@ -203,7 +222,8 @@ test(`${driver.targetType} clean run has no failures`, async () => {
 
 ## 4. メトリクス定義
 
-`eval/run.ts` がコーパス全件にVerifierを実行し、`metrics.json` を出力する。
+`fixture-run.ts` がrepo-fixtureコーパス全件にVerifierを実行し、
+`fixtures/metrics.json` を出力する。
 
 | 指標 | 定義 |
 |---|---|
@@ -213,6 +233,13 @@ test(`${driver.targetType} clean run has no failures`, async () => {
 | **reproducibility** | 全ケースをN=5回実行し、Verdict区分が5回とも一致したケースの割合（リリースタグ時のみ算出。§5） |
 | **costPerRun** | 1ケースあたり平均USD / 平均トークン |
 | **wallClock** | 1ケースあたり平均実行時間 |
+
+現行の deterministic repo-fixture baseline は category/location を持つ Stage 0+ Finding を
+まだ生成しないため、`fixtures/metrics.json` の `recall` と `fpRate` は groundTruth による
+case-level proxy とする。`recall` は `groundTruth.defect=true` のうち Verdict が
+`conditional` または `not_mergeable` になった割合、`fpRate` は defect=false のケースで
+期待より厳しい `conditional` / `not_mergeable` になった割合である。Stage 0+ 導入後は上表の
+Finding category/location マッチによる指標を正とし、proxy と区別して移行する。
 
 ## 5. リリースゲート
 
