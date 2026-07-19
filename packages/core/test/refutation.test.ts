@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -31,6 +31,7 @@ describe("refutation gate", () => {
         workspace,
         runDir: join(workspace, ".verifier/runs/run-1"),
         evidenceId: "E-R1",
+        allowCommandExecution: true,
         executor
       }
     );
@@ -113,6 +114,7 @@ describe("refutation gate", () => {
         workspace,
         runDir,
         evidenceId: "E-R1",
+        allowCommandExecution: true,
         executor: async (command) =>
           commandResult({ command, code: 0, stdout: "token=super-secret-value\n" })
       }
@@ -133,6 +135,7 @@ describe("refutation gate", () => {
           workspace,
           runDir: join(workspace, "..", "outside"),
           evidenceId: "E-R1",
+          allowCommandExecution: true,
           executor: async (command) => commandResult({ command, code: 0 })
         }
       )
@@ -149,10 +152,53 @@ describe("refutation gate", () => {
           workspace,
           runDir: join(workspace, ".verifier/runs/run-1"),
           evidenceId: "../../outside",
+          allowCommandExecution: true,
           executor: async (command) => commandResult({ command, code: 0 })
         }
       )
     ).rejects.toThrow("Invalid refutation evidence ID");
+  });
+
+  it("does not execute a proposed command without explicit orchestrator permission", async () => {
+    const workspace = await makeWorkspace();
+    const executor: ReproCommandExecutor = async () => {
+      throw new Error("executor must not run");
+    };
+    const result = await runRefutationGate(
+      makeFinding(),
+      { outcome: "survived", reasoning: "reachable", reproCommand: "test" },
+      {
+        workspace,
+        runDir: join(workspace, ".verifier/runs/run-1"),
+        evidenceId: "E-R1",
+        allowCommandExecution: false,
+        executor
+      }
+    );
+
+    expect(result.execution).toBeUndefined();
+    expect(result.finding.refutation.notes).toContain("not executed by policy");
+  });
+
+  it("rejects symlinked evidence directories that resolve outside the workspace", async () => {
+    const workspace = await makeWorkspace();
+    const outside = await makeWorkspace();
+    await mkdir(join(outside, "runs"), { recursive: true });
+    await symlink(outside, join(workspace, ".verifier"));
+
+    await expect(
+      runRefutationGate(
+        makeFinding(),
+        { outcome: "survived", reasoning: "reachable", reproCommand: "test" },
+        {
+          workspace,
+          runDir: join(workspace, ".verifier/runs/run-1"),
+          evidenceId: "E-R1",
+          allowCommandExecution: true,
+          executor: async (command) => commandResult({ command, code: 0 })
+        }
+      )
+    ).rejects.toThrow("resolves outside the workspace");
   });
 
   it("bounds output collected by the default executor", async () => {
@@ -177,6 +223,7 @@ function gateOptions(workspace: string, executor: ReproCommandExecutor) {
     workspace,
     runDir: join(workspace, ".verifier/runs/run-1"),
     evidenceId: "E-R1",
+    allowCommandExecution: true,
     executor
   };
 }

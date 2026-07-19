@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import type { Evidence, Finding } from "../judge/index.js";
 import { redactSensitiveText } from "../redaction.js";
@@ -39,6 +39,7 @@ export type ReproCommandExecutor = (
 export interface RunRefutationGateOptions extends ExecuteReproCommandOptions {
   runDir: string;
   evidenceId: string;
+  allowCommandExecution: boolean;
   executor?: ReproCommandExecutor;
 }
 
@@ -74,16 +75,29 @@ export async function runRefutationGate(
       finding: withRefuterOutcome(finding, refuterOutput, undefined)
     };
   }
+  if (!options.allowCommandExecution) {
+    return {
+      finding: withRefuterOutcome(
+        finding,
+        {
+          ...refuterOutput,
+          reasoning: `${refuterOutput.reasoning} Reproduction command was not executed by policy.`
+        },
+        undefined
+      )
+    };
+  }
 
   if (!EVIDENCE_ID_PATTERN.test(options.evidenceId)) {
     throw new Error(`Invalid refutation evidence ID: ${options.evidenceId}`);
   }
-  assertEvidenceDirectory(options.workspace, options.runDir);
+  await assertEvidenceDirectory(options.workspace, options.runDir);
   const executor = options.executor ?? executeReproCommand;
   const execution = await executor(command, options);
   const evidencePath = join("evidence", `${options.evidenceId}.txt`);
   const absoluteEvidencePath = resolve(options.runDir, evidencePath);
   await mkdir(resolve(options.runDir, "evidence"), { recursive: true });
+  await assertRealPathWithinWorkspace(options.workspace, resolve(options.runDir, "evidence"));
   await writeFile(absoluteEvidencePath, redactSensitiveText(formatExecution(execution)), "utf8");
 
   const confirmed = execution.code === 0 && !execution.timedOut;
@@ -221,12 +235,38 @@ function withRefuterOutcome(
   };
 }
 
-function assertEvidenceDirectory(workspace: string, runDir: string): void {
+async function assertEvidenceDirectory(workspace: string, runDir: string): Promise<void> {
   const resolvedWorkspace = resolve(workspace);
   const resolvedRunDir = resolve(runDir);
   const relativePath = relative(resolvedWorkspace, resolvedRunDir);
   if (relativePath === "" || relativePath.startsWith("..") || isAbsolute(relativePath)) {
     throw new Error("Refutation runDir must be a child of the workspace.");
+  }
+
+  let ancestor = resolvedRunDir;
+  while (!(await pathExists(ancestor))) {
+    const parent = resolve(ancestor, "..");
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+  await assertRealPathWithinWorkspace(workspace, ancestor);
+}
+
+async function assertRealPathWithinWorkspace(workspace: string, path: string): Promise<void> {
+  const [realWorkspace, realTarget] = await Promise.all([realpath(workspace), realpath(path)]);
+  const relativePath = relative(realWorkspace, realTarget);
+  if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    throw new Error("Refutation evidence path resolves outside the workspace.");
+  }
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
   }
 }
 

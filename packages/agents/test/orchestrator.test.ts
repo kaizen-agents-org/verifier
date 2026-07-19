@@ -198,6 +198,7 @@ describe("correctness and refutation orchestration", () => {
     const result = await runRefutationStage([finding], makeRunMeta(), {
       workspace,
       getRelatedCode: () => "code",
+      allowCommandExecution: true,
       transport: async () => ({
         parsed_output: {
           outcome: "survived",

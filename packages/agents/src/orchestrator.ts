@@ -171,6 +171,7 @@ export function materializeCorrectnessReview(
 export interface RunRefutationStageOptions {
   workspace: string;
   getRelatedCode: (finding: Finding) => string;
+  allowCommandExecution?: boolean;
   runsRoot?: string;
   transport?: RefuterTransport;
   executor?: ReproCommandExecutor;
@@ -208,6 +209,7 @@ export async function runRefutationStage(
           workspace,
           runDir,
           evidenceId: `E-S4-${index + 1}`,
+          allowCommandExecution: false,
           ...(options.executor ? { executor: options.executor } : {})
         }
       );
@@ -231,6 +233,7 @@ export async function runRefutationStage(
       workspace,
       runDir,
       evidenceId: `E-S4-${index + 1}`,
+      allowCommandExecution: options.allowCommandExecution === true,
       ...(options.executor ? { executor: options.executor } : {}),
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
       ...(options.maxOutputBytes !== undefined ? { maxOutputBytes: options.maxOutputBytes } : {})
