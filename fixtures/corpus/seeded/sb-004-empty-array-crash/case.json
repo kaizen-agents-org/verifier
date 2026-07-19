@@ -2,6 +2,7 @@
   "id": "sb-004-empty-array-crash",
   "kind": "seeded",
   "description": "maxValue() drops its empty-array default and throws TypeError on empty input.",
+  "groundTruth": { "defect": true },
   "intent": {
     "text": "Simplify maxValue's reduce call while keeping the same behavior for all inputs, including empty arrays."
   },

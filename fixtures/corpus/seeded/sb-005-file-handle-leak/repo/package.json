@@ -1,0 +1,5 @@
+{
+  "name": "sb-005-file-handle-leak",
+  "private": true,
+  "type": "module"
+}

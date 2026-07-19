@@ -1,0 +1,7 @@
+{
+  "command": "cargo test",
+  "stdoutFile": "cargo-failure.stdout.txt",
+  "stderrFile": "cargo-failure.stderr.txt",
+  "exitCode": 101,
+  "captureMethod": "Normalized from cargo test 1.88 output; test name, panic, summary, channels, and exit status retained."
+}

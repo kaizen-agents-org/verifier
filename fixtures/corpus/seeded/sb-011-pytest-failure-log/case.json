@@ -1,0 +1,18 @@
+{
+  "id": "sb-011-pytest-failure-log",
+  "kind": "seeded",
+  "description": "Replays a captured pytest assertion failure, including command identity, output channel, and exit status.",
+  "groundTruth": { "defect": true },
+  "intent": {
+    "text": "Keep integer division behavior covered by the Python test suite."
+  },
+  "expected": {
+    "verdict": "not_mergeable"
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node test/replay-capture.js"]
+  },
+  "timeoutMinutes": 5
+}

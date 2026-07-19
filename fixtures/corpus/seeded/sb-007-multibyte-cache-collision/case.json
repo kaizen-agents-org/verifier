@@ -1,0 +1,19 @@
+{
+  "id": "sb-007-multibyte-cache-collision",
+  "kind": "seeded",
+  "description": "Cache keys truncate UTF-8 bytes and collide for multibyte input; reproduction requires the Stage 4 capability tracked by #81.",
+  "groundTruth": { "defect": true },
+  "intent": {
+    "text": "Shorten cache keys without allowing distinct Unicode identifiers to collide."
+  },
+  "expected": {
+    "verdict": "conditional",
+    "knownGap": true
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node --test test/cache-key.test.js"]
+  },
+  "timeoutMinutes": 5
+}

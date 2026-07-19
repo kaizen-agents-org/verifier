@@ -1,0 +1,4 @@
+   Compiling identifier-parser v0.1.0 (/fixture)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.31s
+     Running unittests src/lib.rs (target/debug/deps/identifier_parser-example)
+error: test failed, to rerun pass `--lib`
