@@ -1,0 +1,20 @@
+{
+  "id": "gp-013-kaizen-200-sanitized",
+  "kind": "golden",
+  "stack": "node",
+  "labelSource": "sanitized Kaizen nightly run issue #200",
+  "description": "Sanitized Kaizen #200 replay: ANSI passing tests and category-list prose must not create false blockers.",
+  "input": {
+    "task": "Require an authorized label before externally operated issues can run.",
+    "diff": "diff --git a/docs/design.md b/docs/design.md\n+The verifier covers auth, secrets, billing, and database migrations.\ndiff --git a/src/config.ts b/src/config.ts\n+const protectedPaths = ['**/*migration*/**', '**/secrets/**']\ndiff --git a/src/github/client.ts b/src/github/client.ts\n+const authorized = permissionRank(permission) >= permissionRank(minimumPermission)\n+return { authorized, actor, permission }",
+    "verifyLogs": "\u001b[32m✓\u001b[39m test/block-classification.test.ts (7 tests) 3ms\n\u001b[33m✓\u001b[39m does not call the evaluator when runKaizen returns a failed issue summary 328ms\n\u001b[33m✓\u001b[39m includes previous mechanical evaluation failure output in the next iteration issue body 544ms\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m31 passed\u001b[39m\u001b[22m (31)\n\u001b[2m Tests \u001b[22m \u001b[1m\u001b[32m296 passed\u001b[39m\u001b[22m (296)\ntypecheck passed\nbuild passed",
+    "builderReport": "Focused authorization permission tests passed."
+  },
+  "expected": {
+    "verdict": "open_pr_with_warning",
+    "risk": "medium",
+    "mustFixMax": 0,
+    "shouldFixMin": 1,
+    "maxFalsePositives": 0
+  }
+}

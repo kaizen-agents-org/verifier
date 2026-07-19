@@ -97,6 +97,91 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix).toHaveLength(0);
   });
 
+  it("does not block ANSI-colored passing Vitest names with failure vocabulary", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Replay the sanitized Kaizen nightly verification",
+      diff: "diff --git a/src/run.ts b/src/run.ts\n+return renderResult(result)",
+      verifyLogs:
+        "\u001b[32m✓\u001b[39m test/block-classification.test.ts (7 tests) 3ms\n" +
+        "\u001b[33m✓\u001b[39m marks the goal failed when the issue pipeline throws 317ms\n" +
+        "\u001b[33m✓\u001b[39m reports an error without blocking the next attempt 328ms\n" +
+        "\u001b[33m✓\u001b[39m includes previous mechanical evaluation failure output 544ms\n" +
+        "\u001b[33m✓\u001b[39m explains why a verification command was not run 112ms\n" +
+        "\u001b[33m✓\u001b[39m preserves risk warnings in the report 96ms\n" +
+        "\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m31 passed\u001b[39m\u001b[22m (31)\n" +
+        "\u001b[2m Tests \u001b[22m \u001b[1m\u001b[32m296 passed\u001b[39m\u001b[22m (296)\n" +
+        "typecheck passed\nbuild passed",
+      builderReport: "Focused verification passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
+  it.each([
+    "Tests 1 failed (42)",
+    "exit code 1",
+    "command exited with code 2",
+    "npm ERR! Test failed",
+    "ELIFECYCLE Command failed",
+    "FAIL test/parser.test.ts",
+    "✗ parser rejects malformed input",
+    "Error: uncaught parser exception"
+  ])("still blocks explicit failure output: %s", (failureLine) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Run verification",
+      diff: "diff --git a/parser.ts b/parser.ts\n+parse(input)",
+      verifyLogs: `42 tests passed\n${failureLine}`,
+      builderReport: "Verification was executed."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix).toHaveLength(1);
+    expect(verdict.must_fix[0]?.evidence).toContain(failureLine);
+  });
+
+  it("deduplicates equivalent failures after ANSI and whitespace normalization", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Run verification",
+      diff: "diff --git a/parser.ts b/parser.ts\n+parse(input)",
+      verifyLogs: "\u001b[31mexit code 1\u001b[39m\nexit   code   1\nexit code 1",
+      builderReport: "Verification was executed."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix).toHaveLength(1);
+    expect(verdict.must_fix[0]?.evidence).not.toMatch(/\u001b/);
+  });
+
+  it("keeps benign PASS-prefixed test names non-blocking", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Cover retry behavior",
+      diff: "diff --git a/retry.test.ts b/retry.test.ts\n+expect(retry()).toBe(true)",
+      verifyLogs: "PASS handles failed requests without an error\nTests 1 passed (1)",
+      builderReport: "Focused tests passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
+  it.each([
+    "PASS parser suite — 1 failed",
+    "✓ parser suite finished with exit code 1"
+  ])("does not let a passing prefix hide an authoritative failure: %s", (failureLine) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Run verification",
+      diff: "diff --git a/parser.ts b/parser.ts\n+parse(input)",
+      verifyLogs: `Tests 1 passed (1)\n${failureLine}`,
+      builderReport: "Verification was executed."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix).toHaveLength(1);
+    expect(verdict.must_fix[0]?.evidence).toContain(failureLine);
+  });
+
   it("does not block zero-error summary lines when other positive evidence exists", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Update lint reporting",
@@ -344,6 +429,43 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.verdict).toBe("open_pr_with_warning");
     expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(true);
+  });
+
+  it("ignores risk-category prose and sample findings in docs, tests, and fixtures", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Render structured verifier findings",
+      diff:
+        "diff --git a/docs/design.md b/docs/design.md\n" +
+        "+The verifier checks auth, secrets, billing, and database migrations.\n" +
+        "diff --git a/src/config.ts b/src/config.ts\n" +
+        "+const protectedPaths = ['**/*migration*/**', '**/secrets/**']\n" +
+        "diff --git a/test/verifier.test.ts b/test/verifier.test.ts\n" +
+        "+const finding = { source: 'diff', message: 'Review the auth change' }",
+      verifyLogs: "all tests passed",
+      builderReport: "Verifier rendering tests passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
+  it("cites the concrete diff line and remediation for high-risk findings", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor the admin update handler",
+      diff:
+        "diff --git a/src/admin.ts b/src/admin.ts\n" +
+        "--- a/src/admin.ts\n" +
+        "+++ b/src/admin.ts\n" +
+        "-requireAuthorization(request)\n" +
+        "+return ok({ status: 'updated' })",
+      verifyLogs: "all tests passed",
+      builderReport: "Refactored the handler."
+    });
+
+    const finding = verdict.must_fix.find((item) => item.message.includes("auth/authz"));
+    expect(finding?.message).toContain("Run focused verification");
+    expect(finding?.evidence).toContain("src/admin.ts: -requireAuthorization(request)");
   });
 
   it("blocks authz shorthand diffs without targeted verification evidence", () => {

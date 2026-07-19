@@ -6,20 +6,14 @@ import type {
   VerdictInput
 } from "./types.js";
 
-const HARD_FAILURE_PATTERNS = [
-  /\bfailed?\b/i,
-  /\bfailure\b/i,
-  /\berrors?\b/i,
-  /\bexception\b/i,
-  /\btraceback\b/i,
-  /\bpanic\b/i,
-  /\bsegmentation fault\b/i,
-  /\bexit code\s+[1-9]\d*\b/i,
-  /\bnot mergeable\b/i,
-  /\bblock(?:ed|ing|er)?\b/i,
-  /\bmust[-_\s]?fix\b/i,
-  /\bnpm ERR!\b/i,
-  /\bERR_PNPM\b/i
+const AUTHORITATIVE_FAILURE_RESULT_PATTERNS = [
+  /\b[1-9]\d*\s+(?:failures?|failed|errors?)\b/i,
+  /\bexit code\s+(?:[1-9]\d*|null)\b/i,
+  /\b(?:exited|returned) with (?:exit )?code\s+[1-9]\d*\b/i,
+  /\b(?:timed out|terminated by signal|signal\s+SIG[A-Z]+)\b/i,
+  /\bnpm ERR!/i,
+  /\bERR_PNPM\b/i,
+  /\bELIFECYCLE\b/i
 ];
 
 const CLEAN_PASS_MARKER_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√|PASS\b|ok\b)\s+\S+/i;
@@ -27,6 +21,20 @@ const CLEAN_PASS_TEST_LINE_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√)\s+\S+.*\(
 const CLEAN_PASS_TEST_FILE_SUMMARY_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√)\s+\S+\s+\(\d+\s+tests?\)\s*(?:\d+(?:\.\d+)?m?s)?$/i;
 const CLEAN_PASS_TEST_FILE_SUMMARY_FRAGMENT_PATTERN = /(?:^|\s)(?:✓|✔|√)\s+\S+\s+\(\d+\s+tests?\)\s*(?:\d+(?:\.\d+)?m?s)?(?:$|\s)/i;
 const ZERO_SOFT_RISK_COUNT_PATTERN = /^(?:[^\w\s]+\s*)?(?:cancelled|skipped|todo)\s+0$/i;
+const HARD_FAILURE_PATTERNS = [
+  ...AUTHORITATIVE_FAILURE_RESULT_PATTERNS,
+  /\b(?:tests?|checks?|build|typecheck|lint|schema(?::check)?|verification|command)\s+failed\b/i,
+  /\bfailed\s+(?:tests?|checks?|build|typecheck|lint|schema(?::check)?|verification|command)\b/i,
+  /\b(?:lint|typecheck|build|schema(?::check)?)\s+errors?\b/i,
+  /^(?:FAIL|FAILED|FAILURE)\b/i,
+  /^(?:×|✗|✘|❯)\s+\S/,
+  /^(?:Error|Exception|panic):\s*\S/i,
+  /^Traceback\b/i,
+  /\bsegmentation fault\b/i,
+  /\bnot mergeable\b/i
+];
+
+const PASSING_TEST_LINE_PATTERN = CLEAN_PASS_MARKER_PATTERN;
 
 const CLEAN_RESULT_PATTERNS = [
   CLEAN_PASS_MARKER_PATTERN,
@@ -46,14 +54,7 @@ const CLEAN_RESULT_PATTERNS = [
   /\b0\s+errors?,\s*\d+\s+warnings?\b/i
 ];
 
-const EXPLICIT_FAILURE_RESULT_PATTERNS = [
-  /\b[1-9]\d*\s+(?:failures?|failed|errors?)\b/i,
-  /\b(?:tests?|checks?|build|typecheck|lint|schema(?::check)?)\s+failed\b/i,
-  /\bfailed\s+(?:tests?|checks?|build|typecheck|lint|schema(?::check)?)\b/i,
-  /\bexit code\s+[1-9]\d*\b/i,
-  /\bnpm ERR!\b/i,
-  /\bERR_PNPM\b/i
-];
+const EXPLICIT_FAILURE_RESULT_PATTERNS = HARD_FAILURE_PATTERNS;
 
 const POSITIVE_VERIFICATION_PATTERNS = [
   /\[[xX]\]\s+\S+/,
@@ -97,25 +98,31 @@ const MISSING_VERIFICATION_CONFIG_PATTERNS = [
 const HIGH_RISK_DIFF_SIGNALS = [
   {
     label: "auth/authz",
-    addedPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b|\brequire(?:Auth|Authorization|Authentication|Permission)\w*\b/i,
-    removedPattern: /\b(?:auth|authz|authn|authorization|authentication|permission|access control)\b|\brequire(?:Admin|Auth|Authorization|Authentication|Permission|Role)\w*\b/i,
+    addedPattern:
+      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:authorized|authorization|authentication|permission|permissions|role|policy|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpermissionRank\s*\(/i,
+    removedPattern:
+      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:authorized|authorization|authentication|permission|permissions|role|policy|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpermissionRank\s*\(/i,
     coveragePattern: /\b(?:admin|auth|authz|authn|authorization|authentication|guard|permission|role|access control|401|403|security)\b/i
   },
   {
     label: "secrets/credentials",
-    addedPattern: /\b(?:password|secret|token|credential|api[_-\s]?key)\b/i,
+    addedPattern:
+      /\b(?:const|let|var)\s+\w*(?:password|secret|token|credential|api_?key)\w*\s*=|\b(?:process\.env|req\.(?:body|headers)|headers\.get|secretManager|vault)\b[^\n]*(?:password|secret|token|credential|api[_-]?key)|\b(?:console|logger)\.\w+\s*\([^\n]*(?:password|secret|token|credential|api[_-]?key)/i,
     coveragePattern: /\b(?:secret|credential|token|api[_-\s]?key|redact|mask|leak|security)\b/i
   },
   {
     label: "billing/payments",
-    addedPattern: /\b(?:payment|billing|invoice|checkout|refund|subscription)\b/i,
-    removedPattern: /\b(?:payment|billing|invoice|checkout|refund|subscription)\b/i,
+    addedPattern:
+      /\b(?:stripe|paypal|paymentIntent|checkoutSession)\b|\b(?:payment|billing|invoice|checkout|refund|subscription)\w*\s*(?:\(|[=:])/i,
+    removedPattern:
+      /\b(?:stripe|paypal|paymentIntent|checkoutSession)\b|\b(?:payment|billing|invoice|checkout|refund|subscription)\w*\s*(?:\(|[=:])/i,
+    pathPattern: /(?:^|\/)(?:billing|payments?|checkout|invoices?|refunds?|subscriptions?)(?:[./_-]|$)/i,
     coveragePattern: /\b(?:payment|billing|invoice|checkout|refund|subscription)\b/i
   },
   {
     label: "database/schema",
     addedPattern:
-      /\b(?:migration|migrations|database|sql|alter\s+table|create\s+table|db\s+schema|database\s+schema|schema\s+migration|schema\.sql|schema\.prisma)\b/i,
+      /\b(?:alter|create|drop)\s+table\b|\b(?:db|database|prisma|sequelize|knex)\.(?:query|execute|transaction|migrate|schema)\b|\bmodel\s+\w+\s*\{/i,
     pathPattern: /\b(?:migration|migrations|schema\.sql|schema\.prisma)\b/i,
     coveragePattern:
       /\b(?:migration|migrations|database|sql|rollback|migrate|db\s+schema|database\s+schema|schema\s+migration|schema\.sql|schema\.prisma)\b/i
@@ -174,32 +181,36 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
     if (hasTargetedCoverage(diffRisk.label, normalized.verifyLogs, normalized.builderReport)) {
       shouldFix.push({
         source: "diff",
-        message: `Diff touches high-risk ${diffRisk.label} code; targeted verification evidence was found, but reviewers should still inspect it.`
+        message: `Diff touches high-risk ${diffRisk.label} code; targeted verification evidence was found, but reviewers should still inspect it.`,
+        evidence: diffRisk.evidence
       });
     } else {
       mustFix.push({
         source: "diff",
-        message: `Diff touches high-risk ${diffRisk.label} code without targeted verification evidence.`,
-        evidence: "Add or report focused verification for this high-risk area before opening a PR."
+        message: `Diff touches high-risk ${diffRisk.label} code. Run focused verification for this area before opening a PR.`,
+        evidence: `${diffRisk.evidence}\nRemediation: Run focused verification for ${diffRisk.label} and report the results.`
       });
     }
   }
 
+  const deduplicatedMustFix = deduplicateFindings(mustFix);
+  const deduplicatedShouldFix = deduplicateFindings(shouldFix);
+
   const verdict = chooseVerdict({
     task: normalized.task,
     diff: normalized.diff,
-    mustFix,
-    shouldFix,
+    mustFix: deduplicatedMustFix,
+    shouldFix: deduplicatedShouldFix,
     hasVerificationEvidence: hasPositiveVerificationEvidence(normalized.verifyLogs)
   });
-  const risk = chooseRisk(verdict, mustFix, shouldFix, diffRisks.length > 0);
+  const risk = chooseRisk(verdict, deduplicatedMustFix, deduplicatedShouldFix, diffRisks.length > 0);
   const confidence = calculateConfidence(verdict, {
     task: normalized.task,
     diff: normalized.diff,
     verifyLogs: normalized.verifyLogs,
     builderReport: normalized.builderReport,
-    mustFixCount: mustFix.length,
-    shouldFixCount: shouldFix.length,
+    mustFixCount: deduplicatedMustFix.length,
+    shouldFixCount: deduplicatedShouldFix.length,
     highRiskDiff: diffRisks.length > 0,
     hasVerificationEvidence: hasPositiveVerificationEvidence(normalized.verifyLogs)
   });
@@ -208,11 +219,11 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
     schemaVersion: 1,
     verdict,
     evidence_grade: "reported",
-    must_fix: mustFix,
-    should_fix: shouldFix,
+    must_fix: deduplicatedMustFix,
+    should_fix: deduplicatedShouldFix,
     confidence,
     risk,
-    summary: summarize(verdict, risk, mustFix.length, shouldFix.length)
+    summary: summarize(verdict, risk, deduplicatedMustFix.length, deduplicatedShouldFix.length)
   };
 }
 
@@ -224,10 +235,11 @@ function collectUnexecutedVerification(
 ): void {
   if (!text) return;
   for (const line of lines(text)) {
+    if (isPassingTestLine(line)) continue;
     if (UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(line))) {
       mustFix.push({
         source,
-        message: "A configured verification command did not pass.",
+        message: "Run the configured verification command and fix or report why it did not pass.",
         evidence: truncate(line)
       });
     } else if (MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(line))) {
@@ -247,11 +259,12 @@ function collectHardFailures(
 ): void {
   if (!text) return;
   for (const line of lines(text)) {
+    if (isPassingTestLine(line)) continue;
     if (isCleanResultLine(line)) continue;
     if (HARD_FAILURE_PATTERNS.some((pattern) => pattern.test(line))) {
       output.push({
         source,
-        message: "Verification output contains a blocking failure.",
+        message: "Verification failed; rerun the reported command and fix the failing check.",
         evidence: truncate(line)
       });
     }
@@ -265,7 +278,8 @@ function collectSoftRisks(
 ): void {
   if (!text) return;
   for (const line of lines(text)) {
-    if (ZERO_SOFT_RISK_COUNT_PATTERN.test(stripAnsiCodes(line))) continue;
+    if (isPassingTestLine(line)) continue;
+    if (ZERO_SOFT_RISK_COUNT_PATTERN.test(line)) continue;
     const hasHardFailure =
       !isCleanResultLine(line) &&
       HARD_FAILURE_PATTERNS.some((pattern) => pattern.test(line));
@@ -280,55 +294,81 @@ function collectSoftRisks(
   }
 }
 
-function assessDiffRisk(diff: string): Array<{ label: string }> {
+function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }> {
   if (!diff) return [];
-  const parsedDiff = parseDiffRiskText(diff);
-  return HIGH_RISK_DIFF_SIGNALS.filter((signal) => {
-    if (signal.addedPattern.test(parsedDiff.addedText)) return true;
-    if (signal.removedPattern?.test(parsedDiff.removedText)) return true;
-    if (signal.pathPattern?.test(parsedDiff.pathText)) return true;
-    return false;
-  }).map((signal) => ({ label: signal.label }));
+  const changedLines = parseDiffRiskLines(diff).filter((line) => isRuntimeRiskLine(line));
+  return HIGH_RISK_DIFF_SIGNALS.flatMap((signal) => {
+    const matches = changedLines.filter((line) => {
+      if (line.kind === "added" && signal.addedPattern.test(line.content)) return true;
+      if (line.kind === "removed" && signal.removedPattern?.test(line.content)) return true;
+      return Boolean(signal.pathPattern?.test(line.path));
+    });
+    if (matches.length === 0) return [];
+    return [{
+      label: signal.label,
+      evidence: matches.slice(0, 3).map(formatDiffEvidence).join("\n")
+    }];
+  });
 }
 
-function parseDiffRiskText(diff: string): {
-  addedText: string;
-  removedText: string;
-  pathText: string;
-} {
-  const addedLines: string[] = [];
-  const removedLines: string[] = [];
-  const pathLines: string[] = [];
+interface DiffRiskLine {
+  kind: "added" | "removed";
+  path: string;
+  content: string;
+}
+
+function parseDiffRiskLines(diff: string): DiffRiskLine[] {
+  const changedLines: DiffRiskLine[] = [];
+  let currentPath = "unknown";
 
   for (const line of diff.split(/\r?\n/)) {
     if (line.startsWith("diff --git ")) {
-      pathLines.push(line);
-    } else if (line.startsWith("+++ ") || line.startsWith("--- ")) {
-      pathLines.push(line);
-    } else if (line.startsWith("+")) {
-      addedLines.push(line.slice(1));
-    } else if (line.startsWith("-")) {
-      removedLines.push(line.slice(1));
+      const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
+      currentPath = match?.[2] ?? currentPath;
+    } else if (line.startsWith("+++ b/")) {
+      currentPath = line.slice(6);
+    } else if (line.startsWith("+") && !line.startsWith("+++")) {
+      changedLines.push({ kind: "added", path: currentPath, content: line.slice(1) });
+    } else if (line.startsWith("-") && !line.startsWith("---")) {
+      changedLines.push({ kind: "removed", path: currentPath, content: line.slice(1) });
     }
   }
 
-  return {
-    addedText: addedLines.join("\n"),
-    removedText: removedLines.join("\n"),
-    pathText: pathLines.join("\n")
-  };
+  return changedLines;
+}
+
+function isRuntimeRiskLine(line: DiffRiskLine): boolean {
+  if (/(?:^|\/)(?:docs?|test|tests|__tests__|fixtures?|eval\/corpus)(?:\/|$)/i.test(line.path)) {
+    return false;
+  }
+  if (/\.(?:md|mdx|txt|snap)$/i.test(line.path) || /\.(?:test|spec)\.[^/]+$/i.test(line.path)) {
+    return false;
+  }
+  const content = line.content.trim();
+  if (!content) return false;
+  return !/^(?:\/\/|#|\*|<!--)/.test(content);
+}
+
+function formatDiffEvidence(line: DiffRiskLine): string {
+  const prefix = line.kind === "added" ? "+" : "-";
+  return truncate(`${line.path}: ${prefix}${line.content.trim()}`);
 }
 
 function hasPositiveVerificationEvidence(verifyLogs: string): boolean {
   if (!verifyLogs) return false;
-  const normalized = stripAnsiCodes(verifyLogs);
+  const normalizedLines = lines(verifyLogs);
+  const resultLines = normalizedLines.filter((line) => !isPassingTestLine(line));
   if (
-    UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(normalized)) ||
-    MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(normalized))
+    resultLines.some((line) =>
+      UNEXECUTED_VERIFICATION_PATTERNS.some((pattern) => pattern.test(line)) ||
+      MISSING_VERIFICATION_CONFIG_PATTERNS.some((pattern) => pattern.test(line))
+    )
   ) {
     return false;
   }
-  return POSITIVE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(normalized));
+  return normalizedLines.some((line) =>
+    POSITIVE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(line))
+  );
 }
 
 function hasTargetedCoverage(
@@ -423,14 +463,47 @@ function summarize(
 }
 
 function lines(text: string): string[] {
-  return text
+  return stripTerminalFormatting(text)
+    .replace(/\r(?!\n)/g, "\n")
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
 }
 
+function stripTerminalFormatting(text: string): string {
+  return text
+    .replace(/\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g, "")
+    .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(
+      /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?%@~_]+)*)?\u0007)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g,
+      ""
+    )
+    .replace(/[\u0000-\u0008\u000B-\u001A\u001C-\u001F\u007F-\u009F]/g, "");
+}
+
+function deduplicateFindings(findings: MinimalFinding[]): MinimalFinding[] {
+  const seen = new Set<string>();
+  const deduplicated: MinimalFinding[] = [];
+  for (const finding of findings) {
+    const sanitizedEvidence = finding.evidence
+      ? stripTerminalFormatting(finding.evidence)
+      : undefined;
+    const normalizedEvidence = sanitizedEvidence
+      ? sanitizedEvidence.replace(/\s+/g, " ").trim().toLowerCase()
+      : "";
+    const key = `${finding.message.toLowerCase()}\u0000${normalizedEvidence}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduplicated.push({
+      ...finding,
+      ...(sanitizedEvidence ? { evidence: sanitizedEvidence } : {})
+    });
+  }
+  return deduplicated;
+}
+
 function isCleanResultLine(line: string): boolean {
-  const normalized = stripAnsiCodes(line);
+  const normalized = stripTerminalFormatting(line);
   if (CLEAN_PASS_TEST_LINE_PATTERN.test(normalized)) return true;
   if (CLEAN_PASS_TEST_FILE_SUMMARY_PATTERN.test(normalized)) return true;
   if (
@@ -445,8 +518,14 @@ function isCleanResultLine(line: string): boolean {
   );
 }
 
-function stripAnsiCodes(text: string): string {
-  return text.replace(/\x1b\[[0-9;]*m/g, "");
+function isPassingTestLine(line: string): boolean {
+  const normalized = stripTerminalFormatting(line);
+  if (CLEAN_PASS_TEST_LINE_PATTERN.test(normalized)) return true;
+  if (CLEAN_PASS_TEST_FILE_SUMMARY_PATTERN.test(normalized)) return true;
+  return (
+    PASSING_TEST_LINE_PATTERN.test(normalized) &&
+    !AUTHORITATIVE_FAILURE_RESULT_PATTERNS.some((pattern) => pattern.test(normalized))
+  );
 }
 
 function truncate(text: string): string {
