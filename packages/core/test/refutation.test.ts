@@ -201,6 +201,31 @@ describe("refutation gate", () => {
     ).rejects.toThrow("resolves outside the workspace");
   });
 
+  it("does not follow a symlink planted at the evidence file path", async () => {
+    const workspace = await makeWorkspace();
+    const outside = join(await makeWorkspace(), "outside.txt");
+    const runDir = join(workspace, ".verifier/runs/run-1");
+
+    await expect(
+      runRefutationGate(
+        makeFinding(),
+        { outcome: "survived", reasoning: "reachable", reproCommand: "test" },
+        {
+          workspace,
+          runDir,
+          evidenceId: "E-R1",
+          authorizeCommand: () => true,
+          executor: async (command) => {
+            await mkdir(join(runDir, "evidence"), { recursive: true });
+            await symlink(outside, join(runDir, "evidence/E-R1.txt"));
+            return commandResult({ command, code: 0 });
+          }
+        }
+      )
+    ).rejects.toMatchObject({ code: "EEXIST" });
+    await expect(readFile(outside, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("bounds output collected by the default executor", async () => {
     const workspace = await makeWorkspace();
     const result = await executeReproCommand(
