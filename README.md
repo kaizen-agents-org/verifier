@@ -66,6 +66,35 @@ Useful package commands:
 | `pnpm schema:generate` | Regenerate `schemas/verdict.schema.json` from Zod types. |
 | `pnpm schema:check` | Regenerate the schema and fail if the committed schema is stale. |
 
+## Opt-in Intent Extraction
+
+`packages/agents` exposes the first opt-in LLM stage. It calls the Claude Messages
+API directly with structured Zod output, converts the result into deterministic
+core `Claim` values, applies the synthetic C-0 rule, records usage in `RunMeta`,
+and writes `.verifier/runs/<run-id>/claims.json`.
+
+```ts
+import { runIntentStage } from "@verifier/agents";
+
+const stage0 = await runIntentStage(
+  {
+    sources: [
+      {
+        source: { tier: "primary", kind: "issue", ref: issueUrl },
+        content: issueBody
+      }
+    ],
+    diffSummary
+  },
+  runMeta
+);
+```
+
+The default transport reads `ANTHROPIC_API_KEY` through `@anthropic-ai/sdk`.
+Callers can inject a transport for tests or controlled execution. The existing
+`verifier check` CLI does not import or invoke this package and remains fully
+deterministic and network-free.
+
 ## CLI Usage
 
 Check installation:
