@@ -271,7 +271,7 @@ function compareFixtureVerdict(
   return failures;
 }
 
-function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: number): FixtureMetrics {
+export function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: number): FixtureMetrics {
   const byKind: FixtureMetrics["byKind"] = {
     seeded: { total: 0, passed: 0, failed: 0 },
     golden: { total: 0, passed: 0, failed: 0 }
@@ -290,7 +290,9 @@ function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: nu
       if (result.expected.knownGap) knownGapFailures += 1;
     }
 
-    if (result.passed) verdictMatches += 1;
+    const expectedVerdicts = result.expected.verdictAnyOf ??
+      (result.expected.verdict ? [result.expected.verdict] : []);
+    if (expectedVerdicts.includes(result.actual.verdict)) verdictMatches += 1;
     if (result.groundTruth.defect && isDefectDetected(result.actual.verdict)) {
       detectedDefects += 1;
     }

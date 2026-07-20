@@ -7,7 +7,7 @@ import type {
   ReproCommandExecutor,
   RunMeta
 } from "@verifier/core";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { extractIntent, type ExtractIntentOptions, type IntentExtractorInput } from "./client.js";
 import {
   reviewCorrectness,
@@ -234,7 +234,11 @@ export async function runRefutationStage(
   options: RunRefutationStageOptions
 ): Promise<RefutationStageResult> {
   const workspace = resolve(options.workspace);
-  const runsRoot = resolve(options.runsRoot ?? join(workspace, ".verifier", "runs"));
+  const runsRoot = options.runsRoot === undefined
+    ? join(workspace, ".verifier", "runs")
+    : isAbsolute(options.runsRoot)
+      ? resolve(options.runsRoot)
+      : resolve(workspace, options.runsRoot);
   const runDir = resolve(runsRoot, runMeta.runId);
   const outputFindings: Finding[] = [];
   const evidence: Evidence[] = [];

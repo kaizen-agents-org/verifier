@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { fixtureRunExitCode, runFixtureEval } from "../src/eval/fixture-run.js";
+import { calculateFixtureMetrics, fixtureRunExitCode, runFixtureEval } from "../src/eval/fixture-run.js";
 import type { FixtureCaseResult, FixtureRunResult } from "../src/eval/fixture-run.js";
 
 const execFileAsync = promisify(execFile);
@@ -55,6 +55,17 @@ function runResult(cases: FixtureCaseResult[], harnessErrors = 0): FixtureRunRes
 }
 
 describe("fixture eval exit status", () => {
+  it("keeps verdict agreement independent from confidence calibration failures", () => {
+    const result = fixtureResult(false);
+    result.actual = { verdict: "conditional", confidence: 60 };
+    result.expected = { verdict: "conditional", confidenceMin: 70, knownGap: false };
+
+    expect(calculateFixtureMetrics([result], 0)).toMatchObject({
+      failedCases: 1,
+      verdictAgreement: 1
+    });
+  });
+
   it("succeeds for passing cases and known-gap failures", () => {
     const cases = [fixtureResult(true), fixtureResult(false, true)];
 
