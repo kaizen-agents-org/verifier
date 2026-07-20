@@ -69,6 +69,8 @@ describe("refutation gate", () => {
 
     expect(result.finding.refutation.outcome).toBe(outcome);
     expect(result.finding.refutation.reproConfirmed).toBeUndefined();
+    expect(result.finding.evidenceIds).toEqual([]);
+    expect(result.finding.refutation.evidenceIds).toEqual(["E-R1"]);
   });
 
   it("does not execute a command for an already reproduced finding", async () => {
