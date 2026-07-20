@@ -258,6 +258,14 @@ function mismatchPrecedesTimeout(
   const indexedMismatch = /^step (\d+) /.exec(mismatch);
   if (indexedMismatch) return Number(indexedMismatch[1]) < firstTimedOutStep;
 
+  if (mismatch.startsWith("new network failure: ")) {
+    return stepResults.some(({ stepIndex, error }) =>
+      stepIndex < firstTimedOutStep &&
+      scenario.steps[stepIndex]?.op === "request" &&
+      !error?.startsWith("timeout")
+    );
+  }
+
   const isCliExpectationMismatch = mismatch.startsWith("exit code ") ||
     mismatch === "stderr was not empty" ||
     mismatch.startsWith("stdout did not include ") ||

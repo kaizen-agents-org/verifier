@@ -75,6 +75,9 @@ class CliProbeSession implements ProbeSession {
       const step = scenario.steps[index];
       if (!step) continue;
       if (step.op === "wait") {
+        if (step.until !== undefined) {
+          throw new UnsupportedStepError(step, "CLI driver does not support wait-until conditions.");
+        }
         const requestedMs = Math.max(0, step.forMs ?? 0);
         const remainingMs = this.remainingMs();
         const waitMs = Math.min(requestedMs, remainingMs);

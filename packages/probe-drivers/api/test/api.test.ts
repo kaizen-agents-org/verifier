@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { LaunchContext, Observation, PortAllocator, Scenario } from "@verifier/probe-sdk";
+import type { LaunchContext, Observation, PortAllocator, Scenario, StepResult } from "@verifier/probe-sdk";
 import { ApiProbeDriver } from "../src/index.js";
 
 const fixture = resolve(import.meta.dirname, "../../../../fixtures/probe/api-server/server.mjs");
@@ -61,6 +61,18 @@ describe("API probe driver", () => {
     expect(run.responses).toHaveLength(1);
     expect(run.responses[0]).toMatchObject({ status: 500 });
     expect(run.observation.networkFailures).toEqual([]);
+  });
+
+  it("marks an unexpected 5xx as failed after retries are exhausted", async () => {
+    const run = await runFixture("persistent-500", requestScenario({
+      method: "GET",
+      path: "/health?fail=1",
+      expect: { status: 200 }
+    }));
+
+    expect(run.results).toMatchObject([{ ok: false, error: "HTTP 500" }]);
+    expect(run.observation.networkFailures).toHaveLength(2);
+    expect(run.observation.networkFailures[0]).toMatchObject({ status: 500, failed: true });
   });
 
   it("keeps clean requests free of failure observations", async () => {
@@ -149,6 +161,18 @@ describe("API probe driver", () => {
     expect(Date.now() - startedAt).toBeLessThan(2_100);
     await session.teardown();
   });
+
+  it("rejects unsupported wait-until conditions", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "verifier-api-wait-until-"));
+    const session = await makeDriver().launch(await context(workdir, ""));
+    await expect(
+      session.interact({
+        ...requestScenario({ method: "GET", path: "/item" }),
+        steps: [{ op: "wait", until: "server is idle" }]
+      })
+    ).rejects.toThrow("does not support wait-until");
+    await session.teardown();
+  });
 });
 
 function requestScenario(options: {
@@ -175,6 +199,7 @@ function requestScenario(options: {
 
 async function runFixture(defect: string, scenario: Scenario): Promise<{
   observation: Observation;
+  results: StepResult[];
   responses: Array<{ status: number; headers: Record<string, string>; body: string; truncated: boolean }>;
 }> {
   const workdir = await mkdtemp(join(tmpdir(), "verifier-api-fixture-"));
@@ -192,7 +217,7 @@ async function runFixture(defect: string, scenario: Scenario): Promise<{
         }
       )
     );
-    return { observation, responses };
+    return { observation, results, responses };
   } finally {
     await session.teardown();
   }

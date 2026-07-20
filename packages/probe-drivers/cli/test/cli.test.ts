@@ -75,6 +75,15 @@ describe("CLI probe driver", () => {
     await session.teardown();
   });
 
+  it("rejects unsupported wait-until conditions", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-wait-until-"));
+    const session = await new CliProbeDriver({ commands: {} }).launch(context(workdir, {}));
+    await expect(
+      session.interact({ ...scenario("unused"), steps: [{ op: "wait", until: "output exists" }] })
+    ).rejects.toThrow("does not support wait-until");
+    await session.teardown();
+  });
+
   it("does not report a capture file left behind by an earlier scenario", async () => {
     const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-stale-artifact-"));
     await writeFile(join(workdir, "output.txt"), "stale", "utf8");

@@ -236,6 +236,41 @@ describe("Stage 5 probe orchestration", () => {
     expect(result.evidence).toMatchObject([{ reproducible: true }]);
   });
 
+  it("preserves an API network failure when a later step times out", async () => {
+    const result = await runProbeStage({
+      driver: {
+        targetType: "api",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => ({
+          interact: async () => [
+            { stepIndex: 0, ok: true, artifacts: [] },
+            { stepIndex: 1, ok: false, error: "timeout after 10ms", artifacts: [] }
+          ],
+          observe: async () => ({
+            consoleErrors: [],
+            networkFailures: [{ method: "GET", url: "http://127.0.0.1/item", status: 500, failed: true }],
+            screenshots: [], crashed: false, artifacts: []
+          }),
+          teardown: async () => {}
+        })
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [{
+        ...apiScenario("/item"),
+        steps: [{ op: "request", method: "GET", path: "/item" }, { op: "wait", forMs: 0 }]
+      }],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-"))
+    });
+
+    expect(result.findings).toMatchObject([
+      { reproduced: true, scenario: expect.stringContaining("new network failure") }
+    ]);
+    expect(result.findings[0]?.scenario).not.toContain("timeout");
+  });
+
   it("adds runtime evidence for a clean CLI run without false positives", async () => {
     const result = await runCli("");
     expect(result.findings).toEqual([]);

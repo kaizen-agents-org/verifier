@@ -21,6 +21,10 @@ app.get("/item", (_request, response) => {
 });
 app.get("/health", (request, response) => {
   const trigger = request.query.fail === "1" || request.get("x-flaky") === "true";
+  if (defects.has("persistent-500") && trigger) {
+    response.status(500).json({ ok: false });
+    return;
+  }
   if (defects.has("flaky-500") && trigger && flakyFailures === 0) {
     flakyFailures += 1;
     response.status(500).json({ ok: false });
