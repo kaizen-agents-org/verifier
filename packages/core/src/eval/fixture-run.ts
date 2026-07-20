@@ -271,7 +271,7 @@ function compareFixtureVerdict(
   return failures;
 }
 
-function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: number): FixtureMetrics {
+export function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: number): FixtureMetrics {
   const byKind: FixtureMetrics["byKind"] = {
     seeded: { total: 0, passed: 0, failed: 0 },
     golden: { total: 0, passed: 0, failed: 0 }
@@ -322,9 +322,7 @@ function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: nu
 }
 
 function matchesExpectedVerdict(result: FixtureCaseResult): boolean {
-  const expectedVerdicts = result.expected.verdictAnyOf ??
-    (result.expected.verdict ? [result.expected.verdict] : []);
-  return expectedVerdicts.includes(result.actual.verdict);
+  return expectedVerdicts(result).includes(result.actual.verdict);
 }
 
 function isDefectDetected(verdict: FinalVerdictKind): boolean {
@@ -332,15 +330,19 @@ function isDefectDetected(verdict: FinalVerdictKind): boolean {
 }
 
 function isFalsePositiveVerdict(result: FixtureCaseResult): boolean {
-  const expectedVerdicts = result.expected.verdictAnyOf ??
-    (result.expected.verdict ? [result.expected.verdict] : []);
+  const configuredVerdicts = expectedVerdicts(result);
   if (result.actual.verdict === "not_mergeable") {
-    return !expectedVerdicts.includes("not_mergeable");
+    return !configuredVerdicts.includes("not_mergeable");
   }
   if (result.actual.verdict === "conditional") {
-    return expectedVerdicts.every((verdict) => verdict === "mergeable");
+    return configuredVerdicts.every((verdict) => verdict === "mergeable");
   }
   return false;
+}
+
+function expectedVerdicts(result: FixtureCaseResult): FinalVerdictKind[] {
+  return result.expected.verdictAnyOf ??
+    (result.expected.verdict ? [result.expected.verdict] : []);
 }
 
 async function copyDirectory(source: string, destination: string): Promise<void> {
