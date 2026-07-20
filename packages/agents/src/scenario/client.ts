@@ -119,10 +119,20 @@ function validateScenarioAuthority(
       if (!supported) {
         throw new Error(`Scenario generator returned unsupported ${step.op} step for ${input.targetType}`);
       }
+      if (
+        step.op === "wait" &&
+        step.until !== undefined &&
+        (input.targetType === "cli" || input.targetType === "api")
+      ) {
+        throw new Error(`Scenario generator returned unsupported wait-until step for ${input.targetType}`);
+      }
       if (step.op === "exec" && !commandIds.has(step.command)) {
         throw new Error(`Scenario generator returned unauthorized command ID: ${step.command}`);
       }
-      if (step.op === "request" && (!step.path.startsWith("/") || step.path.startsWith("//"))) {
+      if (
+        step.op === "request" &&
+        (!step.path.startsWith("/") || step.path.startsWith("//") || step.path.includes("\\"))
+      ) {
         throw new Error(`Scenario generator returned unsafe request path: ${step.path}`);
       }
     }

@@ -95,6 +95,29 @@ describe("scenario generator authority", () => {
       )
     ).rejects.toThrow("unsupported request step for cli");
   });
+
+  it("rejects wait-until steps unsupported by the bundled drivers", async () => {
+    await expect(
+      generateScenarios(
+        { diff: "diff", targetType: "api", claims: [claim()] },
+        {
+          transport: transportFor({
+            ...apiScenario("/item"),
+            steps: [{ op: "wait", until: "server is idle" }]
+          })
+        }
+      )
+    ).rejects.toThrow("unsupported wait-until step for api");
+  });
+
+  it("rejects API request paths containing backslashes", async () => {
+    await expect(
+      generateScenarios(
+        { diff: "diff", targetType: "api", claims: [claim()] },
+        { transport: transportFor(apiScenario("/\\\\example.com/steal")) }
+      )
+    ).rejects.toThrow("unsafe request path");
+  });
 });
 
 describe("Stage 5 probe orchestration", () => {
