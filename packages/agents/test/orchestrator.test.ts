@@ -280,6 +280,27 @@ describe("correctness and refutation orchestration", () => {
       readFile(join(workspace, ".verifier/custom-runs/run-1/evidence/E-S4-1.txt"), "utf8")
     ).resolves.toContain("reproduced");
   });
+
+  it("preserves non-refutable findings without invoking the refuter", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "verifier-workspace-"));
+    const finding = {
+      ...makeFinding(),
+      id: "F-S0-SCHEMA",
+      refutation: { required: false, attempted: false, outcome: "skipped", evidenceIds: [] }
+    } satisfies Finding;
+    const result = await runRefutationStage([finding], makeRunMeta(), {
+      workspace,
+      getRelatedCode: () => {
+        throw new Error("non-refutable finding must not request related code");
+      },
+      transport: async () => {
+        throw new Error("non-refutable finding must not invoke the model");
+      }
+    });
+
+    expect(result.findings).toEqual([finding]);
+    expect(result.evidence).toEqual([]);
+  });
 });
 
 function makeRunMeta(): RunMeta {

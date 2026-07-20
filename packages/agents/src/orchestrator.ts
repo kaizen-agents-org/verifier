@@ -249,6 +249,11 @@ export async function runRefutationStage(
     const finding = findings[index];
     if (!finding) continue;
 
+    if (!finding.refutation.required) {
+      outputFindings.push(finding);
+      continue;
+    }
+
     if (finding.reproduced) {
       const skipped = await runRefutationGate(
         finding,
