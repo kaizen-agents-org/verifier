@@ -230,7 +230,7 @@ function withRefuterOutcome(
 
   return {
     ...finding,
-    evidenceIds: repro
+    evidenceIds: repro?.confirmed
       ? [...new Set([...finding.evidenceIds, repro.evidenceId])]
       : [...finding.evidenceIds],
     refutation: {
