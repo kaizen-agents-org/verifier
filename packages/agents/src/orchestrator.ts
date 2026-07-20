@@ -1,4 +1,9 @@
-import { deriveSeverity, redactSensitiveText, runRefutationGate } from "@verifier/core";
+import {
+  deriveSeverity,
+  redactSensitiveText,
+  redactSensitiveValue,
+  runRefutationGate
+} from "@verifier/core";
 import type {
   Claim,
   Evidence,
@@ -114,9 +119,7 @@ export async function runCorrectnessStage(
   // When more lenses are added, start this cache-priming request first and wait for its
   // response stream to begin before dispatching the remaining lenses in parallel.
   const { review, usage } = await reviewCorrectness(input, options);
-  const safeReview = JSON.parse(
-    redactSensitiveText(JSON.stringify(review))
-  ) as CorrectnessReview;
+  const safeReview = redactSensitiveValue(review);
   const materialized = materializeCorrectnessReview(safeReview, input.claims);
   const reviewPath = await writeJsonArtifact(
     runMeta.runId,
