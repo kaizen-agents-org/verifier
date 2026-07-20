@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -131,6 +131,16 @@ describe("golden fixture replay", () => {
       expect(result.metrics.harnessErrors).toBe(0);
       expect(result.metrics.passedCases).toBe(1);
       expect(result.cases[0]?.actual.verdict).toBe("mergeable");
+
+      const casePath = join(caseDir, "case.json");
+      const fixture = JSON.parse(await readFile(casePath, "utf8")) as {
+        expected: { verdict: string; confidenceMax?: number };
+      };
+      fixture.expected.confidenceMax = 0;
+      await writeFile(casePath, `${JSON.stringify(fixture, null, 2)}\n`, "utf8");
+      const confidenceMismatch = await runFixtureEval({ corpusDir });
+      expect(confidenceMismatch.metrics.failedCases).toBe(1);
+      expect(confidenceMismatch.metrics.verdictAgreement).toBe(1);
     } finally {
       await rm(corpusDir, { recursive: true, force: true });
     }

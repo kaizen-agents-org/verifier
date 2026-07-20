@@ -290,7 +290,7 @@ function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: nu
       if (result.expected.knownGap) knownGapFailures += 1;
     }
 
-    if (result.passed) verdictMatches += 1;
+    if (matchesExpectedVerdict(result)) verdictMatches += 1;
     if (result.groundTruth.defect && isDefectDetected(result.actual.verdict)) {
       detectedDefects += 1;
     }
@@ -319,6 +319,12 @@ function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: nu
     verdictAgreement: ratio(verdictMatches, results.length),
     byKind
   };
+}
+
+function matchesExpectedVerdict(result: FixtureCaseResult): boolean {
+  const expectedVerdicts = result.expected.verdictAnyOf ??
+    (result.expected.verdict ? [result.expected.verdict] : []);
+  return expectedVerdicts.includes(result.actual.verdict);
 }
 
 function isDefectDetected(verdict: FinalVerdictKind): boolean {
