@@ -233,7 +233,11 @@ describe("correctness and refutation orchestration", () => {
         transport: async () => ({
           parsed_output: {
             findings: [],
-            claimAssessments: [{ claimId: claim.id, supported: true, note: "Matches code." }]
+            claimAssessments: [{
+              claimId: claim.id,
+              supported: true,
+              note: "Matches code; token=correctness-secret"
+            }]
           },
           stop_reason: "end_turn",
           usage: usage()
@@ -244,7 +248,9 @@ describe("correctness and refutation orchestration", () => {
     expect(result.claims[0]?.evidenceIds).toContain("E-S3-CORRECTNESS");
     expect(result.evidence).toMatchObject([{ checkKind: "reading" }]);
     expect(result.runMeta.stagesExecuted).toContain(3);
-    expect(JSON.parse(await readFile(result.reviewPath, "utf8"))).toEqual(result.review);
+    const persisted = await readFile(result.reviewPath, "utf8");
+    expect(persisted).toContain("token=[REDACTED]");
+    expect(persisted).not.toContain("correctness-secret");
   });
 
   it("lets only the orchestrator execute a refuter command and records runtime evidence", async () => {
@@ -304,6 +310,29 @@ describe("correctness and refutation orchestration", () => {
     });
 
     expect(result.findings).toEqual([finding]);
+    expect(result.evidence).toEqual([]);
+  });
+
+  it("does not execute a lens repro after the refuter rejects the finding", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "verifier-workspace-"));
+    const finding = { ...makeFinding(), suggestedRepro: "pnpm test broad" };
+    const result = await runRefutationStage([finding], makeRunMeta(), {
+      workspace,
+      getRelatedCode: () => "code",
+      authorizeCommand: () => {
+        throw new Error("rejected finding must not authorize the stale repro");
+      },
+      executor: async () => {
+        throw new Error("rejected finding must not execute the stale repro");
+      },
+      transport: async () => ({
+        parsed_output: { outcome: "refuted", reasoning: "The scenario cannot occur." },
+        stop_reason: "end_turn",
+        usage: usage()
+      })
+    });
+
+    expect(result.findings[0]?.refutation).toMatchObject({ outcome: "refuted" });
     expect(result.evidence).toEqual([]);
   });
 });

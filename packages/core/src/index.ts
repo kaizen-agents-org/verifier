@@ -1,6 +1,7 @@
 export * from "./types.js";
 export * from "./minimal-verdict.js";
 export * from "./refutation/index.js";
+export { redactSensitiveText } from "./redaction.js";
 export {
   calculateConfidence,
   createSyntheticPrimaryClaim,

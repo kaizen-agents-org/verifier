@@ -1,4 +1,4 @@
-import { deriveSeverity, runRefutationGate } from "@verifier/core";
+import { deriveSeverity, redactSensitiveText, runRefutationGate } from "@verifier/core";
 import type {
   Claim,
   Evidence,
@@ -118,7 +118,7 @@ export async function runCorrectnessStage(
   const reviewPath = await writeJsonArtifact(
     runMeta.runId,
     "correctness-review.json",
-    review,
+    JSON.parse(redactSensitiveText(JSON.stringify(review))) as unknown,
     options.runsRoot
   );
   const evidence: Evidence[] = materialized.supportedClaimIds.length
@@ -273,7 +273,8 @@ export async function runRefutationStage(
       options.transport ? { transport: options.transport } : {}
     );
     updatedRunMeta = recordAgentUsage(updatedRunMeta, result.usage);
-    const reproCommand = result.refutation.reproCommand ?? finding.suggestedRepro;
+    const reproCommand = result.refutation.reproCommand ??
+      (result.refutation.outcome === "survived" ? finding.suggestedRepro : undefined);
     const refuterOutput = {
       outcome: result.refutation.outcome,
       reasoning: result.refutation.reasoning,
