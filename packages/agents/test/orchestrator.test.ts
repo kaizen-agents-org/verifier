@@ -176,6 +176,7 @@ describe("correctness and refutation orchestration", () => {
               category: "logic",
               title: "Wrong empty result",
               scenario: "An empty input returns one item.",
+              suggestedRepro: "pnpm test empty",
               claimIds: [claim.id]
             }
           ],
@@ -183,7 +184,12 @@ describe("correctness and refutation orchestration", () => {
         },
         [claim]
       ).findings[0]
-    ).toMatchObject({ severity: "minor", reproduced: false, lens: "correctness" });
+    ).toMatchObject({
+      severity: "minor",
+      reproduced: false,
+      lens: "correctness",
+      suggestedRepro: "pnpm test empty"
+    });
 
     expect(() =>
       materializeCorrectnessReview(
@@ -243,7 +249,7 @@ describe("correctness and refutation orchestration", () => {
 
   it("lets only the orchestrator execute a refuter command and records runtime evidence", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "verifier-workspace-"));
-    const finding = makeFinding();
+    const finding = { ...makeFinding(), suggestedRepro: "pnpm test empty" };
     const result = await runRefutationStage([finding], makeRunMeta(), {
       workspace,
       runsRoot: ".verifier/custom-runs",
@@ -252,8 +258,7 @@ describe("correctness and refutation orchestration", () => {
       transport: async () => ({
         parsed_output: {
           outcome: "survived",
-          reasoning: "The bad branch is reachable.",
-          reproCommand: "pnpm test empty"
+          reasoning: "The bad branch is reachable."
         },
         stop_reason: "end_turn",
         usage: usage()
