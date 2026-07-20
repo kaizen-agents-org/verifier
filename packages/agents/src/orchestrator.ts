@@ -114,11 +114,14 @@ export async function runCorrectnessStage(
   // When more lenses are added, start this cache-priming request first and wait for its
   // response stream to begin before dispatching the remaining lenses in parallel.
   const { review, usage } = await reviewCorrectness(input, options);
-  const materialized = materializeCorrectnessReview(review, input.claims);
+  const safeReview = JSON.parse(
+    redactSensitiveText(JSON.stringify(review))
+  ) as CorrectnessReview;
+  const materialized = materializeCorrectnessReview(safeReview, input.claims);
   const reviewPath = await writeJsonArtifact(
     runMeta.runId,
     "correctness-review.json",
-    JSON.parse(redactSensitiveText(JSON.stringify(review))) as unknown,
+    safeReview,
     options.runsRoot
   );
   const evidence: Evidence[] = materialized.supportedClaimIds.length
@@ -140,7 +143,7 @@ export async function runCorrectnessStage(
   );
 
   return {
-    review,
+    review: safeReview,
     claims,
     findings: materialized.findings,
     evidence,
@@ -178,17 +181,19 @@ export function materializeCorrectnessReview(
       category: finding.category,
       reproduced: false,
       severity: deriveSeverity({ category: finding.category, reproduced: false }, false),
-      title: finding.title,
+      title: redactSensitiveText(finding.title),
       ...(finding.location
         ? {
             location: {
-              file: finding.location.file,
+              file: redactSensitiveText(finding.location.file),
               ...(finding.location.line !== undefined ? { line: finding.location.line } : {})
             }
           }
         : {}),
-      scenario: finding.scenario,
-      ...(finding.suggestedRepro !== undefined ? { suggestedRepro: finding.suggestedRepro } : {}),
+      scenario: redactSensitiveText(finding.scenario),
+      ...(finding.suggestedRepro !== undefined
+        ? { suggestedRepro: redactSensitiveText(finding.suggestedRepro) }
+        : {}),
       claimIds: [...finding.claimIds],
       evidenceIds: [],
       refutation: {

@@ -238,7 +238,7 @@ function withRefuterOutcome(
       attempted: true,
       outcome,
       ...(repro?.confirmed ? { reproConfirmed: true } : {}),
-      notes: [output.reasoning, executionNote].filter(Boolean).join(" "),
+      notes: redactSensitiveText([output.reasoning, executionNote].filter(Boolean).join(" ")),
       evidenceIds
     }
   };
