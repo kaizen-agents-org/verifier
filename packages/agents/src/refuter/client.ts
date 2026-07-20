@@ -14,11 +14,11 @@ export interface RefuterInput {
 
 export interface RefuterRequest {
   model: string;
-  effort: typeof REFUTER_AGENT_CONFIG.effort;
   max_tokens: number;
   system: Array<{ type: "text"; text: string }>;
   messages: Array<{ role: "user"; content: string }>;
   output_config: {
+    effort: typeof REFUTER_AGENT_CONFIG.effort;
     format: ReturnType<typeof zodOutputFormat<typeof RefuterOutputSchema>>;
   };
 }
@@ -44,13 +44,15 @@ export async function refuteFinding(
 export function createRefuterRequest(input: RefuterInput): RefuterRequest {
   return {
     model: REFUTER_AGENT_CONFIG.model,
-    effort: REFUTER_AGENT_CONFIG.effort,
     max_tokens: REFUTER_AGENT_CONFIG.maxTokens,
     system: [{ type: "text", text: REFUTER_SYSTEM_PROMPT }],
     messages: [
       { role: "user", content: buildRefuterPrompt(input.finding, input.relatedCode) }
     ],
-    output_config: { format: zodOutputFormat(RefuterOutputSchema) }
+    output_config: {
+      effort: REFUTER_AGENT_CONFIG.effort,
+      format: zodOutputFormat(RefuterOutputSchema)
+    }
   };
 }
 
