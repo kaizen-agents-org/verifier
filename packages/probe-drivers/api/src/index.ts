@@ -251,7 +251,9 @@ class ApiProbeSession implements ProbeSession {
     if (headerBytes > MAX_HEADER_BYTES) {
       throw new UnsupportedStepError(step, `API request headers exceed ${MAX_HEADER_BYTES} bytes.`);
     }
-    const retries = Math.max(0, Math.min(this.options.requestRetries ?? 1, 2));
+    const retries = isRetrySafeMethod(step.method)
+      ? Math.max(0, Math.min(this.options.requestRetries ?? 1, 2))
+      : 0;
     let lastError: string | undefined;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       const remainingMs = this.remainingMs();
@@ -354,6 +356,10 @@ class ApiProbeSession implements ProbeSession {
   private timeoutError(): string {
     return `timeout after ${this.context.timeoutMs}ms scenario budget`;
   }
+}
+
+function isRetrySafeMethod(method: string): boolean {
+  return ["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase());
 }
 
 function isExpectedStatus(

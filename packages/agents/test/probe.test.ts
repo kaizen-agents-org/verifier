@@ -190,6 +190,8 @@ describe("Stage 5 probe orchestration", () => {
 
     expect(result.findings[0]?.scenario).toContain("token=[REDACTED]");
     expect(result.findings[0]?.scenario).not.toContain("stage5-secret");
+    expect(JSON.stringify(result.observations)).not.toContain("stage5-secret");
+    expect(result.observations[0]?.observation.consoleErrors[0]?.text).toBe("token=[REDACTED]");
   });
 
   it("defaults probe artifacts to the target workspace run root", async () => {

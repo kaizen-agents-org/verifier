@@ -1,6 +1,7 @@
 import {
   deriveSeverity,
   redactSensitiveText,
+  redactSensitiveValue,
   type Claim,
   type Evidence,
   type Finding,
@@ -186,7 +187,7 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
         reproducible: materialMismatches.length > 0 || !timedOut
       };
       evidence.push(item);
-      observations.push({ scenario, stepResults, observation });
+      observations.push(redactSensitiveValue({ scenario, stepResults, observation }));
 
       if (materialMismatches.length > 0) {
         const category = scenario.failCategory ?? (observation.crashed ? "crash" : "logic");
@@ -492,7 +493,7 @@ function redactProbeArtifact(value: {
   responseArtifacts: Array<{ stepIndex: number; response: ResponseArtifact }>;
   mismatches: string[];
 }) {
-  return JSON.parse(redactSensitiveText(JSON.stringify(value))) as unknown;
+  return redactSensitiveValue(value);
 }
 
 function logKey(entry: Observation["consoleErrors"][number]): string {

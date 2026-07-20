@@ -76,6 +76,17 @@ describe("API probe driver", () => {
     expect(run.observation.networkFailures[0]).toMatchObject({ status: 500, failed: true });
   });
 
+  it("does not retry a non-idempotent request after an unexpected 5xx", async () => {
+    const run = await runFixture("admin-500", requestScenario({
+      method: "POST",
+      path: "/admin",
+      expect: { status: 200 }
+    }));
+
+    expect(run.results).toMatchObject([{ ok: false, error: "HTTP 500" }]);
+    expect(run.observation.networkFailures).toHaveLength(1);
+  });
+
   it("keeps clean requests free of failure observations", async () => {
     const scenario: Scenario = {
       id: "api-clean",

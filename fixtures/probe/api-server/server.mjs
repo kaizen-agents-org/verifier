@@ -10,6 +10,10 @@ app.use(express.json());
 
 app.get("/ready", (_request, response) => response.json({ ready: true }));
 app.post("/admin", (request, response) => {
+  if (defects.has("admin-500")) {
+    response.status(500).json({ error: "failed after mutation" });
+    return;
+  }
   if (!defects.has("authz-gap") && request.get("authorization") !== "Bearer fixture-admin") {
     response.status(401).json({ error: "unauthorized" });
     return;
