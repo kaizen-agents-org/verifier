@@ -15,7 +15,6 @@ export interface CorrectnessReviewInput {
 
 export interface CorrectnessReviewRequest {
   model: string;
-  effort: typeof CORRECTNESS_AGENT_CONFIG.effort;
   max_tokens: number;
   system: Array<{
     type: "text";
@@ -24,6 +23,7 @@ export interface CorrectnessReviewRequest {
   }>;
   messages: Array<{ role: "user"; content: string }>;
   output_config: {
+    effort: typeof CORRECTNESS_AGENT_CONFIG.effort;
     format: ReturnType<typeof zodOutputFormat<typeof CorrectnessReviewSchema>>;
   };
 }
@@ -53,7 +53,6 @@ export function createCorrectnessReviewRequest(
 ): CorrectnessReviewRequest {
   return {
     model: CORRECTNESS_AGENT_CONFIG.model,
-    effort: CORRECTNESS_AGENT_CONFIG.effort,
     max_tokens: CORRECTNESS_AGENT_CONFIG.maxTokens,
     system: [
       {
@@ -65,7 +64,10 @@ export function createCorrectnessReviewRequest(
     messages: [
       { role: "user", content: buildCorrectnessPrompt(input.diff, input.context, input.claims) }
     ],
-    output_config: { format: zodOutputFormat(CorrectnessReviewSchema) }
+    output_config: {
+      effort: CORRECTNESS_AGENT_CONFIG.effort,
+      format: zodOutputFormat(CorrectnessReviewSchema)
+    }
   };
 }
 

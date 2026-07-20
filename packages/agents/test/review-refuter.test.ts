@@ -59,7 +59,7 @@ describe("correctness lens", () => {
 
     expect(request).toMatchObject({
       model: "claude-opus-4-8",
-      effort: "medium",
+      output_config: { effort: "medium" },
       system: [{ cache_control: { type: "ephemeral" } }]
     });
     expect(request).not.toHaveProperty("tools");
@@ -93,6 +93,8 @@ describe("correctness lens", () => {
 describe("refuter", () => {
   it("makes execution authority explicit and provides no tools", () => {
     const request = createRefuterRequest({ finding: makeFinding(), relatedCode: "code" });
+    expect(request.output_config.effort).toBe("medium");
+    expect(request).not.toHaveProperty("effort");
     expect(request).not.toHaveProperty("tools");
     expect(request.messages[0]?.content).toContain('"canExecuteCommands":false');
   });
