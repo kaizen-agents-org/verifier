@@ -17,6 +17,9 @@ import {
 
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
 const DEFAULT_MAX_INPUT_BYTES = 64 * 1024;
+const SAFE_PARENT_ENV_KEYS = [
+  "PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL"
+] as const;
 
 export interface CliCommandDescriptor {
   file: string;
@@ -144,7 +147,7 @@ class CliProbeSession implements ProbeSession {
 
     const child = spawn(descriptor.file, descriptor.args ?? [], {
       cwd: this.context.workdir,
-      env: { ...process.env, ...this.context.env },
+      env: probeEnvironment(this.context.env),
       detached: process.platform !== "win32",
       shell: false,
       stdio: ["pipe", "pipe", "pipe"]
@@ -237,6 +240,14 @@ class CliProbeSession implements ProbeSession {
   private assertActive(): void {
     if (this.tornDown) throw new LaunchError("CLI probe session has already been torn down.");
   }
+}
+
+function probeEnvironment(overrides: Record<string, string>): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const key of SAFE_PARENT_ENV_KEYS) {
+    if (process.env[key] !== undefined) environment[key] = process.env[key];
+  }
+  return { ...environment, ...overrides };
 }
 
 type ArtifactSnapshot = Map<string, string | undefined>;

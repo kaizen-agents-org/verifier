@@ -29,6 +29,26 @@ describe("CLI probe driver", () => {
     await expect(readFile(join(workdir, "output.txt"), "utf8")).resolves.toBe("HELLO");
   });
 
+  it("does not inherit unrelated parent secrets", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-env-"));
+    process.env.VERIFIER_PARENT_SECRET = "must-not-reach-probe";
+    const session = await new CliProbeDriver({
+      commands: {
+        inspect: {
+          file: process.execPath,
+          args: ["-e", "process.stdout.write(process.env.VERIFIER_PARENT_SECRET ?? 'absent')"]
+        }
+      }
+    }).launch(context(workdir, {}));
+    try {
+      await session.interact(scenario("inspect"));
+      await expect(session.observe()).resolves.toMatchObject({ stdout: "absent" });
+    } finally {
+      delete process.env.VERIFIER_PARENT_SECRET;
+      await session.teardown();
+    }
+  });
+
   it("detects package and Cargo binaries without side effects", async () => {
     const driver = new CliProbeDriver({ commands: {} });
     await expect(

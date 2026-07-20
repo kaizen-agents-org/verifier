@@ -22,6 +22,9 @@ const DEFAULT_MAX_BODY_BYTES = 64 * 1024;
 const DEFAULT_MAX_REQUEST_BYTES = 64 * 1024;
 const MAX_REQUEST_PATH_LENGTH = 2_048;
 const MAX_HEADER_BYTES = 16 * 1024;
+const SAFE_PARENT_ENV_KEYS = [
+  "PATH", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL"
+] as const;
 
 export interface ApiLaunchDescriptor {
   file: string;
@@ -70,7 +73,7 @@ export class ApiProbeDriver implements ProbeDriver {
     const tempDir = await mkdtemp(join(tmpdir(), "verifier-api-probe-"));
     const child = spawn(this.options.launch.file, this.options.launch.args ?? [], {
       cwd: ctx.workdir,
-      env: { ...process.env, ...ctx.env, HOST: hostname, PORT: String(port) },
+      env: { ...probeEnvironment(ctx.env), HOST: hostname, PORT: String(port) },
       detached: process.platform !== "win32",
       shell: false,
       stdio: ["pipe", "pipe", "pipe"]
@@ -84,6 +87,14 @@ export class ApiProbeDriver implements ProbeDriver {
       throw error;
     }
   }
+}
+
+function probeEnvironment(overrides: Record<string, string>): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const key of SAFE_PARENT_ENV_KEYS) {
+    if (process.env[key] !== undefined) environment[key] = process.env[key];
+  }
+  return { ...environment, ...overrides };
 }
 
 class ApiProbeSession implements ProbeSession {

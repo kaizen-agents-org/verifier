@@ -19,6 +19,9 @@ app.post("/admin", (request, response) => {
 app.get("/item", (_request, response) => {
   response.json(defects.has("schema-drift") ? { id: 1 } : { id: 1, name: "fixture" });
 });
+app.get("/env-secret", (_request, response) => {
+  response.json({ inherited: process.env.VERIFIER_PARENT_SECRET ?? "absent" });
+});
 app.get("/health", (request, response) => {
   const trigger = request.query.fail === "1" || request.get("x-flaky") === "true";
   if (defects.has("persistent-500") && trigger) {

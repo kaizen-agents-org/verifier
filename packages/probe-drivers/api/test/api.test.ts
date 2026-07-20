@@ -97,6 +97,16 @@ describe("API probe driver", () => {
     expect(run.responses.map(({ status }) => status)).toEqual([401, 200, 200]);
   });
 
+  it("does not inherit unrelated parent secrets", async () => {
+    process.env.VERIFIER_PARENT_SECRET = "must-not-reach-probe";
+    try {
+      const run = await runFixture("", requestScenario({ method: "GET", path: "/env-secret" }));
+      expect(JSON.parse(run.responses[0]?.body ?? "null")).toEqual({ inherited: "absent" });
+    } finally {
+      delete process.env.VERIFIER_PARENT_SECRET;
+    }
+  });
+
   it("reports a non-zero API process exit as a crash", async () => {
     const run = await runFixture("exit-after-response", {
       ...requestScenario({ method: "GET", path: "/exit-after-response", expect: { status: 200 } }),
