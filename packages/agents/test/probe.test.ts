@@ -7,6 +7,7 @@ import { LaunchError, judge, type Claim, type LaunchContext, type PortAllocator,
 import { ApiProbeDriver } from "@verifier/probe-driver-api";
 import { CliProbeDriver } from "@verifier/probe-driver-cli";
 import {
+  createScenarioGeneratorRequest,
   generateScenarios,
   runProbeAndRefuteStage,
   runProbeStage,
@@ -17,6 +18,18 @@ const cliFixture = resolve(import.meta.dirname, "../../../fixtures/probe/cli-too
 const apiFixture = resolve(import.meta.dirname, "../../../fixtures/probe/api-server/server.mjs");
 
 describe("scenario generator authority", () => {
+  it("nests Anthropic effort under output_config", () => {
+    const request = createScenarioGeneratorRequest({
+      diff: "diff",
+      targetType: "cli",
+      claims: [claim()],
+      allowedCommandIds: ["convert"]
+    });
+
+    expect(request.output_config.effort).toBe("medium");
+    expect(request).not.toHaveProperty("effort");
+  });
+
   it("accepts registered command IDs, records usage, and persists scenarios", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "verifier-scenario-"));
     const result = await runScenarioGenerationStage(
@@ -100,6 +113,89 @@ describe("Stage 5 probe orchestration", () => {
     expect(result.claims[0]?.evidenceIds).toEqual([]);
   });
 
+  it("accepts an expected non-zero CLI exit", async () => {
+    const result = await runProbeStage({
+      driver: {
+        targetType: "cli",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => ({
+          interact: async () => [
+            { stepIndex: 0, ok: false, error: "exit code 2", artifacts: [] }
+          ],
+          observe: async () => ({
+            consoleErrors: [], networkFailures: [], screenshots: [], crashed: false,
+            exitCode: 2, stdout: "", stderr: "", artifacts: []
+          }),
+          teardown: async () => {}
+        })
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [cliScenario()],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-")),
+      cliExpectations: { "cli-convert": { exitCode: 2 } }
+    });
+
+    expect(result.findings).toEqual([]);
+    expect(result.evidence).toMatchObject([{ reproducible: true }]);
+  });
+
+  it("redacts secrets from returned mismatch findings", async () => {
+    const secret = "token=stage5-secret";
+    const result = await runProbeStage({
+      driver: {
+        targetType: "api",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => ({
+          interact: async () => [],
+          observe: async () => ({
+            consoleErrors: [{ level: "error", text: secret }],
+            networkFailures: [], screenshots: [], crashed: false, artifacts: []
+          }),
+          teardown: async () => {}
+        })
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [{ ...apiScenario("/item"), steps: [] }],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-redaction-"))
+    });
+
+    expect(result.findings[0]?.scenario).toContain("token=[REDACTED]");
+    expect(result.findings[0]?.scenario).not.toContain("stage5-secret");
+  });
+
+  it("defaults probe artifacts to the target workspace run root", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "verifier-probe-default-root-"));
+    const result = await runProbeStage({
+      driver: {
+        targetType: "cli",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => ({
+          interact: async () => [{ stepIndex: 0, ok: true, artifacts: [] }],
+          observe: async () => ({
+            consoleErrors: [], networkFailures: [], screenshots: [], crashed: false,
+            exitCode: 0, stdout: "", stderr: "", artifacts: []
+          }),
+          teardown: async () => {}
+        })
+      },
+      project: { rootDir: workdir, files: async () => [] },
+      launch: await launchContext(workdir, "", 100),
+      scenarios: [cliScenario()],
+      claims: [claim()],
+      runMeta: runMeta()
+    });
+
+    await expect(
+      readFile(join(workdir, ".verifier", "runs", result.runMeta.runId, result.evidence[0]!.path), "utf8")
+    ).resolves.toContain("cli-convert");
+  });
+
   it("preserves an earlier mismatch when a later step times out", async () => {
     const result = await runProbeStage({
       driver: {
@@ -128,7 +224,8 @@ describe("Stage 5 probe orchestration", () => {
         steps: [{ op: "exec", command: "convert" }, { op: "wait", forMs: 0 }]
       }],
       claims: [claim()],
-      runMeta: runMeta()
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-"))
     });
 
     expect(result.findings).toMatchObject([
@@ -215,6 +312,7 @@ describe("Stage 5 probe orchestration", () => {
       scenarios: [{ ...apiScenario("/item"), steps: [{ op: "wait", forMs: 0 }] }],
       claims: [claim()],
       runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-")),
       baselines: {
         "api--item": {
           consoleErrors: [],
@@ -237,7 +335,8 @@ describe("Stage 5 probe orchestration", () => {
       launch: await launchContext("/fixture", "", 100),
       scenarios: [{ ...cliScenario(), failCategory: "security" }],
       claims: [claim()],
-      runMeta: runMeta()
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-"))
     });
     expect(result.findings).toMatchObject([{ category: "security" }]);
   });

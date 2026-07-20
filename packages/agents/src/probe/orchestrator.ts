@@ -20,6 +20,7 @@ import {
   type StepResult
 } from "@verifier/probe-sdk";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import { recordAgentUsage } from "../cost.js";
 import { writeJsonArtifact } from "../evidence-store.js";
@@ -155,7 +156,7 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
         options.runMeta.runId,
         artifactName,
         redactProbeArtifact({ scenario, stepResults, observation, responseArtifacts, mismatches }),
-        options.runsRoot
+        options.runsRoot ?? join(options.launch.workdir, ".verifier", "runs")
       );
       const timedOutSteps = new Set(
         stepResults
@@ -330,10 +331,14 @@ async function compareScenario(
   }
 
   for (const result of stepResults) {
-    if (!result.ok && !result.error?.startsWith("timeout")) {
-      mismatches.push(`step ${result.stepIndex} failed: ${result.error ?? "unknown error"}`);
-    }
     const step = scenario.steps[result.stepIndex];
+    const expectedCliExit = cliExpectation?.exitCode ?? 0;
+    const isExpectedCliExit = step?.op === "exec" && result.error === `exit code ${expectedCliExit}`;
+    if (!result.ok && !result.error?.startsWith("timeout")) {
+      if (!isExpectedCliExit) {
+        mismatches.push(`step ${result.stepIndex} failed: ${result.error ?? "unknown error"}`);
+      }
+    }
     if (step?.op === "request" && step.expect) {
       const artifact = result.artifacts.find(({ kind }) => kind === "log");
       if (!artifact) {
@@ -365,7 +370,7 @@ async function compareScenario(
       if (!artifactPaths.has(expectedPath)) mismatches.push(`missing generated file ${expectedPath}`);
     }
   }
-  return [...new Set(mismatches)];
+  return [...new Set(mismatches.map((mismatch) => redactSensitiveText(mismatch)))];
 }
 
 interface ResponseArtifact {

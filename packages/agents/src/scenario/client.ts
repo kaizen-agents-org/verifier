@@ -19,7 +19,6 @@ export interface ScenarioGeneratorInput {
 
 export interface ScenarioGeneratorRequest {
   model: string;
-  effort: typeof SCENARIO_AGENT_CONFIG.effort;
   max_tokens: number;
   system: Array<{
     type: "text";
@@ -28,6 +27,7 @@ export interface ScenarioGeneratorRequest {
   }>;
   messages: Array<{ role: "user"; content: string }>;
   output_config: {
+    effort: typeof SCENARIO_AGENT_CONFIG.effort;
     format: ReturnType<typeof zodOutputFormat<typeof ScenarioGenerationSchema>>;
   };
 }
@@ -58,7 +58,6 @@ export function createScenarioGeneratorRequest(
 ): ScenarioGeneratorRequest {
   return {
     model: SCENARIO_AGENT_CONFIG.model,
-    effort: SCENARIO_AGENT_CONFIG.effort,
     max_tokens: SCENARIO_AGENT_CONFIG.maxTokens,
     system: [
       {
@@ -78,7 +77,10 @@ export function createScenarioGeneratorRequest(
         )
       }
     ],
-    output_config: { format: zodOutputFormat(ScenarioGenerationSchema) }
+    output_config: {
+      effort: SCENARIO_AGENT_CONFIG.effort,
+      format: zodOutputFormat(ScenarioGenerationSchema)
+    }
   };
 }
 
