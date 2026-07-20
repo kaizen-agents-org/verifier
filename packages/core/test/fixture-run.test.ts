@@ -1,9 +1,13 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { fixtureRunExitCode, runFixtureEval } from "../src/eval/fixture-run.js";
 import type { FixtureCaseResult, FixtureRunResult } from "../src/eval/fixture-run.js";
+
+const execFileAsync = promisify(execFile);
 
 function fixtureResult(passed: boolean, knownGap = false): FixtureCaseResult {
   return {
@@ -131,6 +135,48 @@ describe("golden fixture replay", () => {
       expect(result.metrics.harnessErrors).toBe(0);
       expect(result.metrics.passedCases).toBe(1);
       expect(result.cases[0]?.actual.verdict).toBe("mergeable");
+    } finally {
+      await rm(corpusDir, { recursive: true, force: true });
+    }
+  });
+
+  it("clones a local repository path when replay data is unavailable", async () => {
+    const corpusDir = await mkdtemp(join(tmpdir(), "verifier-golden-local-test-"));
+    const sourceDir = join(corpusDir, "source");
+    const caseDir = join(corpusDir, "golden", "gp-local");
+
+    try {
+      await mkdir(sourceDir, { recursive: true });
+      await writeFile(join(sourceDir, "value.txt"), "before\n", "utf8");
+      await execFileAsync("git", ["init", "-q", "-b", "main"], { cwd: sourceDir });
+      await execFileAsync("git", ["add", "value.txt"], { cwd: sourceDir });
+      await execFileAsync("git", ["-c", "user.name=Verifier", "-c", "user.email=verifier@example.com", "commit", "-q", "-m", "base"], { cwd: sourceDir });
+      const { stdout: sha } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: sourceDir });
+      await mkdir(caseDir, { recursive: true });
+      await writeFile(
+        join(caseDir, "case.json"),
+        `${JSON.stringify({
+          id: "gp-local",
+          kind: "golden",
+          description: "local clone source",
+          groundTruth: { defect: false },
+          intent: { text: "Keep the checked-in value." },
+          expected: { verdictAnyOf: ["mergeable", "conditional", "not_mergeable", "inconclusive"] },
+          golden: {
+            repoUrl: sourceDir,
+            baseSha: sha.trim(),
+            headSha: sha.trim(),
+            labelSource: "https://example.invalid/review/1",
+            verifyCommands: ["node -e \"console.log('all tests passed')\""]
+          }
+        }, null, 2)}\n`,
+        "utf8"
+      );
+
+      const result = await runFixtureEval({ corpusDir: join(corpusDir, "golden") });
+
+      expect(result.metrics.harnessErrors).toBe(0);
+      expect(result.metrics.passedCases).toBe(1);
     } finally {
       await rm(corpusDir, { recursive: true, force: true });
     }

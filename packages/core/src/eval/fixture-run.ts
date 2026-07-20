@@ -46,7 +46,7 @@ const FixtureCaseSchema = z.object({
     .optional(),
   golden: z
     .object({
-      repoUrl: z.string().url(),
+      repoUrl: z.string().trim().min(1),
       baseSha: z.string().regex(FULL_GIT_SHA_PATTERN),
       headSha: z.string().regex(FULL_GIT_SHA_PATTERN),
       labelSource: z.string().url(),

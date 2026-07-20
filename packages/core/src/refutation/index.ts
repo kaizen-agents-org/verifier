@@ -103,7 +103,11 @@ export async function runRefutationGate(
   const absoluteEvidencePath = resolve(options.runDir, evidencePath);
   await mkdir(resolve(options.runDir, "evidence"), { recursive: true });
   await assertRealPathWithinWorkspace(options.workspace, resolve(options.runDir, "evidence"));
-  await writeFile(absoluteEvidencePath, redactSensitiveText(formatExecution(execution)), "utf8");
+  await writeFile(absoluteEvidencePath, redactSensitiveText(formatExecution(execution)), {
+    encoding: "utf8",
+    flag: "wx",
+    mode: 0o600
+  });
 
   const confirmed = execution.code === 0 && !execution.timedOut;
   const evidence: Evidence = {
