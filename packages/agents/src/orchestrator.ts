@@ -188,6 +188,7 @@ export function materializeCorrectnessReview(
           }
         : {}),
       scenario: finding.scenario,
+      ...(finding.suggestedRepro !== undefined ? { suggestedRepro: finding.suggestedRepro } : {}),
       claimIds: [...finding.claimIds],
       evidenceIds: [],
       refutation: {
@@ -275,11 +276,12 @@ export async function runRefutationStage(
       options.transport ? { transport: options.transport } : {}
     );
     updatedRunMeta = recordAgentUsage(updatedRunMeta, result.usage);
+    const reproCommand = result.refutation.reproCommand ?? finding.suggestedRepro;
     const refuterOutput = {
       outcome: result.refutation.outcome,
       reasoning: result.refutation.reasoning,
-      ...(result.refutation.reproCommand !== undefined
-        ? { reproCommand: result.refutation.reproCommand }
+      ...(reproCommand !== undefined
+        ? { reproCommand }
         : {})
     };
     const gated = await runRefutationGate(finding, refuterOutput, {

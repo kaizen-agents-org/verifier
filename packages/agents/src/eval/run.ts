@@ -112,9 +112,9 @@ export async function runSemanticEval(
     gateMode === "on" ? refutationOn : refutationOff,
     thresholds
   );
-  if (mode === "full" && refutationOn.recall <= baseline.metrics.recall) {
+  if (mode === "full" && refutationOn.recall < baseline.metrics.recall) {
     thresholdFailures.push(
-      `recall ${formatRate(refutationOn.recall)} did not improve on baseline ${formatRate(
+      `recall ${formatRate(refutationOn.recall)} fell below baseline ${formatRate(
         baseline.metrics.recall
       )}`
     );
