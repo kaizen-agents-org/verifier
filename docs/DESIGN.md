@@ -41,7 +41,7 @@ graph TD
 ```
 packages/
   core/            # orchestrator, judge, intent, review, refutation, types
-  agents/          # LLM共通層（Claude Agent SDK ラッパ）
+  agents/          # LLM共通層（@anthropic-ai/sdk Messages APIラッパ）
   sandbox/         # worktree / コンテナ / ネットワークポリシー
   probe-sdk/       # ProbeDriver インターフェース（公開API、依存ゼロ）
   probe-drivers/   # cli, api, web, electron, tui, ...（probe-sdkのみに依存）
@@ -168,6 +168,12 @@ export interface RunMeta {
     reason: string;
   }[];
   targets: TargetType[];
+  agentConfig?: {                 // LLMモード時のみ。既定CLIでは未設定
+    model: string;
+    effort: string;               // Opus 4.8のtemperature相当の固定生成設定
+    maxTokens: number;
+    maxSchemaRetries: number;
+  };
   cost: { inputTokens: number; outputTokens: number; usd: number };
   durationMs: number;
 }
@@ -555,7 +561,7 @@ export interface VerifierConfig {
 | scenario-generator | diff + 検出ターゲット + Claim | `{ scenarios: Scenario[] }` |
 | vision-judge | スクリーンショット + 自然言語アサーション | `{ pass: boolean, observation: string }` |
 
-共通規約: temperature等の生成パラメータ・モデルIDは `agents/config.ts` で固定しrunMetaに記録（再現性）。リトライはスキーマ不一致時のみ最大2回。トークン・コストを呼び出し単位で計測し `RunMeta.cost` に集計。
+共通規約: 生成パラメータ・モデルIDは `agents/config.ts` で固定しrunMetaに記録（再現性）。Opus 4.8ではsampling parameterが非対応のため、temperature相当の固定設定として`effort`を使用する。リトライはスキーマ不一致時のみ最大2回。トークン・コストを呼び出し単位で計測し `RunMeta.cost` に集計。
 
 ## 10. エラーハンドリング方針
 

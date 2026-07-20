@@ -113,6 +113,12 @@ export interface RunMeta {
     reason: string;
   }[];
   targets: TargetType[];
+  agentConfig?: {
+    model: string;
+    effort: string;
+    maxTokens: number;
+    maxSchemaRetries: number;
+  };
   cost: { inputTokens: number; outputTokens: number; usd: number };
   durationMs: number;
 }
