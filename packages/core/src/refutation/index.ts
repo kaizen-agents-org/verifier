@@ -98,7 +98,7 @@ export async function runRefutationGate(
   }
   await assertEvidenceDirectory(options.workspace, options.runDir);
   const executor = options.executor ?? executeReproCommand;
-  const execution = await executor(command, options);
+  const execution = redactExecution(await executor(command, options));
   const evidencePath = join("evidence", `${options.evidenceId}.txt`);
   const absoluteEvidencePath = resolve(options.runDir, evidencePath);
   await mkdir(resolve(options.runDir, "evidence"), { recursive: true });
@@ -291,6 +291,15 @@ function formatExecution(result: ReproCommandResult): string {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function redactExecution(result: ReproCommandResult): ReproCommandResult {
+  return {
+    ...result,
+    command: redactSensitiveText(result.command),
+    stdout: redactSensitiveText(result.stdout),
+    stderr: redactSensitiveText(result.stderr)
+  };
 }
 
 function terminateProcessGroup(pid: number | undefined, signal: NodeJS.Signals = "SIGTERM"): void {

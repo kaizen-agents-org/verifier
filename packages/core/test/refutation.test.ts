@@ -107,7 +107,7 @@ describe("refutation gate", () => {
   it("writes redacted command evidence inside the workspace", async () => {
     const workspace = await makeWorkspace();
     const runDir = join(workspace, ".verifier/runs/run-1");
-    await runRefutationGate(
+    const result = await runRefutationGate(
       makeFinding(),
       { outcome: "survived", reasoning: "reachable", reproCommand: "test" },
       {
@@ -123,6 +123,8 @@ describe("refutation gate", () => {
     const log = await readFile(join(runDir, "evidence/E-R1.txt"), "utf8");
     expect(log).toContain("token=[REDACTED]");
     expect(log).not.toContain("super-secret-value");
+    expect(result.execution?.stdout).toContain("token=[REDACTED]");
+    expect(result.execution?.stdout).not.toContain("super-secret-value");
   });
 
   it("rejects evidence paths outside the workspace", async () => {
