@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { access } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   LaunchError,
@@ -128,6 +128,10 @@ class CliProbeSession implements ProbeSession {
     }
 
     const maxOutputBytes = this.options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+    const artifactSnapshot = await snapshotArtifacts(
+      this.context.workdir,
+      descriptor.captureFiles ?? []
+    );
     const startedAt = Date.now();
     let stdout = "";
     let stderr = "";
@@ -176,7 +180,11 @@ class CliProbeSession implements ProbeSession {
       this.activeChild = undefined;
     });
 
-    const artifacts = await collectArtifacts(this.context.workdir, descriptor.captureFiles ?? []);
+    const artifacts = await collectArtifacts(
+      this.context.workdir,
+      descriptor.captureFiles ?? [],
+      artifactSnapshot
+    );
     this.observation = {
       ...this.observation,
       ...(result.code !== null ? { exitCode: result.code } : {}),
@@ -228,21 +236,49 @@ class CliProbeSession implements ProbeSession {
   }
 }
 
-async function collectArtifacts(workdir: string, paths: string[]): Promise<Artifact[]> {
+type ArtifactSnapshot = Map<string, string | undefined>;
+
+async function snapshotArtifacts(workdir: string, paths: string[]): Promise<ArtifactSnapshot> {
+  const snapshot: ArtifactSnapshot = new Map();
+  for (const path of paths) {
+    const absolute = resolveArtifactPath(workdir, path);
+    snapshot.set(path, await artifactFingerprint(absolute));
+  }
+  return snapshot;
+}
+
+async function collectArtifacts(
+  workdir: string,
+  paths: string[],
+  before: ArtifactSnapshot
+): Promise<Artifact[]> {
   const artifacts: Artifact[] = [];
   for (const path of paths) {
-    const absolute = resolve(workdir, path);
-    if (isAbsolute(path) || escapes(workdir, absolute)) {
-      throw new LaunchError(`CLI artifact path escapes the workdir: ${path}`);
-    }
-    try {
-      await access(absolute);
+    const absolute = resolveArtifactPath(workdir, path);
+    const after = await artifactFingerprint(absolute);
+    if (after !== undefined && after !== before.get(path)) {
       artifacts.push({ kind: "file", path });
-    } catch {
-      // Missing files are represented by absence and compared by the orchestrator.
     }
   }
   return artifacts;
+}
+
+function resolveArtifactPath(workdir: string, path: string): string {
+  const absolute = resolve(workdir, path);
+  if (isAbsolute(path) || escapes(workdir, absolute)) {
+    throw new LaunchError(`CLI artifact path escapes the workdir: ${path}`);
+  }
+  return absolute;
+}
+
+async function artifactFingerprint(path: string): Promise<string | undefined> {
+  try {
+    const value = await stat(path, { bigint: true });
+    return [value.dev, value.ino, value.size, value.mtimeNs, value.ctimeNs].join(":");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
 }
 
 function escapes(root: string, candidate: string): boolean {

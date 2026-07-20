@@ -74,6 +74,29 @@ describe("CLI probe driver", () => {
     expect(Date.now() - startedAt).toBeLessThan(180);
     await session.teardown();
   });
+
+  it("does not report a capture file left behind by an earlier scenario", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-stale-artifact-"));
+    await writeFile(join(workdir, "output.txt"), "stale", "utf8");
+    const driver = new CliProbeDriver({
+      commands: {
+        noop: {
+          file: process.execPath,
+          args: ["-e", "process.exit(0)"],
+          captureFiles: ["output.txt"]
+        }
+      }
+    });
+    const session = await driver.launch(context(workdir, {}));
+
+    try {
+      const results = await session.interact(scenario("noop"));
+      expect(results).toMatchObject([{ ok: true, artifacts: [] }]);
+      await expect(session.observe()).resolves.toMatchObject({ artifacts: [] });
+    } finally {
+      await session.teardown();
+    }
+  });
 });
 
 async function runFixture(defect: string): Promise<{

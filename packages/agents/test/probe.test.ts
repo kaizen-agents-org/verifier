@@ -282,6 +282,38 @@ describe("Stage 5 probe orchestration", () => {
       { stage: 5, reasonCode: "env-failure" }
     ]);
   });
+
+  it("treats a command spawn failure during a scenario as an environment skip", async () => {
+    let tornDown = false;
+    const result = await runProbeStage({
+      driver: {
+        targetType: "cli",
+        detect: async () => ({ confidence: 1, launchHint: "fixture" }),
+        launch: async () => ({
+          interact: async () => {
+            throw new LaunchError("missing local interpreter");
+          },
+          observe: async () => ({
+            consoleErrors: [], networkFailures: [], screenshots: [], crashed: false, artifacts: []
+          }),
+          teardown: async () => {
+            tornDown = true;
+          }
+        })
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [cliScenario()],
+      claims: [claim()],
+      runMeta: runMeta()
+    });
+
+    expect(tornDown).toBe(true);
+    expect(result.findings).toEqual([]);
+    expect(result.runMeta.stagesSkipped).toMatchObject([
+      { stage: 5, reasonCode: "env-failure" }
+    ]);
+  });
 });
 
 async function runCli(defect: string, withRefutation = false) {

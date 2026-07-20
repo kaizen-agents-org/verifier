@@ -213,6 +213,23 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
           ]);
         }
       }
+    } catch (error) {
+      if (!(error instanceof LaunchError)) throw error;
+      return {
+        claims: options.claims.map((claim) => ({
+          ...claim,
+          evidenceIds: [
+            ...new Set([...claim.evidenceIds, ...(successfulEvidence.get(claim.id) ?? [])])
+          ]
+        })),
+        findings,
+        evidence,
+        observations,
+        runMeta: skipStage(
+          options.runMeta,
+          `Probe launch failed: ${redactSensitiveText(error.message)}`
+        )
+      };
     } finally {
       await session.teardown();
     }
