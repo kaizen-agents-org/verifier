@@ -290,9 +290,9 @@ export function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErr
       if (result.expected.knownGap) knownGapFailures += 1;
     }
 
-    const expectedVerdicts = result.expected.verdictAnyOf ??
-      (result.expected.verdict ? [result.expected.verdict] : []);
-    if (expectedVerdicts.includes(result.actual.verdict)) verdictMatches += 1;
+    if (compareFixtureVerdict(result.expected, result.actual).length === 0) {
+      verdictMatches += 1;
+    }
     if (result.groundTruth.defect && isDefectDetected(result.actual.verdict)) {
       detectedDefects += 1;
     }

@@ -346,7 +346,7 @@ expected verdict constraints, and any false-positive allowance. The command
 prints JSON with:
 
 - `metrics.verdictAgreement`: fraction of cases whose verdict matched the
-  expected verdict or allowed verdict set.
+  expected verdict or allowed verdict set and satisfied any confidence bounds.
 - `metrics.falsePositiveRate`: for cases with a false-positive allowance,
   surplus findings beyond expected findings and that allowance, divided by total
   emitted findings in those cases.

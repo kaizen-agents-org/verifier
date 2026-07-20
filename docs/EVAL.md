@@ -231,7 +231,7 @@ test(`${driver.targetType} clean run has no failures`, async () => {
 |---|---|
 | **recall** | mustDetect=true の期待Findingのうち、survived Findingとマッチしたものの割合。**マッチ条件**: `locationFile` 一致 かつ category一致。期待側に `locationLine` があれば実Findingの行と±10行以内であること。実Findingの `location` が欠落している場合はマッチ不成立 |
 | **fpRate** | `Σ_case max(0, 未マッチsurvived数 − maxFalsePositives) / Σ_case survived総数`。SPEC §12 KPIの偽陽性率（人間判断ベース）の自動推定値として使う |
-| **verdictAgreement** | 判定が期待と一致したケースの割合。一致条件: `expected.verdict` と一致、または `expected.verdictAnyOf` 指定時はそのいずれかと一致し、かつ `confidenceMax` 指定時は confidence ≤ confidenceMax |
+| **verdictAgreement** | 判定が期待と一致したケースの割合。一致条件: `expected.verdict` と一致、または `expected.verdictAnyOf` 指定時はそのいずれかと一致し、かつ指定された `confidenceMin` / `confidenceMax` の範囲内 |
 | **reproducibility** | 全ケースをN=5回実行し、Verdict区分が5回とも一致したケースの割合（リリースタグ時のみ算出。§5） |
 | **costPerRun** | 1ケースあたり平均USD / 平均トークン |
 | **wallClock** | 1ケースあたり平均実行時間 |

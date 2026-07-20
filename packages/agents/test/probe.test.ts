@@ -349,6 +349,44 @@ describe("Stage 5 probe orchestration", () => {
     ]);
   });
 
+  it("accepts a maximally escaped default-size API response artifact", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "verifier-probe-response-"));
+    const responsePath = join(tempDir, "response.json");
+    await writeFile(responsePath, JSON.stringify({
+      status: 200,
+      headers: {},
+      body: "\u0000".repeat(64 * 1024),
+      truncated: false
+    }));
+
+    const result = await runProbeStage({
+      driver: {
+        targetType: "api",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => ({
+          interact: async () => [{
+            stepIndex: 0,
+            ok: true,
+            artifacts: [{ kind: "log", path: responsePath }]
+          }],
+          observe: async () => ({
+            consoleErrors: [], networkFailures: [], screenshots: [], crashed: false, artifacts: []
+          }),
+          teardown: async () => {}
+        })
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [apiScenario("/item")],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-"))
+    });
+
+    expect(result.findings).toEqual([]);
+    expect(result.evidence).toMatchObject([{ reproducible: true }]);
+  });
+
   it("leaves API timeouts unverified without creating a finding", async () => {
     const result = await runApi("hang", apiScenario("/hang"), 2_000);
     expect(result.findings).toEqual([]);

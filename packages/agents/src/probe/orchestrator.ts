@@ -31,7 +31,7 @@ import {
   type ScenarioGeneratorTransport
 } from "../scenario/client.js";
 
-const RESPONSE_ARTIFACT_LIMIT = 128 * 1024;
+const RESPONSE_ARTIFACT_LIMIT = 512 * 1024;
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 
 export interface CliScenarioExpectation {
