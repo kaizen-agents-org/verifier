@@ -1,0 +1,21 @@
+{
+  "id": "gp-014-kaizen-202-sanitized",
+  "kind": "golden",
+  "stack": "node",
+  "labelSource": "sanitized Kaizen nightly run issue #202",
+  "description": "Sanitized Kaizen #202 replay: rendered sample findings and ANSI passing names are not runtime auth or verification failures.",
+  "input": {
+    "task": "Render typed verifier findings in PR evidence.",
+    "diff": "diff --git a/src/verifier.ts b/src/verifier.ts\n+const findingSchema = z.object({ source: z.string(), message: z.string() })\ndiff --git a/test/verifier.test.ts b/test/verifier.test.ts\n+const shouldFix = [{ source: 'diff', message: 'Review the auth change' }]",
+    "verifyLogs": "\u001b[32m✓\u001b[39m test/block-classification.test.ts (7 tests) 2ms\n\u001b[33m✓\u001b[39m marks the current iteration and goal failed when the issue pipeline throws 317ms\n\u001b[33m✓\u001b[39m includes previous mechanical evaluation failure output in the next iteration issue body 527ms\n\u001b[2m Test Files \u001b[22m \u001b[1m\u001b[32m31 passed\u001b[39m\u001b[22m (31)\n\u001b[2m Tests \u001b[22m \u001b[1m\u001b[32m291 passed\u001b[39m\u001b[22m (291)\ntypecheck passed\nbuild passed",
+    "builderReport": "Typed verifier rendering tests passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}
