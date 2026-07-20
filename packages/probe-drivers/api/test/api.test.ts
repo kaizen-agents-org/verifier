@@ -48,6 +48,7 @@ describe("API probe driver", () => {
       path: "/health?fail=1",
       expect: { status: 200 }
     }));
+    expect(run.results).toMatchObject([{ ok: true }]);
     expect(run.observation.networkFailures).toMatchObject([{ status: 500, failed: true }]);
     expect(run.responses.at(-1)).toMatchObject({ status: 200 });
   });

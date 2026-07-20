@@ -264,7 +264,8 @@ class ApiProbeSession implements ProbeSession {
           this.options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES
         );
         const artifact = await this.writeResponseArtifact(response, body.text, body.truncated);
-        if (response.status >= 500 && !isExpectedStatus(step, response.status)) {
+        const unexpectedServerError = response.status >= 500 && !isExpectedStatus(step, response.status);
+        if (unexpectedServerError) {
           this.networkFailures.push({
             method: step.method.toUpperCase(),
             url: this.url(step.path),
@@ -276,8 +277,8 @@ class ApiProbeSession implements ProbeSession {
         }
         return {
           stepIndex,
-          ok: lastError === undefined,
-          ...(lastError && response.status >= 500 ? { error: lastError } : {}),
+          ok: !unexpectedServerError,
+          ...(unexpectedServerError && lastError ? { error: lastError } : {}),
           artifacts: [artifact]
         };
       } catch (error) {
