@@ -246,6 +246,7 @@ describe("correctness and refutation orchestration", () => {
     const finding = makeFinding();
     const result = await runRefutationStage([finding], makeRunMeta(), {
       workspace,
+      runsRoot: ".verifier/custom-runs",
       getRelatedCode: () => "code",
       authorizeCommand: (command) => command === "pnpm test empty",
       transport: async () => ({
@@ -275,6 +276,9 @@ describe("correctness and refutation orchestration", () => {
     });
     expect(result.evidence).toMatchObject([{ checkKind: "runtime" }]);
     expect(result.runMeta.stagesExecuted).toContain(4);
+    await expect(
+      readFile(join(workspace, ".verifier/custom-runs/run-1/evidence/E-S4-1.txt"), "utf8")
+    ).resolves.toContain("reproduced");
   });
 });
 
