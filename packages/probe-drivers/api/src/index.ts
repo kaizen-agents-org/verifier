@@ -185,7 +185,7 @@ class ApiProbeSession implements ProbeSession {
       consoleErrors: structuredClone(this.consoleErrors),
       networkFailures: structuredClone(this.networkFailures),
       screenshots: [],
-      crashed: this.child.signalCode !== null,
+      crashed: this.child.exitCode !== null || this.child.signalCode !== null,
       artifacts: structuredClone(this.artifacts)
     };
   }

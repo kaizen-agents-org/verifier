@@ -31,5 +31,11 @@ app.get("/health", (request, response) => {
 app.get("/hang", (_request, _response) => {
   if (!defects.has("hang")) _response.json({ ok: true });
 });
+app.get("/exit-after-response", (_request, response) => {
+  response.on("finish", () => {
+    if (defects.has("exit-after-response")) setTimeout(() => process.exit(1), 10);
+  });
+  response.json({ ok: true });
+});
 
 app.listen(port, host);

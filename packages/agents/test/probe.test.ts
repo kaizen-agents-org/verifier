@@ -111,7 +111,12 @@ describe("Stage 5 probe orchestration", () => {
             { stepIndex: 1, ok: false, error: "timeout after 10ms", artifacts: [] }
           ],
           observe: async () => ({
-            consoleErrors: [], networkFailures: [], screenshots: [], crashed: false, artifacts: []
+            consoleErrors: [],
+            networkFailures: [],
+            screenshots: [],
+            crashed: false,
+            exitCode: 1,
+            artifacts: []
           }),
           teardown: async () => {}
         })
@@ -120,7 +125,7 @@ describe("Stage 5 probe orchestration", () => {
       launch: await launchContext("/fixture", "", 100),
       scenarios: [{
         ...cliScenario(),
-        steps: [{ op: "wait", forMs: 0 }, { op: "wait", forMs: 0 }]
+        steps: [{ op: "exec", command: "convert" }, { op: "wait", forMs: 0 }]
       }],
       claims: [claim()],
       runMeta: runMeta()
@@ -129,6 +134,7 @@ describe("Stage 5 probe orchestration", () => {
     expect(result.findings).toMatchObject([
       { reproduced: true, scenario: expect.stringContaining("assertion failed") }
     ]);
+    expect(result.findings[0]?.scenario).toContain("exit code 1, expected 0");
     expect(result.findings[0]?.scenario).not.toContain("timeout");
     expect(result.evidence).toMatchObject([{ reproducible: true }]);
   });

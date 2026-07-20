@@ -166,10 +166,12 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
       const firstTimedOutStep = timedOut ? Math.min(...timedOutSteps) : undefined;
       const materialMismatches = firstTimedOutStep === undefined
         ? mismatches
-        : mismatches.filter((mismatch) => {
-            const match = /^step (\d+) /.exec(mismatch);
-            return match !== null && Number(match[1]) < firstTimedOutStep;
-          });
+        : mismatches.filter((mismatch) => mismatchPrecedesTimeout(
+            mismatch,
+            firstTimedOutStep,
+            scenario,
+            stepResults
+          ));
       const item: Evidence = {
         id: evidenceId,
         kind: options.driver.targetType === "api" ? "network-log" : "command-output",
@@ -227,6 +229,28 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
     observations,
     runMeta: withStageAndTarget(options.runMeta, options.driver.targetType)
   };
+}
+
+function mismatchPrecedesTimeout(
+  mismatch: string,
+  firstTimedOutStep: number,
+  scenario: Scenario,
+  stepResults: StepResult[]
+): boolean {
+  const indexedMismatch = /^step (\d+) /.exec(mismatch);
+  if (indexedMismatch) return Number(indexedMismatch[1]) < firstTimedOutStep;
+
+  const isCliExpectationMismatch = mismatch.startsWith("exit code ") ||
+    mismatch === "stderr was not empty" ||
+    mismatch.startsWith("stdout did not include ") ||
+    mismatch.startsWith("missing generated file ");
+  if (!isCliExpectationMismatch) return false;
+
+  return stepResults.some(({ stepIndex, error }) =>
+    stepIndex < firstTimedOutStep &&
+    scenario.steps[stepIndex]?.op === "exec" &&
+    !error?.startsWith("timeout")
+  );
 }
 
 export interface RunProbeAndRefuteStageOptions extends RunProbeStageOptions {

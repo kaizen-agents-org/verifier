@@ -84,6 +84,17 @@ describe("API probe driver", () => {
     expect(run.responses.map(({ status }) => status)).toEqual([401, 200, 200]);
   });
 
+  it("reports a non-zero API process exit as a crash", async () => {
+    const run = await runFixture("exit-after-response", {
+      ...requestScenario({ method: "GET", path: "/exit-after-response", expect: { status: 200 } }),
+      steps: [
+        { op: "request", method: "GET", path: "/exit-after-response", expect: { status: 200 } },
+        { op: "wait", forMs: 50 }
+      ]
+    });
+    expect(run.observation.crashed).toBe(true);
+  });
+
   it("rejects paths that can escape the authorized origin", async () => {
     const workdir = await mkdtemp(join(tmpdir(), "verifier-api-origin-"));
     const session = await makeDriver().launch(await context(workdir, ""));
