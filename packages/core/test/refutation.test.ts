@@ -92,7 +92,7 @@ describe("refutation gate", () => {
     const workspace = await makeWorkspace();
     const result = await runRefutationGate(
       makeFinding(),
-      { outcome: "refuted", reasoning: "The scenario contradicts the implementation." },
+      { outcome: "refuted", reasoning: "The scenario contains token=refuter-secret." },
       gateOptions(workspace, async () => {
         throw new Error("executor must not run");
       })
@@ -102,8 +102,9 @@ describe("refutation gate", () => {
       required: true,
       attempted: true,
       outcome: "refuted",
-      notes: "The scenario contradicts the implementation."
+      notes: "The scenario contains token=[REDACTED]"
     });
+    expect(result.finding.refutation.notes).not.toContain("refuter-secret");
   });
 
   it("writes redacted command evidence inside the workspace", async () => {

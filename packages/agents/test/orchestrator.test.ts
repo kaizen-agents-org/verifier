@@ -232,7 +232,13 @@ describe("correctness and refutation orchestration", () => {
         runsRoot,
         transport: async () => ({
           parsed_output: {
-            findings: [],
+            findings: [{
+              category: "logic",
+              title: "Leaked token=correctness-secret",
+              scenario: "Repro with token=correctness-secret",
+              suggestedRepro: "test token=correctness-secret",
+              claimIds: [claim.id]
+            }],
             claimAssessments: [{
               claimId: claim.id,
               supported: true,
@@ -248,6 +254,13 @@ describe("correctness and refutation orchestration", () => {
     expect(result.claims[0]?.evidenceIds).toContain("E-S3-CORRECTNESS");
     expect(result.evidence).toMatchObject([{ checkKind: "reading" }]);
     expect(result.runMeta.stagesExecuted).toContain(3);
+    expect(JSON.stringify(result.review)).not.toContain("correctness-secret");
+    expect(JSON.stringify(result.findings)).not.toContain("correctness-secret");
+    expect(result.findings[0]).toMatchObject({
+      title: "Leaked token=[REDACTED]",
+      scenario: "Repro with token=[REDACTED]",
+      suggestedRepro: "test token=[REDACTED]"
+    });
     const persisted = await readFile(result.reviewPath, "utf8");
     expect(persisted).toContain("token=[REDACTED]");
     expect(persisted).not.toContain("correctness-secret");
