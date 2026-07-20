@@ -55,14 +55,14 @@ function runResult(cases: FixtureCaseResult[], harnessErrors = 0): FixtureRunRes
 }
 
 describe("fixture eval exit status", () => {
-  it("keeps verdict agreement independent from confidence calibration failures", () => {
+  it("includes confidence calibration in verdict agreement", () => {
     const result = fixtureResult(false);
     result.actual = { verdict: "conditional", confidence: 60 };
     result.expected = { verdict: "conditional", confidenceMin: 70, knownGap: false };
 
     expect(calculateFixtureMetrics([result], 0)).toMatchObject({
       failedCases: 1,
-      verdictAgreement: 1
+      verdictAgreement: 0
     });
   });
 
