@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 
-const semanticPaths = /^(?:\.github\/workflows\/ci\.yml|scripts\/run-semantic-eval-ci\.mjs|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|eval\/|fixtures\/|packages\/agents\/|packages\/core\/src\/(?:eval|judge|refutation)\/)/;
+const semanticPaths = /^(?:\.github\/workflows\/ci\.yml|scripts\/run-semantic-eval-ci\.mjs|package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|eval\/|fixtures\/|packages\/agents\/|packages\/core\/src\/(?:eval\/|judge\/|refutation\/|check\.ts|redaction\.ts))/;
 
 run(["eval:semantic", "--", "--mode", "smoke"]);
 

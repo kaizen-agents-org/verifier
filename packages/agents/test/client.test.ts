@@ -89,7 +89,7 @@ describe("intent extractor client", () => {
     });
     await expect(
       extractIntent({ sources: [], diffSummary: "diff" }, { transport: async () => response })
-    ).rejects.toThrow();
+    ).rejects.toThrow(/violates the schema after retries/);
   });
 
   it("retries schema failures at most twice", async () => {
