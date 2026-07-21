@@ -1,0 +1,18 @@
+{
+  "id": "sb-012-cargo-failure-log",
+  "kind": "seeded",
+  "description": "Replays a captured cargo test failure with separate stdout/stderr and the original exit status.",
+  "groundTruth": { "defect": true },
+  "intent": {
+    "text": "Preserve the Rust parser's rejection of an empty identifier."
+  },
+  "expected": {
+    "verdict": "not_mergeable"
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node test/replay-capture.js"]
+  },
+  "timeoutMinutes": 5
+}

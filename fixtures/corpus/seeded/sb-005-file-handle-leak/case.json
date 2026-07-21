@@ -1,0 +1,19 @@
+{
+  "id": "sb-005-file-handle-leak",
+  "kind": "seeded",
+  "description": "Error-path file handle cleanup is removed; detecting the leak requires the Stage 4 reproduction capability tracked by #81.",
+  "groundTruth": { "defect": true },
+  "intent": {
+    "text": "Keep writeRecord safe on both success and error paths without leaking its open file handle."
+  },
+  "expected": {
+    "verdict": "conditional",
+    "knownGap": true
+  },
+  "setup": {
+    "baseDir": "repo",
+    "patch": "bug.patch",
+    "verifyCommands": ["node --test test/file-store.test.js"]
+  },
+  "timeoutMinutes": 5
+}

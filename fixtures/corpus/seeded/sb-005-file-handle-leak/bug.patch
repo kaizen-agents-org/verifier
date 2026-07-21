@@ -1,0 +1,15 @@
+diff --git a/src/file-store.js b/src/file-store.js
+index 603fb60..d022d05 100644
+--- a/src/file-store.js
++++ b/src/file-store.js
+@@ -1,8 +1,5 @@
+ export async function writeRecord(openFile, path, contents) {
+   const handle = await openFile(path, "w");
+-  try {
+-    await handle.writeFile(contents);
+-  } finally {
+-    await handle.close();
+-  }
++  await handle.writeFile(contents);
++  await handle.close();
+ }

@@ -13,6 +13,7 @@ const execFileAsync = promisify(execFile);
 
 const NEUTRAL_BASE_COMMIT_MESSAGE = "base";
 const NEUTRAL_HEAD_COMMIT_MESSAGE = "apply changes";
+const FULL_GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 const FixtureExpectedSchema = z
   .object({
@@ -33,6 +34,7 @@ const FixtureCaseSchema = z.object({
   id: z.string().min(1),
   kind: z.enum(["seeded", "golden"]),
   description: z.string().min(1),
+  groundTruth: z.object({ defect: z.boolean() }),
   intent: z.object({ text: z.string().min(1) }).optional(),
   expected: FixtureExpectedSchema,
   setup: z
@@ -44,10 +46,16 @@ const FixtureCaseSchema = z.object({
     .optional(),
   golden: z
     .object({
-      repoUrl: z.string().min(1),
-      baseSha: z.string().min(1),
-      headSha: z.string().min(1),
-      labelSource: z.string().min(1),
+      repoUrl: z.string().url(),
+      baseSha: z.string().regex(FULL_GIT_SHA_PATTERN),
+      headSha: z.string().regex(FULL_GIT_SHA_PATTERN),
+      labelSource: z.string().url(),
+      replay: z
+        .object({
+          baseDir: z.string().min(1),
+          patch: z.string().min(1)
+        })
+        .optional(),
       verifyCommands: z.array(z.string()).default([])
     })
     .optional(),
@@ -60,6 +68,7 @@ export interface FixtureCaseResult {
   id: string;
   kind: "seeded" | "golden";
   description: string;
+  groundTruth: { defect: boolean };
   passed: boolean;
   failures: string[];
   actual: {
@@ -73,7 +82,14 @@ export interface FixtureMetrics {
   totalCases: number;
   passedCases: number;
   failedCases: number;
+  knownGapFailures: number;
+  unexpectedFailures: number;
   harnessErrors: number;
+  defectCases: number;
+  cleanCases: number;
+  recall: number;
+  fpRate: number;
+  falsePositiveCases: number;
   verdictAgreement: number;
   byKind: Record<"seeded" | "golden", { total: number; passed: number; failed: number }>;
 }
@@ -121,7 +137,7 @@ export async function runFixtureEval(options: RunFixtureEvalOptions = {}): Promi
   const metrics = calculateFixtureMetrics(results, harnessErrorDetails.length);
   const runResult: FixtureRunResult = {
     generatedAt: new Date().toISOString(),
-    corpusDir,
+    corpusDir: options.corpusDir ? corpusDir : "fixtures/corpus",
     metrics,
     cases: results,
     harnessErrorDetails
@@ -156,6 +172,7 @@ async function runFixtureCase(fixtureCase: FixtureCase, caseDir: string): Promis
       id: fixtureCase.id,
       kind: fixtureCase.kind,
       description: fixtureCase.description,
+      groundTruth: fixtureCase.groundTruth,
       passed: failures.length === 0,
       failures,
       actual,
@@ -181,7 +198,7 @@ async function prepareWorkspace(
   if (!fixtureCase.golden) {
     throw new Error(`golden case ${fixtureCase.id} is missing golden.repoUrl/baseSha/headSha`);
   }
-  return prepareGoldenWorkspace(fixtureCase.golden, workspace);
+  return prepareGoldenWorkspace(fixtureCase.golden, caseDir, workspace);
 }
 
 async function prepareSeededWorkspace(
@@ -208,11 +225,30 @@ async function prepareSeededWorkspace(
 
 async function prepareGoldenWorkspace(
   golden: NonNullable<FixtureCase["golden"]>,
+  caseDir: string,
   workspace: string
 ): Promise<{ baseSha: string; verifyCommands: string[] }> {
+  if (golden.replay) {
+    return prepareReplayWorkspace(golden.replay, golden.verifyCommands, caseDir, workspace);
+  }
+
   await git(workspace, ["clone", "-q", golden.repoUrl, "."]);
   await git(workspace, ["checkout", "-q", golden.headSha]);
   return { baseSha: golden.baseSha, verifyCommands: golden.verifyCommands };
+}
+
+async function prepareReplayWorkspace(
+  replay: NonNullable<NonNullable<FixtureCase["golden"]>["replay"]>,
+  verifyCommands: string[],
+  caseDir: string,
+  workspace: string
+): Promise<{ baseSha: string; verifyCommands: string[] }> {
+  const setup = {
+    baseDir: replay.baseDir,
+    patch: replay.patch,
+    verifyCommands
+  };
+  return prepareSeededWorkspace(setup, caseDir, workspace);
 }
 
 function compareFixtureVerdict(
@@ -235,31 +271,78 @@ function compareFixtureVerdict(
   return failures;
 }
 
-function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: number): FixtureMetrics {
+export function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErrors: number): FixtureMetrics {
   const byKind: FixtureMetrics["byKind"] = {
     seeded: { total: 0, passed: 0, failed: 0 },
     golden: { total: 0, passed: 0, failed: 0 }
   };
   let verdictMatches = 0;
+  let knownGapFailures = 0;
+  let detectedDefects = 0;
+  let falsePositiveCases = 0;
 
   for (const result of results) {
     const bucket = byKind[result.kind];
     bucket.total += 1;
     if (result.passed) bucket.passed += 1;
-    else bucket.failed += 1;
+    else {
+      bucket.failed += 1;
+      if (result.expected.knownGap) knownGapFailures += 1;
+    }
 
-    const expectedVerdicts = result.expected.verdictAnyOf ?? (result.expected.verdict ? [result.expected.verdict] : []);
-    if (expectedVerdicts.includes(result.actual.verdict)) verdictMatches += 1;
+    if (matchesExpectedVerdict(result)) verdictMatches += 1;
+    if (result.groundTruth.defect && isDefectDetected(result.actual.verdict)) {
+      detectedDefects += 1;
+    }
+    if (!result.groundTruth.defect && isFalsePositiveVerdict(result)) {
+      falsePositiveCases += 1;
+    }
   }
+
+  const defectCases = results.filter((result) => result.groundTruth.defect).length;
+  const cleanCases = results.length - defectCases;
 
   return {
     totalCases: results.length,
     passedCases: results.filter((result) => result.passed).length,
     failedCases: results.filter((result) => !result.passed).length,
+    knownGapFailures,
+    unexpectedFailures: results.filter(
+      (result) => !result.passed && result.expected.knownGap !== true
+    ).length,
     harnessErrors,
+    defectCases,
+    cleanCases,
+    recall: ratio(detectedDefects, defectCases),
+    fpRate: ratio(falsePositiveCases, cleanCases),
+    falsePositiveCases,
     verdictAgreement: ratio(verdictMatches, results.length),
     byKind
   };
+}
+
+function matchesExpectedVerdict(result: FixtureCaseResult): boolean {
+  return expectedVerdicts(result).includes(result.actual.verdict);
+}
+
+function isDefectDetected(verdict: FinalVerdictKind): boolean {
+  return verdict === "conditional" || verdict === "not_mergeable";
+}
+
+function isFalsePositiveVerdict(result: FixtureCaseResult): boolean {
+  const configuredVerdicts = expectedVerdicts(result);
+  if (result.actual.verdict === "not_mergeable") {
+    return !configuredVerdicts.includes("not_mergeable");
+  }
+  if (result.actual.verdict === "conditional") {
+    return configuredVerdicts.every((verdict) => verdict === "mergeable");
+  }
+  return false;
+}
+
+function expectedVerdicts(result: FixtureCaseResult): FinalVerdictKind[] {
+  return result.expected.verdictAnyOf ??
+    (result.expected.verdict ? [result.expected.verdict] : []);
 }
 
 async function copyDirectory(source: string, destination: string): Promise<void> {

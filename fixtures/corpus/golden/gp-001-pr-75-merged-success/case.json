@@ -1,0 +1,24 @@
+{
+  "id": "gp-001-pr-75-merged-success",
+  "kind": "golden",
+  "description": "Hermetic replay of the evidence-grade change from verifier PR #75, whose final revision passed CI and review without blockers.",
+  "groundTruth": { "defect": false },
+  "intent": {
+    "text": "Mark verifier evidence grade correctly and avoid false positives on clean verification summaries."
+  },
+  "expected": {
+    "verdict": "mergeable"
+  },
+  "golden": {
+    "repoUrl": "https://github.com/kaizen-agents-org/verifier.git",
+    "baseSha": "741884fb138cf4b80e2424c7723b21049be252a6",
+    "headSha": "55435e75165f740d738ed4ede88f6f282fd54c9a",
+    "labelSource": "https://github.com/kaizen-agents-org/verifier/pull/75#issuecomment-4881078081",
+    "replay": {
+      "baseDir": "repo",
+      "patch": "change.patch"
+    },
+    "verifyCommands": ["node test/verify-replay.js"]
+  },
+  "timeoutMinutes": 5
+}
