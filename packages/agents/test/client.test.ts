@@ -83,13 +83,13 @@ describe("intent extractor client", () => {
     ).rejects.toThrow(message);
   });
 
-  it("reports a response that violates the Zod contract after retries", async () => {
+  it("rejects a response that violates the Zod contract", async () => {
     const response = makeResponse({
       parsed_output: { claims: [{ statement: "missing fields" }], conflicts: [] } as never
     });
     await expect(
       extractIntent({ sources: [], diffSummary: "diff" }, { transport: async () => response })
-    ).rejects.toThrow("violates the schema after retries");
+    ).rejects.toThrow(/violates the schema after retries/);
   });
 
   it("retries schema failures at most twice", async () => {

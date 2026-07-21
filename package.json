@@ -8,6 +8,8 @@
     "build": "pnpm -r build",
     "eval": "pnpm --filter @verifier/core eval",
     "eval:fixtures": "pnpm --filter @verifier/core eval:fixtures",
+    "eval:semantic": "pnpm --filter @verifier/agents eval",
+    "eval:semantic:ci": "node scripts/run-semantic-eval-ci.mjs",
     "test": "pnpm -r test",
     "test:built-cli": "pnpm --filter @verifier/core test:built-cli",
     "typecheck": "pnpm -r typecheck",

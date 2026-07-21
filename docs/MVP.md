@@ -11,8 +11,10 @@ Answer this question with local evidence:
 > Is this workspace change mergeable against the supplied intent, based on the
 > diff and verification commands that were actually run?
 
-The MVP is not an AI code reviewer. It does not generate claims, run agent
-reviews, refute findings, or operate UI/API probe drivers yet.
+The default MVP CLI is not an AI code reviewer. Opt-in APIs now exist for Claim
+extraction, one correctness lens, and adversarial refutation, but `verifier
+check` does not invoke them or require network access. UI/API probe drivers are
+still outside the MVP.
 
 ## Command
 
@@ -144,14 +146,14 @@ The gate behavior is:
 - `inconclusive`: fail on `inconclusive` or `not_mergeable`.
 - `mergeable`: fail on `conditional` or `not_mergeable`.
 
-Repository CI also runs `pnpm eval` so changes to the deterministic verdict
-logic must continue to satisfy the committed seeded/golden corpus.
+Repository CI runs `pnpm eval` and the semantic smoke gate. Changes to agents,
+judge/refutation code, prompts, or semantic thresholds additionally run the
+full committed replay with `eval/thresholds.json`.
 
 ## Explicit Non-goals For This MVP
 
-- AI claim extraction.
-- AI multi-lens review.
-- Adversarial refutation.
+- AI stages enabled by default in `verifier check`.
+- Additional security, regression, and performance lenses.
 - Generated tests.
 - Playwright, API, TUI, Electron, or native app probe drivers.
 - GitHub App or PR comment publishing.
@@ -164,18 +166,18 @@ stable.
 
 | Area | MVP status |
 |---|---|
-| Stage 0 intent handling | Implemented as explicit `--intent` / `--intent-file` input only; no AI claim extraction. |
+| Stage 0 intent handling | Default CLI uses explicit input; `@verifier/agents` exposes opt-in structured Claim extraction. |
 | Stage 1/2 verification | Implemented as user-supplied `--verify-command` execution with captured logs and exit metadata. |
-| Stage 3 review agents | Not implemented; no multi-lens AI review runs in this MVP. |
-| Stage 4 refutation | Not implemented; findings are deterministic log/context signals only. |
+| Stage 3 review agents | One opt-in correctness lens is implemented; default CLI and the other three lenses remain deferred. |
+| Stage 4 refutation | Opt-in structured refuter plus orchestrator-owned bounded repro execution is implemented; default CLI remains unchanged. |
 | Stage 5 probe drivers | Not implemented; no web/API/TUI/Electron/native driver orchestration. |
 | Stage 6 verdict integration | Implemented as deterministic compact verdict plus workspace `final_verdict`. |
 | Evidence store | Implemented for local workspace runs under `.verifier/runs/<run-id>/`. |
 
 ## Deferred Phase 2+ Scope
 
-- AI claim extraction from primary and secondary intent sources.
-- AI multi-lens review and adversarial refutation.
+- Default-pipeline wiring for the opt-in AI stages.
+- Remaining security, regression, and performance lenses.
 - Generated tests and coverage-aware evidence linking.
 - Probe Driver SDK and bundled drivers for web, API, CLI, TUI, Electron, Tauri,
   and native apps.
@@ -184,7 +186,8 @@ stable.
 
 ## Known Limitations
 
-- The MVP is TypeScript/Node-only internally and ships only `@verifier/core`.
+- The MVP is TypeScript/Node-only internally and ships `@verifier/core` plus
+  the opt-in `@verifier/agents` workspace package.
 - Workspace verification is CLI-command based; there is no structured driver
   coverage beyond spawning configured shell commands.
 - Manifest inference is limited to root `package.json` scripts.

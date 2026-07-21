@@ -9,13 +9,25 @@ export async function writeClaims(
   claims: Claim[],
   runsRoot = ".verifier/runs"
 ): Promise<string> {
+  return writeJsonArtifact(runId, "claims.json", claims, runsRoot);
+}
+
+export async function writeJsonArtifact(
+  runId: string,
+  artifactName: string,
+  value: unknown,
+  runsRoot = ".verifier/runs"
+): Promise<string> {
   if (!RUN_ID_PATTERN.test(runId)) {
     throw new Error(`Invalid verifier run ID: ${runId}`);
   }
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(artifactName)) {
+    throw new Error(`Invalid verifier artifact name: ${artifactName}`);
+  }
 
   const runDir = resolve(runsRoot, runId);
-  const claimsPath = resolve(runDir, "claims.json");
+  const artifactPath = resolve(runDir, artifactName);
   await mkdir(runDir, { recursive: true });
-  await writeFile(claimsPath, `${JSON.stringify(claims, null, 2)}\n`, "utf8");
-  return claimsPath;
+  await writeFile(artifactPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  return artifactPath;
 }

@@ -5,6 +5,9 @@ export const INTENT_AGENT_CONFIG = Object.freeze({
   maxSchemaRetries: 2
 });
 
+export const CORRECTNESS_AGENT_CONFIG = INTENT_AGENT_CONFIG;
+export const REFUTER_AGENT_CONFIG = INTENT_AGENT_CONFIG;
+
 export const INTENT_AGENT_PRICING_USD_PER_MILLION = Object.freeze({
   input: 5,
   cacheWrite5m: 6.25,

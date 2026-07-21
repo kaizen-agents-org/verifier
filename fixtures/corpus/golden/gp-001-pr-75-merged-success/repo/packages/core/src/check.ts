@@ -1,4 +1,4 @@
-export function buildVerdict(compactVerdict, finalVerdict, conditions) {
+export function buildVerdict(compactVerdict, finalVerdict, conditions, commandResults) {
   return {
     ...compactVerdict,
     final_verdict: finalVerdict,

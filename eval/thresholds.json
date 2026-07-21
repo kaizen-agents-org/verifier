@@ -1,0 +1,5 @@
+{
+  "recall": 0.85,
+  "fpRate": 0.1,
+  "verdictAgreement": 0.9
+}

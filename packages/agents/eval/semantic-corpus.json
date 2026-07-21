@@ -1,0 +1,182 @@
+{
+  "cases": [
+    {
+      "fixtureId": "gp-001-pr-75-merged-success",
+      "review": { "findings": [], "claimAssessments": [] },
+      "refutations": []
+    },
+    {
+      "fixtureId": "gp-002-pr-102-needed-fix",
+      "review": {
+        "findings": [{
+          "category": "regression",
+          "title": "Fixture timeout is not forwarded",
+          "location": { "file": "packages/core/src/eval/fixture-run.ts" },
+          "scenario": "A fixture with a short timeout keeps running because timeoutMinutes never reaches runCheck.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "The option is absent at the runCheck call site." }]
+    },
+    {
+      "fixtureId": "sb-001-authz-missing",
+      "review": {
+        "findings": [{
+          "category": "regression",
+          "title": "Admin update skips authorization",
+          "location": { "file": "src/admin-routes.js" },
+          "scenario": "An unauthenticated caller can update admin state through POST while GET remains protected.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "The changed POST path no longer calls the authorization guard." }]
+    },
+    {
+      "fixtureId": "sb-002-pagination-off-by-one",
+      "review": {
+        "findings": [{
+          "category": "logic",
+          "title": "Partial final page is dropped",
+          "location": { "file": "src/paginate.js" },
+          "scenario": "Eleven items with a page size of ten report one page instead of two.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "Floor division drops every non-empty remainder." }]
+    },
+    {
+      "fixtureId": "sb-003-regression-breaks-test",
+      "review": {
+        "findings": [{
+          "category": "regression",
+          "title": "Currency scaling is incorrect",
+          "location": { "file": "src/format-currency.js" },
+          "scenario": "A cent value is divided by 1000 and formats at one tenth of the expected amount.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "The divisor changed from cents-per-unit to an incorrect value." }]
+    },
+    {
+      "fixtureId": "sb-004-empty-array-crash",
+      "review": {
+        "findings": [{
+          "category": "crash",
+          "title": "Empty input dereferences a missing value",
+          "location": { "file": "src/stats.js" },
+          "scenario": "Calling the statistics function with an empty array dereferences an undefined element.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "No empty-array guard exists before the dereference." }]
+    },
+    {
+      "fixtureId": "sb-005-file-handle-leak",
+      "review": {
+        "findings": [{
+          "category": "crash",
+          "title": "File handles remain open on failure",
+          "location": { "file": "src/file-store.js" },
+          "scenario": "Repeated failed reads exhaust available file descriptors because the opened handle is not closed.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "The error path bypasses the close operation." }]
+    },
+    {
+      "fixtureId": "sb-006-api-key-logging",
+      "review": {
+        "findings": [{
+          "category": "regression",
+          "title": "API key is written to logs",
+          "location": { "file": "src/logger.js" },
+          "scenario": "A request carrying an API key emits the credential in plaintext application logs.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "The logging call interpolates the key without redaction." }]
+    },
+    {
+      "fixtureId": "sb-007-multibyte-cache-collision",
+      "review": {
+        "findings": [{
+          "category": "logic",
+          "title": "Multibyte cache keys collide",
+          "location": { "file": "src/cache-key.js" },
+          "scenario": "Distinct Unicode inputs truncate to the same byte-insensitive prefix and share a cache entry.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "String length and byte length diverge for the supplied inputs." }]
+    },
+    {
+      "fixtureId": "sb-008-clean-refactor",
+      "review": {
+        "findings": [{
+          "category": "logic",
+          "title": "Refactor may alter slug output",
+          "location": { "file": "src/slugify.js" },
+          "scenario": "Whitespace normalization might produce a different slug for repeated spaces.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "refuted", "reasoning": "Both implementations collapse repeated whitespace to the same single separator." }]
+    },
+    {
+      "fixtureId": "sb-009-unexplained-clean-diff",
+      "review": { "findings": [], "claimAssessments": [] },
+      "refutations": []
+    },
+    {
+      "fixtureId": "sb-010-intent-implementation-mismatch",
+      "review": {
+        "findings": [{
+          "category": "regression",
+          "title": "Implementation enables the wrong feature",
+          "location": { "file": "src/features.js" },
+          "scenario": "The requested feature remains disabled while an unrelated feature becomes enabled.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "The changed feature identifier differs from the intent." }]
+    },
+    {
+      "fixtureId": "sb-011-pytest-failure-log",
+      "review": {
+        "findings": [{
+          "category": "regression",
+          "title": "Calculator result regresses",
+          "location": { "file": "src/calculator.py" },
+          "scenario": "The changed calculation returns the wrong value and the captured pytest assertion fails.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "The captured assertion directly exercises the changed calculation." }]
+    },
+    {
+      "fixtureId": "sb-012-cargo-failure-log",
+      "review": {
+        "findings": [{
+          "category": "crash",
+          "title": "Rust path panics",
+          "location": { "file": "src/lib.rs" },
+          "scenario": "The changed input reaches an unwrap on an absent value and the captured cargo test panics.",
+          "claimIds": []
+        }],
+        "claimAssessments": []
+      },
+      "refutations": [{ "outcome": "survived", "reasoning": "The captured panic originates in the changed function." }]
+    }
+  ]
+}
