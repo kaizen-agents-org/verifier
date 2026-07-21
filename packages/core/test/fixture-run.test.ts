@@ -54,6 +54,25 @@ function runResult(cases: FixtureCaseResult[], harnessErrors = 0): FixtureRunRes
   };
 }
 
+function metricFixture(
+  id: string,
+  defect: boolean,
+  actualVerdict: FixtureCaseResult["actual"]["verdict"],
+  expectedVerdict: NonNullable<FixtureCaseResult["expected"]["verdict"]>
+): FixtureCaseResult {
+  const passed = actualVerdict === expectedVerdict;
+  return {
+    id,
+    kind: "seeded",
+    description: id,
+    groundTruth: { defect },
+    passed,
+    failures: passed ? [] : ["unexpected verdict"],
+    actual: { verdict: actualVerdict, confidence: 60 },
+    expected: { verdict: expectedVerdict }
+  };
+}
+
 describe("fixture eval exit status", () => {
   it("includes confidence calibration in verdict agreement", () => {
     const result = fixtureResult(false);
@@ -94,6 +113,24 @@ describe("fixture eval exit status", () => {
 
     expect(result.metrics.knownGapFailures).toBe(1);
     expect(result.metrics.unexpectedFailures).toBe(1);
+  });
+});
+
+describe("fixture metrics", () => {
+  it("computes case-level recall and false-positive rate from mixed outcomes", () => {
+    const result = calculateFixtureMetrics([
+      metricFixture("true-positive", true, "not_mergeable", "not_mergeable"),
+      metricFixture("false-negative", true, "mergeable", "not_mergeable"),
+      metricFixture("false-positive", false, "conditional", "mergeable"),
+      metricFixture("true-negative", false, "mergeable", "mergeable")
+    ], 0);
+
+    expect(result.defectCases).toBe(2);
+    expect(result.cleanCases).toBe(2);
+    expect(result.recall).toBe(0.5);
+    expect(result.fpRate).toBe(0.5);
+    expect(result.falsePositiveCases).toBe(1);
+    expect(result.verdictAgreement).toBe(0.5);
   });
 });
 
