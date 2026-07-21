@@ -1,0 +1,8 @@
+diff --git a/src/calculator.py b/src/calculator.py
+index 80f2de6..ec53c81 100644
+--- a/src/calculator.py
++++ b/src/calculator.py
+@@ -1,2 +1,2 @@
+ def divide_round_down(total: int, parts: int) -> int:
+-    return total // parts
++    return -(-total // parts)

@@ -1,0 +1,7 @@
+{
+  "command": "pytest -q",
+  "stdoutFile": "pytest-failure.stdout.txt",
+  "stderrFile": "pytest-failure.stderr.txt",
+  "exitCode": 1,
+  "captureMethod": "Normalized from pytest 8.x output; paths, assertion values, summary, channels, and exit status retained."
+}

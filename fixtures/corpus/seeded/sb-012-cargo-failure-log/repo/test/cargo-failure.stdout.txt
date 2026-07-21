@@ -1,0 +1,15 @@
+$ cargo test
+
+running 1 test
+test tests::rejects_empty_identifier ... FAILED
+
+failures:
+
+---- tests::rejects_empty_identifier stdout ----
+thread 'tests::rejects_empty_identifier' panicked at src/lib.rs:10:9:
+assertion failed: !is_valid_identifier("")
+
+failures:
+    tests::rejects_empty_identifier
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out

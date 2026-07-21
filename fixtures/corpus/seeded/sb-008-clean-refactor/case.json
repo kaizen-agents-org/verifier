@@ -2,6 +2,7 @@
   "id": "sb-008-clean-refactor",
   "kind": "seeded",
   "description": "Rewrites slugify() with an equivalent regex-based implementation; no behavior change.",
+  "groundTruth": { "defect": false },
   "intent": {
     "text": "Simplify slugify's character-by-character loop into an equivalent regex-based implementation with the same output for all inputs."
   },

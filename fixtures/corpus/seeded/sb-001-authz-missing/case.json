@@ -2,6 +2,7 @@
   "id": "sb-001-authz-missing",
   "kind": "seeded",
   "description": "POST admin update route drops its authorization check while GET keeps it.",
+  "groundTruth": { "defect": true },
   "intent": {
     "text": "Keep the admin update handler consistent with the admin status handler; both must require an admin session."
   },
