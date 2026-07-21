@@ -229,7 +229,7 @@ test(`${driver.targetType} clean run has no failures`, async () => {
 |---|---|
 | **recall** | mustDetect=true の期待Findingのうち、survived Findingとマッチしたものの割合。**マッチ条件**: `locationFile` 一致 かつ category一致。期待側に `locationLine` があれば実Findingの行と±10行以内であること。実Findingの `location` が欠落している場合はマッチ不成立 |
 | **fpRate** | `Σ_case max(0, 未マッチsurvived数 − maxFalsePositives) / Σ_case survived総数`。SPEC §12 KPIの偽陽性率（人間判断ベース）の自動推定値として使う |
-| **verdictAgreement** | 判定区分が期待と一致したケースの割合。一致条件: `expected.verdict` と一致、または `expected.verdictAnyOf` 指定時はそのいずれかと一致。`confidenceMin` / `confidenceMax` はケースの pass/fail には反映するが、判定区分の一致率には混在させない |
+| **verdictAgreement** | 判定が期待と一致したケースの割合。一致条件: `expected.verdict` と一致、または `expected.verdictAnyOf` 指定時はそのいずれかと一致し、かつ指定された `confidenceMin` / `confidenceMax` の範囲内 |
 | **reproducibility** | 全ケースをN=5回実行し、Verdict区分が5回とも一致したケースの割合（リリースタグ時のみ算出。§5） |
 | **costPerRun** | 1ケースあたり平均USD / 平均トークン |
 | **wallClock** | 1ケースあたり平均実行時間 |
@@ -241,11 +241,15 @@ case-level proxy とする。`recall` は `groundTruth.defect=true` のうち Ve
 期待より厳しい `conditional` / `not_mergeable` になった割合である。Stage 0+ 導入後は上表の
 Finding category/location マッチによる指標を正とし、proxy と区別して移行する。
 
+Stage 3/4 の決定的実験は `packages/agents/eval/semantic-corpus.json` に保存した
+structured lens/refuter出力を、反証OFF/ONの両方で全14ケース再生する。live LLMをCIで
+呼ばないため、課金・認証・応答揺らぎはゲートに入らない。比較結果は
+`fixtures/semantic-metrics.json` に記録し、`pnpm eval:semantic -- --mode full` で再生成する。
+
 ## 5. リリースゲート
 
-MVP 実装では `packages/core/eval/thresholds.json` が `verdictAgreementMin`
-と `falsePositiveRateMax` をブロック条件として使う。以下は staged verifier
-eval 完成時の broader release gate 設計:
+MVP の compact verdict eval は `packages/core/eval/thresholds.json` を使う。
+Stage 3/4 semantic gate は次の `eval/thresholds.json` を使う:
 
 `eval/thresholds.json`（初期値。実測に応じてPRで改訂し、緩める変更には理由を必須化）:
 
@@ -253,14 +257,14 @@ eval 完成時の broader release gate 設計:
 {
   "recall": 0.85,
   "fpRate": 0.10,
-  "verdictAgreement": 0.90,
-  "reproducibility": 0.95
+  "verdictAgreement": 0.90
 }
 ```
 
-- **実行タイミング**: (a) リリースタグ作成時に全件×N=5（reproducibilityを算出）、(b) `judge`/`agents`/プロンプト/確信度定数の変更PRで全件×N=1（reproducibilityはN/A）、(c) 通常PRはsmoke subset（sb-001/003/008）×N=1。
+- **実行タイミング**: `judge`/`agents`/refutation/プロンプト/閾値の変更PRは全件×1、通常PRはsmoke subset（sb-001/003/008）×1。
 - 閾値未達のリリースはCIがブロックする。
-- 確信度定数（DESIGN §4）やプロンプトの変更は、変更前後のmetrics.json差分をPRに自動コメントする。
+- `pnpm eval:semantic -- --mode full --gate-mode off` は反証OFFのfpRate超過で非0終了し、ゲートの負例を再現できる。
+- 全件の外部API実行は `submitSemanticEvalBatch` の注入境界からBatch providerへ渡す。CIは保存済み出力のみを再生する。
 
 ## 6. キャリブレーションループ（Phase 3）
 

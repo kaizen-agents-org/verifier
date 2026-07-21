@@ -52,6 +52,7 @@ export interface Finding {
   title: string;
   location?: { file: string; line?: number };
   scenario: string;
+  suggestedRepro?: string;
   claimIds: string[];
   evidenceIds: string[];
   refutation: RefutationResult;

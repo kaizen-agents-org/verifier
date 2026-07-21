@@ -2,11 +2,14 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { RunMeta } from "@verifier/core";
+import type { Claim, Finding, RunMeta } from "@verifier/core";
 import {
+  materializeCorrectnessReview,
   recordAgentUsage,
   resolveExtractedClaims,
+  runCorrectnessStage,
   runIntentStage,
+  runRefutationStage,
   writeClaims
 } from "../src/index.js";
 
@@ -162,6 +165,191 @@ describe("intent stage orchestration", () => {
   });
 });
 
+describe("correctness and refutation orchestration", () => {
+  it("materializes severity-free lens findings and rejects invented claim IDs", () => {
+    const claim = makeClaim();
+    expect(
+      materializeCorrectnessReview(
+        {
+          findings: [
+            {
+              category: "logic",
+              title: "Wrong empty result",
+              scenario: "An empty input returns one item.",
+              suggestedRepro: "pnpm test empty",
+              claimIds: [claim.id]
+            }
+          ],
+          claimAssessments: [{ claimId: claim.id, supported: false, note: "Wrong branch." }]
+        },
+        [claim]
+      ).findings[0]
+    ).toMatchObject({
+      severity: "minor",
+      reproduced: false,
+      lens: "correctness",
+      suggestedRepro: "pnpm test empty"
+    });
+
+    expect(() =>
+      materializeCorrectnessReview(
+        {
+          findings: [],
+          claimAssessments: [{ claimId: "C-missing", supported: true, note: "Invented." }]
+        },
+        [claim]
+      )
+    ).toThrow("unknown claim ID");
+
+    expect(() =>
+      materializeCorrectnessReview(
+        { findings: [], claimAssessments: [] },
+        [claim]
+      )
+    ).toThrow("omitted claim assessment");
+
+    expect(() =>
+      materializeCorrectnessReview(
+        {
+          findings: [],
+          claimAssessments: [
+            { claimId: claim.id, supported: true, note: "First." },
+            { claimId: claim.id, supported: true, note: "Duplicate." }
+          ]
+        },
+        [claim]
+      )
+    ).toThrow("duplicate claim assessment");
+  });
+
+  it("persists the lens output and links supported claims to reading evidence", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "verifier-runs-"));
+    const claim = makeClaim();
+    const result = await runCorrectnessStage(
+      { diff: "diff", context: "code", claims: [claim] },
+      makeRunMeta(),
+      {
+        runsRoot,
+        transport: async () => ({
+          parsed_output: {
+            findings: [{
+              category: "logic",
+              title: "Leaked token=correctness-secret",
+              scenario: "Repro with token=correctness-secret",
+              suggestedRepro: "test token=correctness-secret",
+              claimIds: [claim.id]
+            }],
+            claimAssessments: [{
+              claimId: claim.id,
+              supported: true,
+              note: "Matches code; token=correctness-secret"
+            }]
+          },
+          stop_reason: "end_turn",
+          usage: usage()
+        })
+      }
+    );
+
+    expect(result.claims[0]?.evidenceIds).toContain("E-S3-CORRECTNESS");
+    expect(result.evidence).toMatchObject([{ checkKind: "reading" }]);
+    expect(result.runMeta.stagesExecuted).toContain(3);
+    expect(JSON.stringify(result.review)).not.toContain("correctness-secret");
+    expect(JSON.stringify(result.findings)).not.toContain("correctness-secret");
+    expect(result.findings[0]).toMatchObject({
+      title: "Leaked token=[REDACTED]",
+      scenario: "Repro with token=[REDACTED]",
+      suggestedRepro: "test token=[REDACTED]"
+    });
+    const persisted = await readFile(result.reviewPath, "utf8");
+    expect(persisted).toContain("token=[REDACTED]");
+    expect(persisted).not.toContain("correctness-secret");
+  });
+
+  it("lets only the orchestrator execute a refuter command and records runtime evidence", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "verifier-workspace-"));
+    const finding = { ...makeFinding(), suggestedRepro: "pnpm test empty" };
+    const result = await runRefutationStage([finding], makeRunMeta(), {
+      workspace,
+      runsRoot: ".verifier/custom-runs",
+      getRelatedCode: () => "code",
+      authorizeCommand: (command) => command === "pnpm test empty",
+      transport: async () => ({
+        parsed_output: {
+          outcome: "survived",
+          reasoning: "The bad branch is reachable."
+        },
+        stop_reason: "end_turn",
+        usage: usage()
+      }),
+      executor: async (command) => ({
+        command,
+        code: 0,
+        signal: null,
+        stdout: "reproduced",
+        stderr: "",
+        durationMs: 1,
+        timedOut: false,
+        outputTruncated: false
+      })
+    });
+
+    expect(result.findings[0]?.refutation).toMatchObject({
+      outcome: "survived",
+      reproConfirmed: true
+    });
+    expect(result.evidence).toMatchObject([{ checkKind: "runtime" }]);
+    expect(result.runMeta.stagesExecuted).toContain(4);
+    await expect(
+      readFile(join(workspace, ".verifier/custom-runs/run-1/evidence/E-S4-1.txt"), "utf8")
+    ).resolves.toContain("reproduced");
+  });
+
+  it("preserves non-refutable findings without invoking the refuter", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "verifier-workspace-"));
+    const finding = {
+      ...makeFinding(),
+      id: "F-S0-SCHEMA",
+      refutation: { required: false, attempted: false, outcome: "skipped", evidenceIds: [] }
+    } satisfies Finding;
+    const result = await runRefutationStage([finding], makeRunMeta(), {
+      workspace,
+      getRelatedCode: () => {
+        throw new Error("non-refutable finding must not request related code");
+      },
+      transport: async () => {
+        throw new Error("non-refutable finding must not invoke the model");
+      }
+    });
+
+    expect(result.findings).toEqual([finding]);
+    expect(result.evidence).toEqual([]);
+  });
+
+  it("does not execute a lens repro after the refuter rejects the finding", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "verifier-workspace-"));
+    const finding = { ...makeFinding(), suggestedRepro: "pnpm test broad" };
+    const result = await runRefutationStage([finding], makeRunMeta(), {
+      workspace,
+      getRelatedCode: () => "code",
+      authorizeCommand: () => {
+        throw new Error("rejected finding must not authorize the stale repro");
+      },
+      executor: async () => {
+        throw new Error("rejected finding must not execute the stale repro");
+      },
+      transport: async () => ({
+        parsed_output: { outcome: "refuted", reasoning: "The scenario cannot occur." },
+        stop_reason: "end_turn",
+        usage: usage()
+      })
+    });
+
+    expect(result.findings[0]?.refutation).toMatchObject({ outcome: "refuted" });
+    expect(result.evidence).toEqual([]);
+  });
+});
+
 function makeRunMeta(): RunMeta {
   return {
     runId: "run-1",
@@ -174,5 +362,42 @@ function makeRunMeta(): RunMeta {
     targets: ["cli"],
     cost: { inputTokens: 0, outputTokens: 0, usd: 0 },
     durationMs: 0
+  };
+}
+
+function makeClaim(): Claim {
+  return {
+    id: "C-1",
+    statement: "Empty input remains empty.",
+    priority: "must-verify",
+    source: { tier: "primary", kind: "issue", ref: "issue:83" },
+    plannedChecks: ["reading", "test"],
+    status: "unverified",
+    evidenceIds: []
+  };
+}
+
+function makeFinding(): Finding {
+  return {
+    id: "F-S3-1",
+    category: "logic",
+    reproduced: false,
+    severity: "minor",
+    title: "Wrong empty result",
+    scenario: "An empty input returns one item.",
+    claimIds: ["C-1"],
+    evidenceIds: [],
+    refutation: { required: true, attempted: false, outcome: "skipped", evidenceIds: [] },
+    origin: "stage3",
+    lens: "correctness"
+  };
+}
+
+function usage() {
+  return {
+    input_tokens: 10,
+    output_tokens: 5,
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: 0
   };
 }

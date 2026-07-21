@@ -46,7 +46,7 @@ const FixtureCaseSchema = z.object({
     .optional(),
   golden: z
     .object({
-      repoUrl: z.string().url(),
+      repoUrl: z.string().trim().min(1),
       baseSha: z.string().regex(FULL_GIT_SHA_PATTERN),
       headSha: z.string().regex(FULL_GIT_SHA_PATTERN),
       labelSource: z.string().url(),
@@ -290,7 +290,9 @@ export function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErr
       if (result.expected.knownGap) knownGapFailures += 1;
     }
 
-    if (matchesExpectedVerdict(result)) verdictMatches += 1;
+    if (compareFixtureVerdict(result.expected, result.actual).length === 0) {
+      verdictMatches += 1;
+    }
     if (result.groundTruth.defect && isDefectDetected(result.actual.verdict)) {
       detectedDefects += 1;
     }
@@ -321,28 +323,20 @@ export function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErr
   };
 }
 
-function matchesExpectedVerdict(result: FixtureCaseResult): boolean {
-  return expectedVerdicts(result).includes(result.actual.verdict);
-}
-
 function isDefectDetected(verdict: FinalVerdictKind): boolean {
   return verdict === "conditional" || verdict === "not_mergeable";
 }
 
 function isFalsePositiveVerdict(result: FixtureCaseResult): boolean {
-  const configuredVerdicts = expectedVerdicts(result);
+  const expectedVerdicts = result.expected.verdictAnyOf ??
+    (result.expected.verdict ? [result.expected.verdict] : []);
   if (result.actual.verdict === "not_mergeable") {
-    return !configuredVerdicts.includes("not_mergeable");
+    return !expectedVerdicts.includes("not_mergeable");
   }
   if (result.actual.verdict === "conditional") {
-    return configuredVerdicts.every((verdict) => verdict === "mergeable");
+    return expectedVerdicts.every((verdict) => verdict === "mergeable");
   }
   return false;
-}
-
-function expectedVerdicts(result: FixtureCaseResult): FinalVerdictKind[] {
-  return result.expected.verdictAnyOf ??
-    (result.expected.verdict ? [result.expected.verdict] : []);
 }
 
 async function copyDirectory(source: string, destination: string): Promise<void> {

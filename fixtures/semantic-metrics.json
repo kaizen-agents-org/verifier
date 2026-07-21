@@ -1,0 +1,123 @@
+{
+  "generatedAt": "2026-07-19T04:46:02.104Z",
+  "mode": "full",
+  "gateMode": "on",
+  "baseline": {
+    "recall": 0.7273
+  },
+  "refutationOff": {
+    "totalCases": 14,
+    "defectCases": 11,
+    "cleanCases": 3,
+    "detectedDefects": 11,
+    "falsePositiveCases": 1,
+    "recall": 1,
+    "fpRate": 0.3333,
+    "falsePositiveRate": 0.3333,
+    "verdictAgreement": 0.9286
+  },
+  "refutationOn": {
+    "totalCases": 14,
+    "defectCases": 11,
+    "cleanCases": 3,
+    "detectedDefects": 11,
+    "falsePositiveCases": 0,
+    "recall": 1,
+    "fpRate": 0,
+    "falsePositiveRate": 0,
+    "verdictAgreement": 1
+  },
+  "recallImprovement": 0.2727,
+  "thresholds": {
+    "recall": 0.85,
+    "fpRate": 0.1,
+    "verdictAgreement": 0.9
+  },
+  "thresholdFailures": [],
+  "cases": [
+    {
+      "id": "gp-001-pr-75-merged-success",
+      "defect": false,
+      "findingsOff": 0,
+      "findingsOn": 0
+    },
+    {
+      "id": "gp-002-pr-102-needed-fix",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-001-authz-missing",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-002-pagination-off-by-one",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-003-regression-breaks-test",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-004-empty-array-crash",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-005-file-handle-leak",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-006-api-key-logging",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-007-multibyte-cache-collision",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-008-clean-refactor",
+      "defect": false,
+      "findingsOff": 1,
+      "findingsOn": 0
+    },
+    {
+      "id": "sb-009-unexplained-clean-diff",
+      "defect": false,
+      "findingsOff": 0,
+      "findingsOn": 0
+    },
+    {
+      "id": "sb-010-intent-implementation-mismatch",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-011-pytest-failure-log",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    },
+    {
+      "id": "sb-012-cargo-failure-log",
+      "defect": true,
+      "findingsOff": 1,
+      "findingsOn": 1
+    }
+  ]
+}
