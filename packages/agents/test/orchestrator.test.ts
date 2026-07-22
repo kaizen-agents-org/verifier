@@ -135,6 +135,46 @@ describe("intent stage orchestration", () => {
     expect(JSON.parse(await readFile(result.claimsPath, "utf8"))).toEqual(result.claims);
   });
 
+  it("redacts persisted claims without changing in-memory claims", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "verifier-runs-"));
+    const source = { tier: "primary", kind: "issue", ref: "issue:134" } as const;
+    const statement = "Keep token=stage0-secret available to downstream stages.";
+    const result = await runIntentStage(
+      { sources: [{ source, content: statement }], diffSummary: "Implements redaction." },
+      makeRunMeta(),
+      {
+        runsRoot,
+        transport: async () => ({
+          parsed_output: {
+            claims: [
+              {
+                statement,
+                priority: "must-verify",
+                plannedChecks: ["reading"],
+                sourceRef: source.ref
+              }
+            ],
+            conflicts: []
+          },
+          stop_reason: "end_turn",
+          usage: {
+            input_tokens: 10,
+            output_tokens: 5,
+            cache_creation_input_tokens: null,
+            cache_read_input_tokens: null
+          }
+        })
+      }
+    );
+
+    expect(result.claims[0]?.statement).toBe(statement);
+    const persistedClaims = JSON.parse(await readFile(result.claimsPath, "utf8")) as Claim[];
+    expect(persistedClaims[0]?.statement).toBe(
+      "Keep token=[REDACTED] available to downstream stages."
+    );
+    expect(await readFile(result.claimsPath, "utf8")).not.toContain("stage0-secret");
+  });
+
   it("continues with empty output and an info finding after schema retries", async () => {
     const runsRoot = await mkdtemp(join(tmpdir(), "verifier-runs-"));
     const result = await runIntentStage(

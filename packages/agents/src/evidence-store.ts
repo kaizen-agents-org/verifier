@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { redactSensitiveValue } from "@verifier/core";
 import type { Claim } from "@verifier/core";
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -9,7 +10,7 @@ export async function writeClaims(
   claims: Claim[],
   runsRoot = ".verifier/runs"
 ): Promise<string> {
-  return writeJsonArtifact(runId, "claims.json", claims, runsRoot);
+  return writeJsonArtifact(runId, "claims.json", redactSensitiveValue(claims), runsRoot);
 }
 
 export async function writeJsonArtifact(
