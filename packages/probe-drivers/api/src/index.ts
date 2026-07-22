@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { redactSensitiveValue } from "@verifier/core";
 import {
   LaunchError,
   UnsupportedStepError,
@@ -282,14 +283,14 @@ class ApiProbeSession implements ProbeSession {
         const artifact = await this.writeResponseArtifact(response, body.text, body.truncated);
         const unexpectedServerError = response.status >= 500 && !isExpectedStatus(step, response.status);
         if (unexpectedServerError) {
+          lastError = `HTTP ${response.status}`;
+          if (attempt < retries) continue;
           this.networkFailures.push({
             method: step.method.toUpperCase(),
             url: this.url(step.path),
             status: response.status,
             failed: true
           });
-          lastError = `HTTP ${response.status}`;
-          if (attempt < retries) continue;
         }
         return {
           stepIndex,
@@ -303,12 +304,14 @@ class ApiProbeSession implements ProbeSession {
           : error instanceof Error
             ? error.message
             : String(error);
-        this.networkFailures.push({
-          method: step.method.toUpperCase(),
-          url: this.url(step.path),
-          failed: true
-        });
-        if (attempt >= retries || lastError.startsWith("timeout")) break;
+        if (attempt >= retries || lastError.startsWith("timeout")) {
+          this.networkFailures.push({
+            method: step.method.toUpperCase(),
+            url: this.url(step.path),
+            failed: true
+          });
+          break;
+        }
       }
     }
     return { stepIndex, ok: false, error: lastError ?? "network failure", artifacts: [] };
@@ -324,12 +327,12 @@ class ApiProbeSession implements ProbeSession {
     await writeFile(
       path,
       `${JSON.stringify(
-        {
+        redactSensitiveValue({
           status: response.status,
           headers: Object.fromEntries(response.headers.entries()),
           body,
           truncated
-        },
+        }),
         null,
         2
       )}\n`,

@@ -26,6 +26,10 @@ app.get("/item", (_request, response) => {
 app.get("/env-secret", (_request, response) => {
   response.json({ inherited: process.env.VERIFIER_PARENT_SECRET ?? "absent" });
 });
+app.get("/sensitive-response", (_request, response) => {
+  response.set("set-cookie", "session=private");
+  response.json({ token: "response-secret" });
+});
 app.get("/health", (request, response) => {
   const trigger = request.query.fail === "1" || request.get("x-flaky") === "true";
   if (defects.has("persistent-500") && trigger) {

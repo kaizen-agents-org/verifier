@@ -42,14 +42,14 @@ describe("API probe driver", () => {
     expect(JSON.parse(run.responses[0]?.body ?? "null")).toEqual({ id: 1 });
   });
 
-  it("records the transient 500 and retries once", async () => {
+  it("does not record a transient 500 when the logical request succeeds", async () => {
     const run = await runFixture("flaky-500", requestScenario({
       method: "GET",
       path: "/health?fail=1",
       expect: { status: 200 }
     }));
     expect(run.results).toMatchObject([{ ok: true }]);
-    expect(run.observation.networkFailures).toMatchObject([{ status: 500, failed: true }]);
+    expect(run.observation.networkFailures).toEqual([]);
     expect(run.responses.at(-1)).toMatchObject({ status: 200 });
   });
 
@@ -72,7 +72,7 @@ describe("API probe driver", () => {
     }));
 
     expect(run.results).toMatchObject([{ ok: false, error: "HTTP 500" }]);
-    expect(run.observation.networkFailures).toHaveLength(2);
+    expect(run.observation.networkFailures).toHaveLength(1);
     expect(run.observation.networkFailures[0]).toMatchObject({ status: 500, failed: true });
   });
 
@@ -116,6 +116,14 @@ describe("API probe driver", () => {
     } finally {
       delete process.env.VERIFIER_PARENT_SECRET;
     }
+  });
+
+  it("redacts secret-like response headers and bodies in persisted artifacts", async () => {
+    const run = await runFixture("", requestScenario({ method: "GET", path: "/sensitive-response" }));
+    expect(run.responses[0]).toMatchObject({
+      headers: { "set-cookie": "[REDACTED]" },
+      body: '{"token":"[REDACTED]"}'
+    });
   });
 
   it("reports a non-zero API process exit as a crash", async () => {

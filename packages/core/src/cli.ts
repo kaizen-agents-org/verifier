@@ -409,8 +409,8 @@ async function readVerifierConfig(
       throw new Error("verifier.config.json verifyCommands must be an array.");
     }
     config.verifyCommands = parsed.verifyCommands.map((command, index) => {
-      if (typeof command !== "string") {
-        throw new Error(`verifier.config.json verifyCommands[${index}] must be a string.`);
+      if (typeof command !== "string" || command.trim().length === 0) {
+        throw new Error(`verifier.config.json verifyCommands[${index}] must be a non-empty string.`);
       }
       return command;
     });

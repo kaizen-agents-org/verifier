@@ -220,7 +220,7 @@ test(`${driver.targetType} clean run has no failures`, async () => {
 });
 ```
 
-実装fixtureは `fixtures/probe/cli-tool` と `fixtures/probe/api-server` に置く。driver単体テストは実process/serverを起動し、上記7欠陥とclean controlを検証する。agents統合テストは同じfixtureからObservationをEvidence/Findingへ変換し、共通refutation gateとjudgeのVerdict変化まで検証する。APIの `flaky-500` は同じrequestを1回retryし、回復後も最初の5xxを `networkFailures` として保持する。
+実装fixtureは `fixtures/probe/cli-tool` と `fixtures/probe/api-server` に置く。driver単体テストは実process/serverを起動し、上記7欠陥とclean controlを検証する。agents統合テストは同じfixtureからObservationをEvidence/Findingへ変換し、共通refutation gateとjudgeのVerdict変化まで検証する。APIの `flaky-500` は同じrequestを1回retryし、回復したlogical requestを `networkFailures` に残さない。
 
 ## 4. メトリクス定義
 

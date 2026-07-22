@@ -56,6 +56,29 @@ describe("scenario generator authority", () => {
     expect(result.scenariosPath).toContain("scenarios.json");
   });
 
+  it("redacts persisted scenarios without changing the in-memory scenarios", async () => {
+    const runsRoot = await mkdtemp(join(tmpdir(), "verifier-scenario-redaction-"));
+    const scenario = {
+      ...cliScenario(),
+      steps: [{ op: "exec" as const, command: "convert", stdin: "token=scenario-secret" }]
+    };
+    const result = await runScenarioGenerationStage(
+      {
+        diff: "diff",
+        targetType: "cli",
+        claims: [claim()],
+        allowedCommandIds: ["convert"]
+      },
+      runMeta(),
+      { runsRoot, transport: transportFor(scenario) }
+    );
+
+    expect(result.scenarios).toEqual([scenario]);
+    const persisted = await readFile(result.scenariosPath, "utf8");
+    expect(persisted).toContain("token=[REDACTED]");
+    expect(persisted).not.toContain("scenario-secret");
+  });
+
   it("rejects unknown claim IDs and arbitrary command strings", async () => {
     await expect(
       generateScenarios(
@@ -406,11 +429,6 @@ describe("Stage 5 probe orchestration", () => {
       }),
       category: "logic"
     },
-    {
-      defect: "flaky-500",
-      scenario: apiScenario("/health?fail=1"),
-      category: "logic"
-    }
   ]) {
     it(`materializes the API ${testCase.defect} observation`, async () => {
       const result = await runApi(testCase.defect, testCase.scenario);
@@ -419,6 +437,12 @@ describe("Stage 5 probe orchestration", () => {
       ]);
     });
   }
+
+  it("keeps a recovered API retry free of false findings", async () => {
+    const result = await runApi("flaky-500", apiScenario("/health?fail=1"));
+    expect(result.findings).toEqual([]);
+    expect(result.claims[0]?.evidenceIds).toEqual(["E-S5-1"]);
+  });
 
   it("keeps a clean API scenario free of false positives", async () => {
     const result = await runApi("", apiScenario("/item", {

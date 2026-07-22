@@ -18,6 +18,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@verifier/core": "workspace:*",
     "@verifier/probe-sdk": "workspace:*"
   }
 }

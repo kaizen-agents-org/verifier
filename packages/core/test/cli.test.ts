@@ -632,7 +632,12 @@ Return "block_pr" when the builder must revise the change before a PR is created
     [
       "non-string verifyCommands entries",
       { intent: "Update greeting text.", verifyCommands: [42] },
-      "verifier.config.json verifyCommands[0] must be a string."
+      "verifier.config.json verifyCommands[0] must be a non-empty string."
+    ],
+    [
+      "blank verifyCommands entries",
+      { intent: "Update greeting text.", verifyCommands: ["   "] },
+      "verifier.config.json verifyCommands[0] must be a non-empty string."
     ],
     [
       "non-string base",

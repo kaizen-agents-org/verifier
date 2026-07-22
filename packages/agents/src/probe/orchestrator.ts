@@ -94,7 +94,7 @@ export async function runScenarioGenerationStage(
   const scenariosPath = await writeJsonArtifact(
     runMeta.runId,
     "scenarios.json",
-    generation,
+    redactSensitiveValue(generation),
     options.runsRoot
   );
   return {

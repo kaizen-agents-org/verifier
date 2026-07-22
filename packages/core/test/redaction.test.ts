@@ -26,4 +26,16 @@ describe("sensitive value redaction", () => {
       redactSensitiveValue(value)
     );
   });
+
+  it("redacts secret-bearing header fields by key", () => {
+    expect(redactSensitiveValue({
+      authorization: "Basic dXNlcjpwYXNz",
+      "set-cookie": "session=private",
+      "content-type": "application/json"
+    })).toEqual({
+      authorization: "[REDACTED]",
+      "set-cookie": "[REDACTED]",
+      "content-type": "application/json"
+    });
+  });
 });
