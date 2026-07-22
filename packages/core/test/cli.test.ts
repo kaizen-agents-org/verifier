@@ -628,6 +628,49 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.conditions).toContain("Run at least one verification command.");
   });
 
+  it.each([
+    [
+      "non-string verifyCommands entries",
+      { intent: "Update greeting text.", verifyCommands: [42] },
+      "verifier.config.json verifyCommands[0] must be a string."
+    ],
+    [
+      "non-string base",
+      { intent: "Update greeting text.", base: 42, verifyCommands: [] },
+      "verifier.config.json base must be a string."
+    ],
+    [
+      "non-boolean markdown",
+      { intent: "Update greeting text.", markdown: "true", verifyCommands: [] },
+      "verifier.config.json markdown must be a boolean."
+    ]
+  ])("rejects %s in verifier.config.json", async (_name, config, expectedError) => {
+    const dir = await createChangedRepo();
+    await writeFile(
+      join(dir, "verifier.config.json"),
+      JSON.stringify(config),
+      "utf8"
+    );
+
+    const { stdout, stderr, code } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir
+      ],
+      "",
+      { env: process.env, allowFailure: true }
+    );
+
+    expect(code).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toContain(expectedError);
+  });
+
   it("does not mark workspace checks as executed when no verify command ran", async () => {
     const dir = await createChangedRepo();
 
