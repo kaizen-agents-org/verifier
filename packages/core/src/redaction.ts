@@ -1,6 +1,7 @@
 const REDACTED = "[REDACTED]";
 const SECRET_VALUE_PATTERNS = [
-  /((?:api[_-]?key|token|secret|password|credential|authorization|cookie|set-cookie)["']?\s*[:=]\s*["']?)(?!\[REDACTED\])([^"'\\\s,}\]]+)/gi,
+  /((?:authorization|cookie|set-cookie)["']?\s*[:=]\s*["']?)(?!\[REDACTED\])([^"',}\]\r\n]+)/gi,
+  /((?:(?:x-)?api[_-]?key|token|secret|password|credential)["']?\s*[:=]\s*["']?)(?!\[REDACTED\])([^"'\\\s,}\]]+)/gi,
   /\b(Bearer\s+)([A-Za-z0-9._~+/=-]{12,})\b/g,
   /\b(gh[pousr]_[A-Za-z0-9_]{20,})\b/g,
   /\b(sk-[A-Za-z0-9_-]{20,})\b/g
@@ -30,7 +31,7 @@ export function redactSensitiveValue<T>(value: T): T {
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [
       key,
-      /^(?:api[_-]?key|token|secret|password|credential|authorization|cookie|set-cookie)$/i.test(key)
+      /^(?:(?:x-)?api[_-]?key|token|secret|password|credential|authorization|cookie|set-cookie)$/i.test(key)
         ? REDACTED
         : redactSensitiveValue(item)
     ])
