@@ -388,15 +388,66 @@ async function readVerifierConfig(
 ): Promise<VerifierConfig> {
   const configPath = configFile ?? join(workspace, "verifier.config.json");
   if (!configFile && !(await fileExists(configPath))) return {};
-  const parsed = JSON.parse(await readFile(configPath, "utf8")) as VerifierConfig;
-  if (parsed.failOn !== undefined) parsed.failOn = parseFinalVerdictKind(parsed.failOn);
-  if (parsed.verifyCommands !== undefined && !Array.isArray(parsed.verifyCommands)) {
-    throw new Error("verifier.config.json verifyCommands must be an array.");
+  const parsed: unknown = JSON.parse(await readFile(configPath, "utf8"));
+  if (!isRecord(parsed)) {
+    throw new Error("verifier.config.json must contain a JSON object.");
+  }
+
+  const config: VerifierConfig = {};
+  const base = readOptionalConfigString(parsed, "base");
+  const intent = readOptionalConfigString(parsed, "intent");
+  const intentFile = readOptionalConfigString(parsed, "intentFile");
+  const outputDir = readOptionalConfigString(parsed, "outputDir");
+  if (base !== undefined) config.base = base;
+  if (intent !== undefined) config.intent = intent;
+  if (intentFile !== undefined) config.intentFile = intentFile;
+  if (outputDir !== undefined) config.outputDir = outputDir;
+
+  if (parsed.verifyCommands !== undefined) {
+    if (!Array.isArray(parsed.verifyCommands)) {
+      throw new Error("verifier.config.json verifyCommands must be an array.");
+    }
+    config.verifyCommands = parsed.verifyCommands.map((command, index) => {
+      if (typeof command !== "string") {
+        throw new Error(`verifier.config.json verifyCommands[${index}] must be a string.`);
+      }
+      return command;
+    });
   }
   if (parsed.verifyTimeoutMs !== undefined) {
-    parsed.verifyTimeoutMs = parsePositiveInteger(String(parsed.verifyTimeoutMs), "verifier.config.json verifyTimeoutMs");
+    if (
+      typeof parsed.verifyTimeoutMs !== "number" ||
+      !Number.isInteger(parsed.verifyTimeoutMs) ||
+      parsed.verifyTimeoutMs <= 0
+    ) {
+      throw new Error("verifier.config.json verifyTimeoutMs must be a positive integer.");
+    }
+    config.verifyTimeoutMs = parsed.verifyTimeoutMs;
   }
-  return parsed;
+  if (parsed.markdown !== undefined) {
+    if (typeof parsed.markdown !== "boolean") {
+      throw new Error("verifier.config.json markdown must be a boolean.");
+    }
+    config.markdown = parsed.markdown;
+  }
+  if (parsed.failOn !== undefined) {
+    if (typeof parsed.failOn !== "string") {
+      throw new Error("verifier.config.json failOn must be a string.");
+    }
+    config.failOn = parseFinalVerdictKind(parsed.failOn);
+  }
+  return config;
+}
+
+function readOptionalConfigString(
+  config: Record<string, unknown>,
+  field: "base" | "intent" | "intentFile" | "outputDir"
+): string | undefined {
+  const value = config[field];
+  if (value !== undefined && typeof value !== "string") {
+    throw new Error(`verifier.config.json ${field} must be a string.`);
+  }
+  return value;
 }
 
 function resolveWorkspacePath(workspace: string, path: string): string {
