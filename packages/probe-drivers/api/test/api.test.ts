@@ -161,6 +161,25 @@ describe("API probe driver", () => {
     }
   });
 
+  it("rejects conflicting and empty request status expectations", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "verifier-api-expectation-"));
+    const session = await makeDriver().launch(await context(workdir, ""));
+    try {
+      await expect(session.interact(requestScenario({
+        method: "GET",
+        path: "/item",
+        expect: { status: 200, statusAnyOf: [200] }
+      }))).rejects.toThrow("both status and statusAnyOf");
+      await expect(session.interact(requestScenario({
+        method: "GET",
+        path: "/item",
+        expect: { statusAnyOf: [] }
+      }))).rejects.toThrow("at least one status");
+    } finally {
+      await session.teardown();
+    }
+  });
+
   it("turns spawn errors into bounded launch failures", async () => {
     const workdir = await mkdtemp(join(tmpdir(), "verifier-api-spawn-"));
     const driver = new ApiProbeDriver({

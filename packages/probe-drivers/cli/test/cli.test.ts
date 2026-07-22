@@ -82,6 +82,43 @@ describe("CLI probe driver", () => {
     await session.teardown();
   });
 
+  it("handles stdin EPIPE when a command exits without reading input", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-epipe-"));
+    const session = await new CliProbeDriver({
+      commands: {
+        exit: { file: process.execPath, args: ["-e", "process.exit(0)"] }
+      },
+      maxInputBytes: 1024 * 1024
+    }).launch(context(workdir, {}));
+    const results = await session.interact({
+      ...scenario("exit"),
+      steps: [{ op: "exec", command: "exit", stdin: "x".repeat(1024 * 1024) }]
+    });
+    expect(results).toMatchObject([{ ok: true }]);
+    await session.teardown();
+  });
+
+  it("preserves a prior crash and failing exit code across later successful exec steps", async () => {
+    const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-multi-step-"));
+    const session = await new CliProbeDriver({
+      commands: {
+        fail: { file: process.execPath, args: ["-e", "process.exit(7)"] },
+        crash: { file: process.execPath, args: ["-e", "process.kill(process.pid, 'SIGTERM')"] },
+        pass: { file: process.execPath, args: ["-e", "process.exit(0)"] }
+      }
+    }).launch(context(workdir, {}));
+    await session.interact({
+      ...scenario("fail"),
+      steps: [
+        { op: "exec", command: "fail" },
+        { op: "exec", command: "crash" },
+        { op: "exec", command: "pass" }
+      ]
+    });
+    await expect(session.observe()).resolves.toMatchObject({ crashed: true, exitCode: 7 });
+    await session.teardown();
+  });
+
   it("enforces one deadline across all scenario steps", async () => {
     const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-deadline-"));
     const session = await new CliProbeDriver({ commands: {} }).launch(context(workdir, {}, 100));

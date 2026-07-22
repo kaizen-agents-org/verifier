@@ -8,7 +8,15 @@ const RequestExpectationSchema = z
     bodyIncludes: z.string().optional(),
     headers: z.record(z.string(), z.string()).optional()
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ status, statusAnyOf }) => status === undefined || statusAnyOf === undefined,
+    { message: "Request expectation cannot specify both status and statusAnyOf." }
+  )
+  .refine(
+    ({ statusAnyOf }) => statusAnyOf === undefined || statusAnyOf.length > 0,
+    { message: "Request expectation statusAnyOf must contain at least one status." }
+  );
 
 export const StepSchema = z.discriminatedUnion("op", [
   z.object({ op: z.literal("navigate"), url: z.string().min(1) }).strict(),

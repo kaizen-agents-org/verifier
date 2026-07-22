@@ -86,6 +86,19 @@ export interface RequestExpectation {
   headers?: Record<string, string>;
 }
 
+export function validateRequestExpectation(
+  expectation: RequestExpectation | undefined
+): string | undefined {
+  if (!expectation) return undefined;
+  if (expectation.status !== undefined && expectation.statusAnyOf !== undefined) {
+    return "Request expectation cannot specify both status and statusAnyOf.";
+  }
+  if (expectation.statusAnyOf?.length === 0) {
+    return "Request expectation statusAnyOf must contain at least one status.";
+  }
+  return undefined;
+}
+
 export class UnsupportedStepError extends Error {
   readonly cause?: unknown;
   readonly retryable: boolean;

@@ -23,6 +23,7 @@ import {
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
+import type { ValidateFunction } from "ajv";
 import { recordAgentUsage } from "../cost.js";
 import { writeJsonArtifact } from "../evidence-store.js";
 import { runRefutationStage, type RefutationStageResult } from "../orchestrator.js";
@@ -34,6 +35,28 @@ import {
 
 const RESPONSE_ARTIFACT_LIMIT = 512 * 1024;
 const ajv = new Ajv2020({ allErrors: true, strict: false });
+const schemaValidators = new Map<string, ValidateFunction>();
+
+type MismatchKind =
+  | "step"
+  | "crash"
+  | "console"
+  | "network"
+  | "cli-exit"
+  | "cli-stderr"
+  | "cli-stdout"
+  | "cli-artifact"
+  | "request-status"
+  | "request-body"
+  | "request-header"
+  | "request-schema"
+  | "request-truncated";
+
+interface ScenarioMismatch {
+  kind: MismatchKind;
+  message: string;
+  stepIndex?: number;
+}
 
 export interface CliScenarioExpectation {
   exitCode?: number;
@@ -114,11 +137,16 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
   for (let index = 0; index < options.scenarios.length; index += 1) {
     const scenario = options.scenarios[index];
     if (!scenario) continue;
-    if (scenarioIds.has(scenario.id)) {
-      throw new Error(`Duplicate probe scenario ID: ${scenario.id}`);
+    try {
+      if (scenarioIds.has(scenario.id)) {
+        throw new Error(`Duplicate probe scenario ID: ${scenario.id}`);
+      }
+      scenarioIds.add(scenario.id);
+      assertScenarioClaims(scenario, options.claims);
+    } catch (error) {
+      await recordUnverifiedScenario(options, evidence, index, scenario, error);
+      continue;
     }
-    scenarioIds.add(scenario.id);
-    assertScenarioClaims(scenario, options.claims);
     let session: ProbeSession;
     try {
       session = await launchWithRetry(options.driver, options.launch);
@@ -143,20 +171,27 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
     try {
       const stepResults = await session.interact(scenario);
       const observation = await session.observe();
-      const mismatches = await compareScenario(
+      const comparison = await compareScenario(
         scenario,
         stepResults,
         observation,
         options.baselines?.[scenario.id],
         options.cliExpectations?.[scenario.id]
       );
-      const responseArtifacts = await snapshotResponseArtifacts(scenario, stepResults);
+      const responseArtifacts = snapshotResponseArtifacts(comparison.responseArtifacts);
       const evidenceId = `E-S5-${index + 1}`;
       const artifactName = `probe-${scenario.id}.json`;
       await writeJsonArtifact(
         options.runMeta.runId,
         artifactName,
-        redactProbeArtifact({ scenario, stepResults, observation, responseArtifacts, mismatches }),
+        redactProbeArtifact({
+          scenario,
+          stepResults,
+          observation,
+          responseArtifacts,
+          mismatches: comparison.mismatches.map(({ message }) => message),
+          verificationIssues: comparison.verificationIssues
+        }),
         options.runsRoot ?? join(options.launch.workdir, ".verifier", "runs")
       );
       const timedOutSteps = new Set(
@@ -167,13 +202,12 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
       const timedOut = timedOutSteps.size > 0;
       const firstTimedOutStep = timedOut ? Math.min(...timedOutSteps) : undefined;
       const materialMismatches = firstTimedOutStep === undefined
-        ? mismatches
-        : mismatches.filter((mismatch) => mismatchPrecedesTimeout(
+        ? comparison.mismatches
+        : comparison.mismatches.filter((mismatch) => mismatchPrecedesTimeout(
             mismatch,
             firstTimedOutStep,
             scenario,
-            stepResults,
-            observation
+            stepResults
           ));
       const item: Evidence = {
         id: evidenceId,
@@ -183,9 +217,12 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
           ? `Runtime scenario ${scenario.id} reproduced ${materialMismatches.length} mismatch(es).`
           : timedOut
             ? `Runtime scenario ${scenario.id} timed out and remains unverified.`
+            : comparison.verificationIssues.length > 0
+              ? `Runtime scenario ${scenario.id} could not be fully verified.`
             : `Runtime scenario ${scenario.id} completed without mismatches.`,
         path: artifactName,
-        reproducible: materialMismatches.length > 0 || !timedOut
+        reproducible: materialMismatches.length > 0 ||
+          (!timedOut && comparison.verificationIssues.length === 0)
       };
       evidence.push(item);
       observations.push(redactSensitiveValue({ scenario, stepResults, observation }));
@@ -198,7 +235,7 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
           reproduced: true,
           severity: deriveSeverity({ category, reproduced: true }, false),
           title: `Runtime scenario failed: ${scenario.description}`,
-          scenario: materialMismatches.join("; "),
+          scenario: materialMismatches.map(({ message }) => message).join("; "),
           claimIds: [...scenario.claimIds],
           evidenceIds: [evidenceId],
           refutation: {
@@ -209,7 +246,7 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
           },
           origin: "stage5"
         });
-      } else if (!timedOut) {
+      } else if (!timedOut && comparison.verificationIssues.length === 0) {
         for (const claimId of scenario.claimIds) {
           successfulEvidence.set(claimId, [
             ...new Set([...(successfulEvidence.get(claimId) ?? []), evidenceId])
@@ -217,24 +254,30 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
         }
       }
     } catch (error) {
-      if (!(error instanceof LaunchError)) throw error;
-      return {
-        claims: options.claims.map((claim) => ({
-          ...claim,
-          evidenceIds: [
-            ...new Set([...claim.evidenceIds, ...(successfulEvidence.get(claim.id) ?? [])])
-          ]
-        })),
-        findings,
-        evidence,
-        observations,
-        runMeta: skipStage(
-          options.runMeta,
-          `Probe launch failed: ${redactSensitiveText(error.message)}`
-        )
-      };
+      if (error instanceof LaunchError) {
+        return {
+          claims: options.claims.map((claim) => ({
+            ...claim,
+            evidenceIds: [
+              ...new Set([...claim.evidenceIds, ...(successfulEvidence.get(claim.id) ?? [])])
+            ]
+          })),
+          findings,
+          evidence,
+          observations,
+          runMeta: skipStage(
+            options.runMeta,
+            `Probe launch failed: ${redactSensitiveText(error.message)}`
+          )
+        };
+      }
+      await recordUnverifiedScenario(options, evidence, index, scenario, error);
     } finally {
-      await session.teardown();
+      try {
+        await session.teardown();
+      } catch {
+        // Teardown is best-effort and must not discard an already-recorded scenario result.
+      }
     }
   }
 
@@ -252,44 +295,22 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
 }
 
 function mismatchPrecedesTimeout(
-  mismatch: string,
+  mismatch: ScenarioMismatch,
   firstTimedOutStep: number,
   scenario: Scenario,
-  stepResults: StepResult[],
-  observation: Observation
+  stepResults: StepResult[]
 ): boolean {
-  const indexedMismatch = /^step (\d+) /.exec(mismatch);
-  if (indexedMismatch) return Number(indexedMismatch[1]) < firstTimedOutStep;
+  if (mismatch.stepIndex !== undefined) return mismatch.stepIndex < firstTimedOutStep;
 
-  if (mismatch.startsWith("new network failure: ")) {
-    return observation.networkFailures.some((failure) =>
-      `new network failure: ${failure.method} ${failure.url} ${failure.status ?? "network"}` === mismatch &&
-      stepResults.some(({ stepIndex, error }) => {
-        const step = scenario.steps[stepIndex];
-        if (stepIndex >= firstTimedOutStep || step?.op !== "request" || error?.startsWith("timeout")) {
-          return false;
-        }
-        try {
-          const failureUrl = new URL(failure.url);
-          return failure.method === step.method && `${failureUrl.pathname}${failureUrl.search}` === step.path;
-        } catch {
-          return false;
-        }
-      })
-    );
-  }
-
-  if (mismatch === "target crashed" || mismatch.startsWith("new console error: ")) {
+  if (mismatch.kind === "crash" || mismatch.kind === "console") {
     return stepResults.some(({ stepIndex, error }) =>
       stepIndex < firstTimedOutStep && !error?.startsWith("timeout")
     );
   }
 
-  const isCliExpectationMismatch = mismatch.startsWith("exit code ") ||
-    mismatch === "stderr was not empty" ||
-    mismatch.startsWith("stdout did not include ") ||
-    mismatch.startsWith("missing generated file ");
-  if (!isCliExpectationMismatch) return false;
+  if (!["cli-exit", "cli-stderr", "cli-stdout", "cli-artifact"].includes(mismatch.kind)) {
+    return false;
+  }
 
   return stepResults.some(({ stepIndex, error }) =>
     stepIndex < firstTimedOutStep &&
@@ -311,6 +332,14 @@ export async function runProbeAndRefuteStage(
   options: RunProbeAndRefuteStageOptions
 ): Promise<ProbeStageResult & { refutation: RefutationStageResult }> {
   const probe = await runProbeStage(options);
+  if (!probe.runMeta.stagesExecuted.includes(5)) {
+    const refutation = {
+      findings: probe.findings,
+      evidence: [],
+      runMeta: probe.runMeta
+    };
+    return { ...probe, refutation };
+  }
   const refutation = await runRefutationStage(probe.findings, probe.runMeta, {
     workspace: options.launch.workdir,
     getRelatedCode: options.getRelatedCode,
@@ -342,18 +371,33 @@ async function compareScenario(
   observation: Observation,
   baseline: Observation | undefined,
   cliExpectation: CliScenarioExpectation | undefined
-): Promise<string[]> {
-  const mismatches: string[] = [];
-  if (observation.crashed) mismatches.push("target crashed");
+): Promise<{
+  mismatches: ScenarioMismatch[];
+  responseArtifacts: Map<number, ResponseArtifact>;
+  verificationIssues: string[];
+}> {
+  const mismatches: ScenarioMismatch[] = [];
+  const responseArtifacts = new Map<number, ResponseArtifact>();
+  const verificationIssues: string[] = [];
+  if (observation.crashed && !baseline?.crashed) {
+    mismatches.push({ kind: "crash", message: "target crashed" });
+  }
 
   const baselineConsole = new Set((baseline?.consoleErrors ?? []).map(logKey));
   for (const error of observation.consoleErrors) {
-    if (!baselineConsole.has(logKey(error))) mismatches.push(`new console error: ${error.text}`);
+    if (!baselineConsole.has(logKey(error))) {
+      mismatches.push({ kind: "console", message: `new console error: ${error.text}` });
+    }
   }
   const baselineNetwork = new Set((baseline?.networkFailures ?? []).map(networkKey));
   for (const failure of observation.networkFailures) {
     if (!baselineNetwork.has(networkKey(failure))) {
-      mismatches.push(`new network failure: ${failure.method} ${failure.url} ${failure.status ?? "network"}`);
+      const stepIndex = requestStepIndexForFailure(failure, scenario, stepResults);
+      mismatches.push({
+        kind: "network",
+        message: `new network failure: ${failure.method} ${failure.url} ${failure.status ?? "network"}`,
+        ...(stepIndex !== undefined ? { stepIndex } : {})
+      });
     }
   }
 
@@ -363,16 +407,31 @@ async function compareScenario(
     const isExpectedCliExit = step?.op === "exec" && result.error === `exit code ${expectedCliExit}`;
     if (!result.ok && !result.error?.startsWith("timeout")) {
       if (!isExpectedCliExit) {
-        mismatches.push(`step ${result.stepIndex} failed: ${result.error ?? "unknown error"}`);
+        mismatches.push({
+          kind: "step",
+          stepIndex: result.stepIndex,
+          message: `step ${result.stepIndex} failed: ${result.error ?? "unknown error"}`
+        });
       }
     }
     if (step?.op === "request" && step.expect) {
       const artifact = result.artifacts.find(({ kind }) => kind === "log");
       if (!artifact) {
-        mismatches.push(`step ${result.stepIndex} produced no response artifact`);
+        mismatches.push({
+          kind: "step",
+          stepIndex: result.stepIndex,
+          message: `step ${result.stepIndex} produced no response artifact`
+        });
       } else {
-        const response = await readResponseArtifact(artifact.path);
-        mismatches.push(...compareRequestExpectation(result.stepIndex, response, step.expect));
+        try {
+          const response = await readResponseArtifact(artifact.path);
+          responseArtifacts.set(result.stepIndex, response);
+          mismatches.push(...compareRequestExpectation(result.stepIndex, response, step.expect));
+        } catch (error) {
+          verificationIssues.push(redactSensitiveText(
+            `step ${result.stepIndex} response artifact could not be verified: ${errorMessage(error)}`
+          ));
+        }
       }
     }
   }
@@ -381,23 +440,39 @@ async function compareScenario(
     const expectation = cliExpectation ?? {};
     const expectedExit = expectation.exitCode ?? 0;
     if (observation.exitCode !== undefined && observation.exitCode !== expectedExit) {
-      mismatches.push(`exit code ${observation.exitCode}, expected ${expectedExit}`);
+      mismatches.push({
+        kind: "cli-exit",
+        message: `exit code ${observation.exitCode}, expected ${expectedExit}`
+      });
     }
     if ((expectation.stderrEmpty ?? true) && (observation.stderr ?? "").length > 0) {
-      mismatches.push("stderr was not empty");
+      mismatches.push({ kind: "cli-stderr", message: "stderr was not empty" });
     }
     if (
       expectation.stdoutIncludes !== undefined &&
       !(observation.stdout ?? "").includes(expectation.stdoutIncludes)
     ) {
-      mismatches.push(`stdout did not include ${expectation.stdoutIncludes}`);
+      mismatches.push({
+        kind: "cli-stdout",
+        message: `stdout did not include ${expectation.stdoutIncludes}`
+      });
     }
     const artifactPaths = new Set(observation.artifacts.map(({ path }) => path));
     for (const expectedPath of expectation.artifactPaths ?? []) {
-      if (!artifactPaths.has(expectedPath)) mismatches.push(`missing generated file ${expectedPath}`);
+      if (!artifactPaths.has(expectedPath)) {
+        mismatches.push({
+          kind: "cli-artifact",
+          message: `missing generated file ${expectedPath}`
+        });
+      }
     }
   }
-  return [...new Set(mismatches.map((mismatch) => redactSensitiveText(mismatch)))];
+  const unique = new Map<string, ScenarioMismatch>();
+  for (const mismatch of mismatches) {
+    const redacted = { ...mismatch, message: redactSensitiveText(mismatch.message) };
+    unique.set(`${redacted.kind}\0${redacted.stepIndex ?? ""}\0${redacted.message}`, redacted);
+  }
+  return { mismatches: [...unique.values()], responseArtifacts, verificationIssues };
 }
 
 interface ResponseArtifact {
@@ -415,43 +490,35 @@ async function readResponseArtifact(path: string): Promise<ResponseArtifact> {
   return JSON.parse(content) as ResponseArtifact;
 }
 
-async function snapshotResponseArtifacts(
-  scenario: Scenario,
-  stepResults: StepResult[]
-): Promise<Array<{ stepIndex: number; response: ResponseArtifact }>> {
-  const snapshots: Array<{ stepIndex: number; response: ResponseArtifact }> = [];
-  for (const result of stepResults) {
-    if (scenario.steps[result.stepIndex]?.op !== "request") continue;
-    const artifact = result.artifacts.find(({ kind }) => kind === "log");
-    if (!artifact) continue;
-    snapshots.push({ stepIndex: result.stepIndex, response: await readResponseArtifact(artifact.path) });
-  }
-  return snapshots;
+function snapshotResponseArtifacts(
+  artifacts: Map<number, ResponseArtifact>
+): Array<{ stepIndex: number; response: ResponseArtifact }> {
+  return [...artifacts.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([stepIndex, response]) => ({ stepIndex, response }));
 }
 
 function compareRequestExpectation(
   stepIndex: number,
   response: ResponseArtifact,
   expectation: RequestExpectation
-): string[] {
-  const mismatches: string[] = [];
+): ScenarioMismatch[] {
+  const mismatches: ScenarioMismatch[] = [];
   if (expectation.status !== undefined && response.status !== expectation.status) {
-    mismatches.push(`step ${stepIndex} status ${response.status}, expected ${expectation.status}`);
+    mismatches.push({ kind: "request-status", stepIndex, message: `step ${stepIndex} status ${response.status}, expected ${expectation.status}` });
   }
   if (
     expectation.statusAnyOf !== undefined &&
     !expectation.statusAnyOf.includes(response.status)
   ) {
-    mismatches.push(
-      `step ${stepIndex} status ${response.status}, expected one of ${expectation.statusAnyOf.join(",")}`
-    );
+    mismatches.push({ kind: "request-status", stepIndex, message: `step ${stepIndex} status ${response.status}, expected one of ${expectation.statusAnyOf.join(",")}` });
   }
   if (expectation.bodyIncludes !== undefined && !response.body.includes(expectation.bodyIncludes)) {
-    mismatches.push(`step ${stepIndex} body did not include ${expectation.bodyIncludes}`);
+    mismatches.push({ kind: "request-body", stepIndex, message: `step ${stepIndex} body did not include ${expectation.bodyIncludes}` });
   }
   for (const [name, value] of Object.entries(expectation.headers ?? {})) {
     if (response.headers[name.toLowerCase()] !== value) {
-      mismatches.push(`step ${stepIndex} header ${name} did not equal ${value}`);
+      mismatches.push({ kind: "request-header", stepIndex, message: `step ${stepIndex} header ${name} did not equal ${value}` });
     }
   }
   if (expectation.jsonSchema !== undefined) {
@@ -459,31 +526,81 @@ function compareRequestExpectation(
     try {
       body = JSON.parse(response.body);
     } catch {
-      mismatches.push(`step ${stepIndex} body was not valid JSON`);
+      mismatches.push({ kind: "request-body", stepIndex, message: `step ${stepIndex} body was not valid JSON` });
       return mismatches;
     }
     mismatches.push(...compareJsonSchema(stepIndex, body, expectation.jsonSchema));
   }
-  if (response.truncated) mismatches.push(`step ${stepIndex} response body was truncated`);
+  if (response.truncated) mismatches.push({ kind: "request-truncated", stepIndex, message: `step ${stepIndex} response body was truncated` });
   return mismatches;
 }
 
-function compareJsonSchema(stepIndex: number, value: unknown, schema: unknown): string[] {
+function compareJsonSchema(stepIndex: number, value: unknown, schema: unknown): ScenarioMismatch[] {
   if (!isRecord(schema) && typeof schema !== "boolean") {
-    return [`step ${stepIndex} JSON schema was invalid`];
+    return [{ kind: "request-schema", stepIndex, message: `step ${stepIndex} JSON schema was invalid` }];
   }
   try {
-    const validate = ajv.compile(schema);
+    const key = JSON.stringify(schema);
+    let validate = schemaValidators.get(key);
+    if (!validate) {
+      validate = ajv.compile(schema);
+      schemaValidators.set(key, validate);
+    }
     if (validate(value)) return [];
     const summary = ajv.errorsText(validate.errors, { separator: ", " });
-    return [`step ${stepIndex} response failed JSON schema: ${summary}`];
+    return [{ kind: "request-schema", stepIndex, message: `step ${stepIndex} response failed JSON schema: ${summary}` }];
   } catch (error) {
-    return [
-      `step ${stepIndex} JSON schema was invalid: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    ];
+    return [{ kind: "request-schema", stepIndex, message: `step ${stepIndex} JSON schema was invalid: ${errorMessage(error)}` }];
   }
+}
+
+function requestStepIndexForFailure(
+  failure: Observation["networkFailures"][number],
+  scenario: Scenario,
+  stepResults: StepResult[]
+): number | undefined {
+  let failurePath: string;
+  try {
+    const url = new URL(failure.url);
+    failurePath = `${url.pathname}${url.search}`;
+  } catch {
+    return undefined;
+  }
+  return stepResults.find(({ stepIndex }) => {
+    const step = scenario.steps[stepIndex];
+    return step?.op === "request" && step.method.toUpperCase() === failure.method.toUpperCase() &&
+      step.path === failurePath;
+  })?.stepIndex;
+}
+
+async function recordUnverifiedScenario(
+  options: RunProbeStageOptions,
+  evidence: Evidence[],
+  index: number,
+  scenario: Scenario,
+  error: unknown
+): Promise<void> {
+  const evidenceId = `E-S5-${index + 1}`;
+  const artifactName = `probe-unverified-${index + 1}.json`;
+  const reason = redactSensitiveText(errorMessage(error));
+  await writeJsonArtifact(
+    options.runMeta.runId,
+    artifactName,
+    redactSensitiveValue({ scenario, verificationIssue: reason }),
+    options.runsRoot ?? join(options.launch.workdir, ".verifier", "runs")
+  );
+  evidence.push({
+    id: evidenceId,
+    kind: options.driver.targetType === "api" ? "network-log" : "command-output",
+    checkKind: "runtime",
+    summary: `Runtime scenario ${scenario.id} remained unverified: ${reason}`,
+    path: artifactName,
+    reproducible: false
+  });
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function launchWithRetry(driver: ProbeDriver, context: LaunchContext) {
@@ -510,6 +627,7 @@ function redactProbeArtifact(value: {
   observation: Observation;
   responseArtifacts: Array<{ stepIndex: number; response: ResponseArtifact }>;
   mismatches: string[];
+  verificationIssues: string[];
 }) {
   return redactSensitiveValue(value);
 }

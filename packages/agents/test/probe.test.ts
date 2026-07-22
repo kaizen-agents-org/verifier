@@ -511,6 +511,23 @@ describe("Stage 5 probe orchestration", () => {
     expect(result.findings).toEqual([]);
   });
 
+  it("does not report a crash already present in the baseline", async () => {
+    const crashed = {
+      consoleErrors: [], networkFailures: [], screenshots: [], crashed: true, artifacts: []
+    };
+    const result = await runProbeStage({
+      driver: observationDriver("cli", crashed),
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [cliScenario()],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-")),
+      baselines: { "cli-convert": crashed }
+    });
+    expect(result.findings).toEqual([]);
+  });
+
   it("honors failCategory before the crash fallback", async () => {
     const result = await runProbeStage({
       driver: observationDriver("cli", {
@@ -564,6 +581,109 @@ describe("Stage 5 probe orchestration", () => {
     expect(result.findings).toEqual([]);
     expect(result.runMeta.stagesSkipped).toMatchObject([
       { stage: 5, reasonCode: "env-failure" }
+    ]);
+  });
+
+  it("does not mark a skipped probe as executed during refutation", async () => {
+    const result = await runProbeAndRefuteStage({
+      driver: {
+        targetType: "cli",
+        detect: async () => null,
+        launch: async () => { throw new Error("unreachable"); }
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [cliScenario()],
+      claims: [claim()],
+      runMeta: runMeta(),
+      getRelatedCode: () => "fixture"
+    });
+    expect(result.runMeta.stagesExecuted).not.toContain(5);
+    expect(result.refutation.runMeta.stagesExecuted).not.toContain(5);
+    expect(result.runMeta.stagesSkipped).toMatchObject([{ stage: 5 }]);
+  });
+
+  it("preserves earlier evidence when a later scenario is invalid", async () => {
+    const clean = {
+      consoleErrors: [], networkFailures: [], screenshots: [], crashed: false,
+      exitCode: 0, stdout: "", stderr: "", artifacts: []
+    };
+    const result = await runProbeStage({
+      driver: observationDriver("cli", clean),
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [cliScenario(), { ...cliScenario(), id: "invalid", claimIds: ["C-unknown"] }],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-"))
+    });
+    expect(result.evidence).toMatchObject([
+      { id: "E-S5-1", reproducible: true },
+      { id: "E-S5-2", reproducible: false }
+    ]);
+    expect(result.claims[0]?.evidenceIds).toEqual(["E-S5-1"]);
+  });
+
+  it("continues after teardown rejects", async () => {
+    let launches = 0;
+    const result = await runProbeStage({
+      driver: {
+        targetType: "cli",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => {
+          launches += 1;
+          return {
+            interact: async () => [{ stepIndex: 0, ok: true, artifacts: [] }],
+            observe: async () => ({
+              consoleErrors: [], networkFailures: [], screenshots: [], crashed: false,
+              exitCode: 0, stdout: "", stderr: "", artifacts: []
+            }),
+            teardown: async () => {
+              if (launches === 1) throw new Error("cleanup failed");
+            }
+          };
+        }
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [cliScenario(), { ...cliScenario(), id: "cli-second" }],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-"))
+    });
+    expect(launches).toBe(2);
+    expect(result.evidence).toHaveLength(2);
+  });
+
+  it("keeps processing after a response artifact cannot be read", async () => {
+    let launches = 0;
+    const result = await runProbeStage({
+      driver: {
+        targetType: "api",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => {
+          launches += 1;
+          return {
+            interact: async () => launches === 1
+              ? [{ stepIndex: 0, ok: true, artifacts: [{ kind: "log", path: "/missing-response.json" }] }]
+              : [{ stepIndex: 0, ok: true, artifacts: [] }],
+            observe: async () => ({
+              consoleErrors: [], networkFailures: [], screenshots: [], crashed: false, artifacts: []
+            }),
+            teardown: async () => {}
+          };
+        }
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [apiScenario("/item"), { ...apiScenario("/health"), steps: [{ op: "wait", forMs: 0 }] }],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-"))
+    });
+    expect(result.evidence).toMatchObject([
+      { reproducible: false },
+      { reproducible: true }
     ]);
   });
 

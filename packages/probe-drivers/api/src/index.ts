@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   LaunchError,
   UnsupportedStepError,
+  validateRequestExpectation,
   type Artifact,
   type DetectResult,
   type LaunchContext,
@@ -226,6 +227,8 @@ class ApiProbeSession implements ProbeSession {
     stepIndex: number,
     step: Extract<Scenario["steps"][number], { op: "request" }>
   ): Promise<StepResult> {
+    const expectationError = validateRequestExpectation(step.expect);
+    if (expectationError) throw new UnsupportedStepError(step, expectationError);
     if (!step.path.startsWith("/") || step.path.startsWith("//")) {
       throw new UnsupportedStepError(step, "API request path must be relative to the authorized origin.");
     }

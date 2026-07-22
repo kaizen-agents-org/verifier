@@ -164,6 +164,9 @@ class CliProbeSession implements ProbeSession {
     };
     child.stdout.on("data", (chunk: Buffer) => append("stdout", chunk));
     child.stderr.on("data", (chunk: Buffer) => append("stderr", chunk));
+    child.stdin.on("error", () => {
+      // The command may exit without consuming caller-provided stdin (EPIPE).
+    });
     if (stdin !== undefined) child.stdin.end(stdin);
     else child.stdin.end();
 
@@ -191,12 +194,16 @@ class CliProbeSession implements ProbeSession {
       descriptor.captureFiles ?? [],
       artifactSnapshot
     );
+    const previousExitCode = this.observation.exitCode;
+    const exitCode = previousExitCode !== undefined && previousExitCode !== 0
+      ? previousExitCode
+      : result.code ?? previousExitCode;
     this.observation = {
       ...this.observation,
-      ...(result.code !== null ? { exitCode: result.code } : {}),
+      ...(exitCode !== undefined ? { exitCode } : {}),
       stdout: `${this.observation.stdout ?? ""}${stdout}`,
       stderr: `${this.observation.stderr ?? ""}${stderr}`,
-      crashed: !timedOut && result.signal !== null,
+      crashed: this.observation.crashed || (!timedOut && result.signal !== null),
       artifacts: [...this.observation.artifacts, ...artifacts]
     };
 
