@@ -296,6 +296,48 @@ describe("Stage 5 probe orchestration", () => {
     expect(result.findings[0]?.scenario).not.toContain("timeout");
   });
 
+  it("does not attribute a timed-out request failure to an earlier request", async () => {
+    const result = await runProbeStage({
+      driver: {
+        targetType: "api",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => ({
+          interact: async () => [
+            { stepIndex: 0, ok: true, artifacts: [] },
+            { stepIndex: 1, ok: false, error: "timeout after 10ms", artifacts: [] }
+          ],
+          observe: async () => ({
+            consoleErrors: [],
+            networkFailures: [{
+              method: "GET",
+              url: "http://127.0.0.1/hang",
+              failed: true
+            }],
+            screenshots: [],
+            crashed: false,
+            artifacts: []
+          }),
+          teardown: async () => {}
+        })
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [{
+        ...apiScenario("/item"),
+        steps: [
+          { op: "request", method: "GET", path: "/item" },
+          { op: "request", method: "GET", path: "/hang" }
+        ]
+      }],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-"))
+    });
+
+    expect(result.findings).toEqual([]);
+    expect(result.evidence).toMatchObject([{ reproducible: false }]);
+  });
+
   it("preserves API crash and console failures when a later step times out", async () => {
     const result = await runProbeStage({
       driver: {

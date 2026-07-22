@@ -172,7 +172,8 @@ export async function runProbeStage(options: RunProbeStageOptions): Promise<Prob
             mismatch,
             firstTimedOutStep,
             scenario,
-            stepResults
+            stepResults,
+            observation
           ));
       const item: Evidence = {
         id: evidenceId,
@@ -254,16 +255,27 @@ function mismatchPrecedesTimeout(
   mismatch: string,
   firstTimedOutStep: number,
   scenario: Scenario,
-  stepResults: StepResult[]
+  stepResults: StepResult[],
+  observation: Observation
 ): boolean {
   const indexedMismatch = /^step (\d+) /.exec(mismatch);
   if (indexedMismatch) return Number(indexedMismatch[1]) < firstTimedOutStep;
 
   if (mismatch.startsWith("new network failure: ")) {
-    return stepResults.some(({ stepIndex, error }) =>
-      stepIndex < firstTimedOutStep &&
-      scenario.steps[stepIndex]?.op === "request" &&
-      !error?.startsWith("timeout")
+    return observation.networkFailures.some((failure) =>
+      `new network failure: ${failure.method} ${failure.url} ${failure.status ?? "network"}` === mismatch &&
+      stepResults.some(({ stepIndex, error }) => {
+        const step = scenario.steps[stepIndex];
+        if (stepIndex >= firstTimedOutStep || step?.op !== "request" || error?.startsWith("timeout")) {
+          return false;
+        }
+        try {
+          const failureUrl = new URL(failure.url);
+          return failure.method === step.method && `${failureUrl.pathname}${failureUrl.search}` === step.path;
+        } catch {
+          return false;
+        }
+      })
     );
   }
 
