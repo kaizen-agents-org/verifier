@@ -296,6 +296,51 @@ describe("Stage 5 probe orchestration", () => {
     expect(result.findings[0]?.scenario).not.toContain("timeout");
   });
 
+  it("preserves API crash and console failures when a later step times out", async () => {
+    const result = await runProbeStage({
+      driver: {
+        targetType: "api",
+        detect: async () => ({ confidence: 1, launchHint: "test" }),
+        launch: async () => ({
+          interact: async () => [
+            { stepIndex: 0, ok: true, artifacts: [] },
+            { stepIndex: 1, ok: false, error: "timeout after 10ms", artifacts: [] }
+          ],
+          observe: async () => ({
+            consoleErrors: [{
+              level: "error",
+              text: "request handler crashed",
+              source: "api-server",
+              timestamp: "2026-01-01T00:00:00.000Z"
+            }],
+            networkFailures: [],
+            screenshots: [],
+            crashed: true,
+            artifacts: []
+          }),
+          teardown: async () => {}
+        })
+      },
+      project: { rootDir: "/fixture", files: async () => [] },
+      launch: await launchContext("/fixture", "", 100),
+      scenarios: [{
+        ...apiScenario("/item"),
+        steps: [{ op: "request", method: "GET", path: "/item" }, { op: "wait", forMs: 0 }]
+      }],
+      claims: [claim()],
+      runMeta: runMeta(),
+      runsRoot: await mkdtemp(join(tmpdir(), "verifier-probe-test-"))
+    });
+
+    expect(result.findings).toMatchObject([{
+      reproduced: true,
+      scenario: expect.stringContaining("target crashed")
+    }]);
+    expect(result.findings[0]?.scenario).toContain("new console error: request handler crashed");
+    expect(result.findings[0]?.scenario).not.toContain("timeout");
+    expect(result.evidence).toMatchObject([{ reproducible: true }]);
+  });
+
   it("adds runtime evidence for a clean CLI run without false positives", async () => {
     const result = await runCli("");
     expect(result.findings).toEqual([]);

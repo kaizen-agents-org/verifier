@@ -267,6 +267,12 @@ function mismatchPrecedesTimeout(
     );
   }
 
+  if (mismatch === "target crashed" || mismatch.startsWith("new console error: ")) {
+    return stepResults.some(({ stepIndex, error }) =>
+      stepIndex < firstTimedOutStep && !error?.startsWith("timeout")
+    );
+  }
+
   const isCliExpectationMismatch = mismatch.startsWith("exit code ") ||
     mismatch === "stderr was not empty" ||
     mismatch.startsWith("stdout did not include ") ||
