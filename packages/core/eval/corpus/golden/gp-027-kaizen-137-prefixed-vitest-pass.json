@@ -1,0 +1,21 @@
+{
+  "id": "gp-027-kaizen-137-prefixed-vitest-pass",
+  "kind": "golden",
+  "stack": "node",
+  "labelSource": "Sanitized verifier issue #137 replay for issue #140",
+  "description": "Golden false-positive control: a workspace-prefixed passing Vitest name mentioning block and failure remains openable.",
+  "input": {
+    "task": "Keep passing workspace test output non-blocking.",
+    "diff": "diff --git a/packages/core/src/check.ts b/packages/core/src/check.ts\n+return classifyResult(line)",
+    "verifyLogs": "packages/core test: \u001b[32m✓\u001b[39m CLI > does not block workspace checks for common zero-failure test summaries \u001b[33m997ms\u001b[39m\n\n Test Files  1 passed (1)\n      Tests  42 passed (42)\n   Start at  03:04:05\n   Duration  1.23s",
+    "builderReport": "Focused verification passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "confidenceMin": 70,
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "maxFalsePositives": 0
+  }
+}
