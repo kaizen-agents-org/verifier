@@ -17,8 +17,9 @@ const AUTHORITATIVE_FAILURE_RESULT_PATTERNS = [
 ];
 
 const CLEAN_PASS_MARKER_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√|PASS\b|ok\b)\s+\S+/i;
-const CLEAN_PASS_TEST_LINE_PATTERN =
-  /^(?:[^\w\s]+\s*)?(?:(?:@?[\w.-]+\/[\w@./-]+\s+)?tests?:\s*)?(?:✓|✔|√)\s+\S+.*(?:\(|\s)\d+(?:\.\d+)?m?s\)?$/i;
+const CLEAN_PASS_TEST_LINE_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√)\s+\S+.*\(\d+(?:\.\d+)?m?s\)$/i;
+const CLEAN_PREFIXED_PASS_TEST_LINE_PATTERN =
+  /^(?:[^\w\s]+\s*)?(?:@?[\w.-]+\/[\w@./-]+\s+)?tests?:\s*(?:✓|✔|√)\s+\S+.*\s\d+(?:\.\d+)?m?s$/i;
 const CLEAN_PASS_TEST_FILE_SUMMARY_PATTERN = /^(?:[^\w\s]+\s*)?(?:✓|✔|√)\s+\S+\s+\(\d+\s+tests?\)\s*(?:\d+(?:\.\d+)?m?s)?$/i;
 const CLEAN_PASS_TEST_FILE_SUMMARY_FRAGMENT_PATTERN = /(?:^|\s)(?:✓|✔|√)\s+\S+\s+\(\d+\s+tests?\)\s*(?:\d+(?:\.\d+)?m?s)?(?:$|\s)/i;
 const ZERO_SOFT_RISK_COUNT_PATTERN = /^(?:[^\w\s]+\s*)?(?:cancelled|skipped|todo)\s+0$/i;
@@ -505,6 +506,12 @@ function deduplicateFindings(findings: MinimalFinding[]): MinimalFinding[] {
 function isCleanResultLine(line: string): boolean {
   const normalized = stripTerminalFormatting(line);
   if (CLEAN_PASS_TEST_LINE_PATTERN.test(normalized)) return true;
+  if (
+    CLEAN_PREFIXED_PASS_TEST_LINE_PATTERN.test(normalized) &&
+    !AUTHORITATIVE_FAILURE_RESULT_PATTERNS.some((pattern) => pattern.test(normalized))
+  ) {
+    return true;
+  }
   if (CLEAN_PASS_TEST_FILE_SUMMARY_PATTERN.test(normalized)) return true;
   if (
     CLEAN_PASS_TEST_FILE_SUMMARY_FRAGMENT_PATTERN.test(normalized) &&
@@ -521,6 +528,12 @@ function isCleanResultLine(line: string): boolean {
 function isPassingTestLine(line: string): boolean {
   const normalized = stripTerminalFormatting(line);
   if (CLEAN_PASS_TEST_LINE_PATTERN.test(normalized)) return true;
+  if (
+    CLEAN_PREFIXED_PASS_TEST_LINE_PATTERN.test(normalized) &&
+    !AUTHORITATIVE_FAILURE_RESULT_PATTERNS.some((pattern) => pattern.test(normalized))
+  ) {
+    return true;
+  }
   if (CLEAN_PASS_TEST_FILE_SUMMARY_PATTERN.test(normalized)) return true;
   return (
     PASSING_TEST_LINE_PATTERN.test(normalized) &&

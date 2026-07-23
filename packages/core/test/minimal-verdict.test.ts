@@ -236,7 +236,8 @@ describe("evaluateMinimalVerdict", () => {
 
   it.each([
     "PASS parser suite — 1 failed",
-    "✓ parser suite finished with exit code 1"
+    "✓ parser suite finished with exit code 1",
+    "packages/core test: ✓ command exited with code 1 10ms"
   ])("does not let a passing prefix hide an authoritative failure: %s", (failureLine) => {
     const verdict = evaluateMinimalVerdict({
       task: "Run verification",
