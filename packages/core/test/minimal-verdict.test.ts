@@ -146,6 +146,26 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix).toHaveLength(0);
   });
 
+  it("does not block the complete workspace-prefixed retry evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Keep passing workspace test output non-blocking",
+      diff: "diff --git a/src/check.ts b/src/check.ts\n+return classifyResult(line)",
+      verifyLogs:
+        "packages/probe-drivers/cli test:    ✓ CLI probe driver > keeps a clean run free of failure observations  419ms\n" +
+        "packages/core test:    ✓ CLI > does not block workspace checks for common zero-failure test summaries  1009ms\n" +
+        "packages/probe-drivers/api test:    ✓ API probe driver > does not classify an expected 5xx response as a network failure  576ms\n" +
+        "packages/probe-drivers/api test:    ✓ API probe driver > marks an unexpected 5xx as failed after retries are exhausted  581ms\n" +
+        "packages/probe-drivers/api test:    ✓ API probe driver > keeps clean requests free of failure observations  574ms\n" +
+        " Test Files  13 passed (13)\n" +
+        "      Tests  120 passed (120)",
+      builderReport: "Focused verification passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
   it.each([
     [
       "plain",

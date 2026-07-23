@@ -3,11 +3,11 @@
   "kind": "golden",
   "stack": "node",
   "labelSource": "Sanitized verifier issue #137 replay for issue #140",
-  "description": "Golden false-positive control: a workspace-prefixed passing Vitest name mentioning block and failure remains openable.",
+  "description": "Golden false-positive control: workspace-prefixed passing Vitest names from the issue #140 retry remain openable.",
   "input": {
     "task": "Keep passing workspace test output non-blocking.",
     "diff": "diff --git a/packages/core/src/check.ts b/packages/core/src/check.ts\n+return classifyResult(line)",
-    "verifyLogs": "packages/core test: \u001b[32m✓\u001b[39m CLI > does not block workspace checks for common zero-failure test summaries \u001b[33m997ms\u001b[39m\n\n Test Files  1 passed (1)\n      Tests  42 passed (42)\n   Start at  03:04:05\n   Duration  1.23s",
+    "verifyLogs": "packages/probe-drivers/cli test:    \u001b[32m✓\u001b[39m CLI probe driver > keeps a clean run free of failure observations  \u001b[33m419ms\u001b[39m\npackages/core test:    \u001b[32m✓\u001b[39m CLI > does not block workspace checks for common zero-failure test summaries  \u001b[33m1009ms\u001b[39m\npackages/probe-drivers/api test:    \u001b[32m✓\u001b[39m API probe driver > does not classify an expected 5xx response as a network failure  \u001b[33m576ms\u001b[39m\npackages/probe-drivers/api test:    \u001b[32m✓\u001b[39m API probe driver > marks an unexpected 5xx as failed after retries are exhausted  \u001b[33m581ms\u001b[39m\npackages/probe-drivers/api test:    \u001b[32m✓\u001b[39m API probe driver > keeps clean requests free of failure observations  \u001b[33m574ms\u001b[39m\n\n Test Files  13 passed (13)\n      Tests  120 passed (120)\n   Start at  03:04:05\n   Duration  2.14s",
     "builderReport": "Focused verification passed."
   },
   "expected": {
