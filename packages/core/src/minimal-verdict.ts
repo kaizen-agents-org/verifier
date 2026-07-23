@@ -368,8 +368,11 @@ function hasPositiveVerificationEvidence(verifyLogs: string): boolean {
   ) {
     return false;
   }
-  return normalizedLines.some((line) =>
-    POSITIVE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(line))
+  return normalizedLines.some(
+    (line) =>
+      POSITIVE_VERIFICATION_PATTERNS.some((pattern) => pattern.test(line)) ||
+      (CLEAN_PREFIXED_PASS_TEST_LINE_PATTERN.test(line) &&
+        !AUTHORITATIVE_FAILURE_RESULT_PATTERNS.some((pattern) => pattern.test(line)))
   );
 }
 

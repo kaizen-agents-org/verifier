@@ -166,6 +166,20 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix).toHaveLength(0);
   });
 
+  it("counts a workspace-prefixed passing test line as positive verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Keep passing workspace test output non-blocking",
+      diff: "diff --git a/src/check.ts b/src/check.ts\n+return classifyResult(line)",
+      verifyLogs:
+        "packages/core test: ✓ API probe driver > marks an unexpected 5xx as failed after retries are exhausted 997ms",
+      builderReport: "Focused verification passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
   it.each([
     [
       "plain",
