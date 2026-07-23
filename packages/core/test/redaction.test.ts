@@ -26,4 +26,36 @@ describe("sensitive value redaction", () => {
       redactSensitiveValue(value)
     );
   });
+
+  it("redacts secret-bearing header fields by key", () => {
+    expect(redactSensitiveValue({
+      authorization: "Basic dXNlcjpwYXNz",
+      "set-cookie": "session=private",
+      "x-api-key": "private-api-key",
+      "content-type": "application/json"
+    })).toEqual({
+      authorization: "[REDACTED]",
+      "set-cookie": "[REDACTED]",
+      "x-api-key": "[REDACTED]",
+      "content-type": "application/json"
+    });
+  });
+
+  it("redacts complete secret-bearing header values in text", () => {
+    const source = [
+      "authorization: Bearer header.payload.signature",
+      '"authorization":"Basic dXNlcjpwYXNz"',
+      "cookie=session=private; theme=dark",
+      '"set-cookie":"session=private; HttpOnly"',
+      "content-type: application/json"
+    ].join("\n");
+
+    expect(redactSensitiveText(source)).toBe([
+      "authorization: [REDACTED]",
+      '"authorization":"[REDACTED]"',
+      "cookie=[REDACTED]",
+      '"set-cookie":"[REDACTED]"',
+      "content-type: application/json"
+    ].join("\n"));
+  });
 });

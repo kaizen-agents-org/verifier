@@ -1,0 +1,24 @@
+{
+  "name": "@verifier/probe-driver-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:package-entry": "node --test test/package-entry.test.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@verifier/core": "workspace:*",
+    "@verifier/probe-sdk": "workspace:*"
+  }
+}
