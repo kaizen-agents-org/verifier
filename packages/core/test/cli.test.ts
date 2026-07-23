@@ -702,31 +702,34 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.run.verify_commands).toHaveLength(0);
   });
 
-  it("does not fail conditional gates for inconclusive workspace checks", async () => {
-    const dir = await createCleanRepo();
+  it.each(["mergeable", "conditional"])(
+    "fails %s gates for inconclusive workspace checks",
+    async (failOn) => {
+      const dir = await createCleanRepo();
 
-    const { stdout, code } = await spawnWithInput(
-      process.execPath,
-      [
-        "--import",
-        "tsx",
-        "src/cli.ts",
-        "check",
-        "--workspace",
-        dir,
-        "--task",
-        "Update greeting text.",
-        "--fail-on",
-        "conditional"
-      ],
-      "",
-      { env: process.env, allowFailure: true }
-    );
-    const output = JSON.parse(stdout) as { final_verdict: string };
+      const { stdout, code } = await spawnWithInput(
+        process.execPath,
+        [
+          "--import",
+          "tsx",
+          "src/cli.ts",
+          "check",
+          "--workspace",
+          dir,
+          "--task",
+          "Update greeting text.",
+          "--fail-on",
+          failOn
+        ],
+        "",
+        { env: process.env, allowFailure: true }
+      );
+      const output = JSON.parse(stdout) as { final_verdict: string };
 
-    expect(code).toBe(0);
-    expect(output.final_verdict).toBe("inconclusive");
-  });
+      expect(code).toBe(1);
+      expect(output.final_verdict).toBe("inconclusive");
+    }
+  );
 
   it("fails explicit inconclusive gates for inconclusive workspace checks", async () => {
     const dir = await createCleanRepo();
