@@ -140,8 +140,8 @@ export interface Evidence {
 
 export type VerdictKind = 'mergeable' | 'conditional' | 'not_mergeable' | 'inconclusive';
 // 厳しさの全順序: mergeable < conditional < not_mergeable。
-// inconclusive は順序外の別クラス（CLIのexit codeも別値2。--fail-on はこの順序で比較し、
-// inconclusive は --fail-on inconclusive を明示した場合のみ失敗扱い）
+// inconclusive は順序外の別クラスだが、証拠不足をreadiness gateで通さないため、
+// --fail-on mergeable / conditional / inconclusive のいずれでも失敗扱いにする。
 
 export interface Verdict {
   schemaVersion: 1;
@@ -510,7 +510,7 @@ verifier report <run-id>         # 過去runのレポート再表示
 verifier runs                    # run一覧
 ```
 
-終了コード: `0` = `--fail-on` 閾値未満 / `1` = 閾値以上（not_mergeable等） / `2` = inconclusive / `64` = 設定・引数エラー / `70` = 内部エラー。
+終了コード: `0` = `--fail-on` gateを通過 / `1` = gate失敗（`inconclusive`を含む） / `2` = 使用方法・実行時エラー。
 
 ### verifier.config.{json,ts} スキーマ（主要キー）
 

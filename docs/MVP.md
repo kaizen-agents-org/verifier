@@ -142,9 +142,13 @@ verifier check --fail-on conditional
 The gate behavior is:
 
 - `not_mergeable`: fail only on `not_mergeable`.
-- `conditional`: fail on `conditional` or `not_mergeable`.
+- `conditional`: fail on `conditional`, `not_mergeable`, or `inconclusive`.
 - `inconclusive`: fail on `inconclusive` or `not_mergeable`.
-- `mergeable`: fail on `conditional` or `not_mergeable`.
+- `mergeable`: fail on `conditional`, `not_mergeable`, or `inconclusive`.
+
+Although `inconclusive` is outside the verdict severity order, it fails the
+`mergeable` and `conditional` CI gates conservatively because insufficient
+evidence must not pass a readiness threshold.
 
 Repository CI runs `pnpm eval` and the semantic smoke gate. Changes to agents,
 judge/refutation code, prompts, or semantic thresholds additionally run the
