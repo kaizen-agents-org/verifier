@@ -13,7 +13,8 @@ export {
   CORRECTNESS_AGENT_CONFIG,
   INTENT_AGENT_CONFIG,
   INTENT_AGENT_PRICING_USD_PER_MILLION,
-  REFUTER_AGENT_CONFIG
+  REFUTER_AGENT_CONFIG,
+  SCENARIO_AGENT_CONFIG
 } from "./config.js";
 export { recordAgentUsage, type AgentUsage } from "./cost.js";
 export { writeClaims, writeJsonArtifact } from "./evidence-store.js";
@@ -68,6 +69,36 @@ export {
   type RefuterTransport
 } from "./refuter/client.js";
 export { RefuterOutputSchema, type RefuterOutput } from "./refuter/schema.js";
+export {
+  createScenarioGeneratorRequest,
+  createScenarioGeneratorTransport,
+  generateScenarios,
+  type ScenarioGeneratorInput,
+  type ScenarioGeneratorRequest,
+  type ScenarioGeneratorResponse,
+  type ScenarioGeneratorTransport
+} from "./scenario/client.js";
+export {
+  SCENARIO_GENERATOR_SYSTEM_PROMPT,
+  buildScenarioGeneratorPrompt
+} from "./scenario/prompt.js";
+export {
+  ScenarioGenerationSchema,
+  ScenarioSchema,
+  StepSchema,
+  type ScenarioGeneration
+} from "./scenario/schema.js";
+export {
+  runProbeAndRefuteStage,
+  runProbeStage,
+  runScenarioGenerationStage,
+  type CliScenarioExpectation,
+  type ProbeStageResult,
+  type RunProbeAndRefuteStageOptions,
+  type RunProbeStageOptions,
+  type RunScenarioGenerationStageOptions
+} from "./probe/orchestrator.js";
+export { createBundledProbeDrivers } from "./probe/registry.js";
 export {
   createSemanticBatchItems,
   submitSemanticEvalBatch,
