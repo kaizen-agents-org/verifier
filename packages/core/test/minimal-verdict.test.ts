@@ -120,6 +120,88 @@ describe("evaluateMinimalVerdict", () => {
   });
 
   it.each([
+    [
+      "plain",
+      "packages/core test: ✓ CLI > does not block workspace checks for common zero-failure test summaries 997ms"
+    ],
+    [
+      "ANSI-colored",
+      "packages/core test: \u001b[32m✓\u001b[39m CLI > does not block workspace checks when failed tests are quoted \u001b[33m997ms\u001b[39m"
+    ]
+  ])("does not block %s prefixed passing Vitest output", (_format, passingLine) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Keep passing workspace test output non-blocking",
+      diff: "diff --git a/src/check.ts b/src/check.ts\n+return classifyResult(line)",
+      verifyLogs:
+        `${passingLine}\n\n` +
+        " Test Files  1 passed (1)\n" +
+        "      Tests  42 passed (42)\n" +
+        "   Start at  03:04:05\n" +
+        "   Duration  1.23s",
+      builderReport: "Focused verification passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
+  it("does not block the complete workspace-prefixed retry evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Keep passing workspace test output non-blocking",
+      diff: "diff --git a/src/check.ts b/src/check.ts\n+return classifyResult(line)",
+      verifyLogs:
+        "packages/probe-drivers/cli test:    ✓ CLI probe driver > keeps a clean run free of failure observations  419ms\n" +
+        "packages/core test:    ✓ CLI > does not block workspace checks for common zero-failure test summaries  1009ms\n" +
+        "packages/probe-drivers/api test:    ✓ API probe driver > does not classify an expected 5xx response as a network failure  576ms\n" +
+        "packages/probe-drivers/api test:    ✓ API probe driver > marks an unexpected 5xx as failed after retries are exhausted  581ms\n" +
+        "packages/probe-drivers/api test:    ✓ API probe driver > keeps clean requests free of failure observations  574ms\n" +
+        " Test Files  13 passed (13)\n" +
+        "      Tests  120 passed (120)",
+      builderReport: "Focused verification passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
+  it("counts a workspace-prefixed passing test line as positive verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Keep passing workspace test output non-blocking",
+      diff: "diff --git a/src/check.ts b/src/check.ts\n+return classifyResult(line)",
+      verifyLogs:
+        "packages/core test: ✓ API probe driver > marks an unexpected 5xx as failed after retries are exhausted 997ms",
+      builderReport: "Focused verification passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix).toHaveLength(0);
+  });
+
+  it.each([
+    [
+      "plain",
+      "packages/core test: ✗ CLI > rejects invalid config 997ms\n Test Files  1 failed (1)\n      Tests  1 failed | 41 passed (42)"
+    ],
+    [
+      "ANSI-colored",
+      "packages/core test: \u001b[31m✗\u001b[39m CLI > rejects invalid config 997ms\n\u001b[2m Test Files \u001b[22m \u001b[31m1 failed\u001b[39m (1)\n\u001b[2m Tests \u001b[22m \u001b[31m1 failed\u001b[39m | 41 passed (42)"
+    ]
+  ])("still blocks %s prefixed failed Vitest output", (_format, verifyLogs) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Run workspace verification",
+      diff: "diff --git a/src/check.ts b/src/check.ts\n+return classifyResult(line)",
+      verifyLogs,
+      builderReport: "Verification was executed."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.length).toBeGreaterThan(0);
+  });
+
+  it.each([
     "Tests 1 failed (42)",
     "exit code 1",
     "command exited with code 2",
@@ -168,7 +250,8 @@ describe("evaluateMinimalVerdict", () => {
 
   it.each([
     "PASS parser suite — 1 failed",
-    "✓ parser suite finished with exit code 1"
+    "✓ parser suite finished with exit code 1",
+    "packages/core test: ✓ command exited with code 1 10ms"
   ])("does not let a passing prefix hide an authoritative failure: %s", (failureLine) => {
     const verdict = evaluateMinimalVerdict({
       task: "Run verification",
