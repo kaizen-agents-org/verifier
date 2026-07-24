@@ -53,6 +53,8 @@ commands:
     - "pnpm typecheck"
     - "pnpm test"
     - "pnpm schema:check"
+    - "pnpm eval"
+    - "pnpm eval:semantic:ci"
     - "test -f skills/gh-link-issue-pr/SKILL.md && test -f skills/kaizen-bug-router/SKILL.md && test -f skills/pr-guardian/SKILL.md"
   verifyTimeoutMinutes: 15
 
