@@ -152,7 +152,7 @@ function parseKaizenLoopPrompt(prompt: string) {
     task: section(prompt, "# Issue", "# Builder result") || prompt,
     builderReport: section(prompt, "# Builder result", "# Mechanical verification"),
     verifyLogs: section(prompt, "# Mechanical verification", "# Changed files"),
-    diff: section(prompt, "# Changed files", "# Decision rules")
+    diff: section(prompt, "# Diff", "# Decision rules")
   };
 }
 

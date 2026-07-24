@@ -134,6 +134,11 @@ Implemented validation and tests.
 - src/signup.ts
 - test/signup.test.ts
 
+# Diff
+
+diff --git a/src/signup.ts b/src/signup.ts
++validateEmail(input.email)
+
 # Decision rules
 
 Return "block_pr" when the builder must revise the change before a PR is created.
@@ -166,6 +171,55 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(result.notes).toContain("evidence_grade=reported");
     expect(output.reason).toBe("");
     expect(result.reason).toBe("");
+  });
+
+  it("needs context for kaizen-loop prompts with only a changed-file inventory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-"));
+    const resultPath = join(dir, "verify-result.json");
+    const prompt = `# Issue
+
+Add signup validation.
+
+# Builder result
+
+Implemented validation and tests.
+
+# Mechanical verification
+
+- [x] pnpm test
+
+# Changed files
+
+- src/signup.ts
+- test/signup.test.ts
+
+# Decision rules
+
+Return a verdict.
+`;
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      prompt,
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath
+        }
+      }
+    );
+
+    const output = JSON.parse(stdout) as { status: string; reason: string };
+    const result = JSON.parse(await readFile(resultPath, "utf8")) as {
+      status: string;
+      reason: string;
+    };
+
+    expect(output.status).toBe("needs_context");
+    expect(result.status).toBe("needs_context");
+    expect(output.reason).toContain("Diff is missing");
+    expect(result.reason).toContain("Diff is missing");
   });
 
   it("blocks high-risk kaizen-loop prompts without targeted verification evidence", async () => {
