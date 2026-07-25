@@ -1,4 +1,5 @@
-import { createServer } from "node:net";
+import { createServer as createHttpServer } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -213,14 +214,50 @@ describe("API probe driver", () => {
 
   it("rejects unsupported wait-until conditions", async () => {
     const workdir = await mkdtemp(join(tmpdir(), "verifier-api-wait-until-"));
-    const session = await makeDriver().launch(await context(workdir, ""));
-    await expect(
-      session.interact({
-        ...requestScenario({ method: "GET", path: "/item" }),
-        steps: [{ op: "wait", until: "server is idle" }]
-      })
-    ).rejects.toThrow("does not support wait-until");
-    await session.teardown();
+    const readyServer = createHttpServer((_request, response) => {
+      response.writeHead(204).end();
+    });
+    const port = await new Promise<number>((resolvePort, reject) => {
+      readyServer.once("error", reject);
+      readyServer.listen(0, "127.0.0.1", () => {
+        const address = readyServer.address();
+        if (!address || typeof address === "string") {
+          reject(new Error("could not allocate ready server port"));
+          return;
+        }
+        resolvePort(address.port);
+      });
+    });
+    const driver = new ApiProbeDriver({
+      launch: {
+        file: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1_000)"],
+        readyPath: "/ready"
+      }
+    });
+    try {
+      const session = await driver.launch({
+        ...await context(workdir, ""),
+        ports: {
+          acquire: async () => port,
+          release: () => undefined
+        }
+      });
+      try {
+        await expect(
+          session.interact({
+            ...requestScenario({ method: "GET", path: "/item" }),
+            steps: [{ op: "wait", until: "server is idle" }]
+          })
+        ).rejects.toThrow("does not support wait-until");
+      } finally {
+        await session.teardown();
+      }
+    } finally {
+      await new Promise<void>((resolveClose, reject) => {
+        readyServer.close((error) => error ? reject(error) : resolveClose());
+      });
+    }
   });
 });
 
@@ -299,7 +336,7 @@ async function allocator(): Promise<PortAllocator> {
     acquire: async () => {
       if (released) throw new Error("allocator already released");
       return await new Promise<number>((resolvePort, reject) => {
-        const server = createServer();
+        const server = createNetServer();
         server.once("error", reject);
         server.listen(0, "127.0.0.1", () => {
           const address = server.address();
