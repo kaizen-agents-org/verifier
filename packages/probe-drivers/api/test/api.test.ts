@@ -4,7 +4,14 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { LaunchContext, Observation, PortAllocator, Scenario, StepResult } from "@verifier/probe-sdk";
+import type {
+  LaunchContext,
+  Observation,
+  PortAllocator,
+  ProbeSession,
+  Scenario,
+  StepResult
+} from "@verifier/probe-sdk";
 import { ApiProbeDriver } from "../src/index.js";
 
 const fixture = resolve(import.meta.dirname, "../../../../fixtures/probe/api-server/server.mjs");
@@ -213,36 +220,9 @@ describe("API probe driver", () => {
   });
 
   it("rejects unsupported wait-until conditions", async () => {
-    const workdir = await mkdtemp(join(tmpdir(), "verifier-api-wait-until-"));
-    const readyServer = createHttpServer((_request, response) => {
-      response.writeHead(204).end();
-    });
-    const port = await new Promise<number>((resolvePort, reject) => {
-      readyServer.once("error", reject);
-      readyServer.listen(0, "127.0.0.1", () => {
-        const address = readyServer.address();
-        if (!address || typeof address === "string") {
-          reject(new Error("could not allocate ready server port"));
-          return;
-        }
-        resolvePort(address.port);
-      });
-    });
-    const driver = new ApiProbeDriver({
-      launch: {
-        file: process.execPath,
-        args: ["-e", "setInterval(() => {}, 1_000)"],
-        readyPath: "/ready"
-      }
-    });
+    const ready = await readyServer();
     try {
-      const session = await driver.launch({
-        ...await context(workdir, ""),
-        ports: {
-          acquire: async () => port,
-          release: () => undefined
-        }
-      });
+      const session = await ready.launch();
       try {
         await expect(
           session.interact({
@@ -254,9 +234,29 @@ describe("API probe driver", () => {
         await session.teardown();
       }
     } finally {
-      await new Promise<void>((resolveClose, reject) => {
-        readyServer.close((error) => error ? reject(error) : resolveClose());
-      });
+      await ready.close();
+    }
+  });
+
+  it("rejects unsupported wait-until conditions without consuming the scenario budget", async () => {
+    const ready = await readyServer();
+    try {
+      const session = await ready.launch();
+      try {
+        const startedAt = Date.now();
+        await expect(
+          session.interact({
+            ...requestScenario({ method: "GET", path: "/item" }),
+            steps: [{ op: "wait", until: "server is idle" }]
+          })
+        ).rejects.toThrow("does not support wait-until");
+        // Validation is pure input checking: it must reject long before the 2s budget.
+        expect(Date.now() - startedAt).toBeLessThan(250);
+      } finally {
+        await session.teardown();
+      }
+    } finally {
+      await ready.close();
     }
   });
 });
@@ -307,6 +307,45 @@ async function runFixture(defect: string, scenario: Scenario): Promise<{
   } finally {
     await session.teardown();
   }
+}
+
+// Serves readiness from an already-listening in-process server, so input-validation
+// tests never depend on how fast a spawned fixture API binds its port.
+async function readyServer(): Promise<{
+  launch: () => Promise<ProbeSession>;
+  close: () => Promise<void>;
+}> {
+  const server = createHttpServer((_request, response) => {
+    response.writeHead(204).end();
+  });
+  const port = await new Promise<number>((resolvePort, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        reject(new Error("could not allocate ready server port"));
+        return;
+      }
+      resolvePort(address.port);
+    });
+  });
+  const driver = new ApiProbeDriver({
+    launch: { file: process.execPath, args: ["-e", "setInterval(() => {}, 1_000)"], readyPath: "/ready" }
+  });
+  return {
+    launch: async () => {
+      const workdir = await mkdtemp(join(tmpdir(), "verifier-api-ready-"));
+      return await driver.launch({
+        ...(await context(workdir, "")),
+        ports: { acquire: async () => port, release: () => undefined }
+      });
+    },
+    close: async () => {
+      await new Promise<void>((resolveClose, reject) => {
+        server.close((error) => (error ? reject(error) : resolveClose()));
+      });
+    }
+  };
 }
 
 function makeDriver(): ApiProbeDriver {
