@@ -157,12 +157,20 @@ function parseKaizenLoopPrompt(prompt: string) {
 }
 
 function section(text: string, startMarker: string, endMarker: string): string {
-  const start = text.indexOf(startMarker);
-  if (start === -1) return "";
-  const bodyStart = text.indexOf("\n", start);
-  if (bodyStart === -1) return "";
-  const end = text.indexOf(endMarker, bodyStart + 1);
-  return text.slice(bodyStart + 1, end === -1 ? undefined : end).trim();
+  const start = new RegExp(
+    `(?:^|\\r?\\n)${escapeRegExp(startMarker)}[\\t ]*(?:\\r?\\n|$)`
+  ).exec(text);
+  if (!start) return "";
+  const bodyStart = start.index + start[0].length;
+  const body = text.slice(bodyStart);
+  const end = new RegExp(
+    `(?:^|\\r?\\n)${escapeRegExp(endMarker)}[\\t ]*(?:\\r?\\n|$)`
+  ).exec(body);
+  return body.slice(0, end?.index).trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseArgs(argv: string[]): CliOptions {

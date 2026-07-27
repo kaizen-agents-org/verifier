@@ -124,6 +124,10 @@ Validate email addresses.
 
 Implemented validation and tests.
 
+## Difference from current behavior
+
+The implementation validates signup input.
+
 # Mechanical verification
 
 - [x] pnpm test
@@ -183,6 +187,10 @@ Add signup validation.
 # Builder result
 
 Implemented validation and tests.
+
+## Difference from current behavior
+
+The implementation validates signup input.
 
 # Mechanical verification
 
