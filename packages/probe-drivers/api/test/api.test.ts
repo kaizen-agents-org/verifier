@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { LaunchContext, Observation, PortAllocator, Scenario, StepResult } from "@verifier/probe-sdk";
 import { ApiProbeDriver } from "../src/index.js";
+import { assertSupportedWaitCondition } from "../src/validate-scenario.js";
 
 const fixture = resolve(import.meta.dirname, "../../../../fixtures/probe/api-server/server.mjs");
 
@@ -211,16 +212,10 @@ describe("API probe driver", () => {
     await session.teardown();
   });
 
-  it("rejects unsupported wait-until conditions", async () => {
-    const workdir = await mkdtemp(join(tmpdir(), "verifier-api-wait-until-"));
-    const session = await makeDriver().launch(await context(workdir, ""));
-    await expect(
-      session.interact({
-        ...requestScenario({ method: "GET", path: "/item" }),
-        steps: [{ op: "wait", until: "server is idle" }]
-      })
-    ).rejects.toThrow("does not support wait-until");
-    await session.teardown();
+  it("rejects unsupported wait-until conditions", () => {
+    expect(() =>
+      assertSupportedWaitCondition({ op: "wait", until: "server is idle" })
+    ).toThrow("does not support wait-until");
   });
 });
 
