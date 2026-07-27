@@ -9,6 +9,7 @@
     "verifier": "./dist/cli.js"
   },
   "scripts": {
+    "prebuild": "pnpm --filter @verifier/probe-sdk build",
     "build": "tsc -p tsconfig.json && node scripts/write-build-info.mjs",
     "eval": "node --import tsx src/eval/run.ts",
     "eval:fixtures": "node --import tsx src/eval/fixture-run.ts --output ../../fixtures/metrics.json",
