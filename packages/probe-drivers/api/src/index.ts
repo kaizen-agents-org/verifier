@@ -19,6 +19,7 @@ import {
   type Scenario,
   type StepResult
 } from "@verifier/probe-sdk";
+import { assertSupportedWaitCondition } from "./validate-scenario.js";
 
 const DEFAULT_MAX_BODY_BYTES = 64 * 1024;
 const DEFAULT_MAX_REQUEST_BYTES = 64 * 1024;
@@ -172,9 +173,7 @@ class ApiProbeSession implements ProbeSession {
       const step = scenario.steps[index];
       if (!step) continue;
       if (step.op === "wait") {
-        if (step.until !== undefined) {
-          throw new UnsupportedStepError(step, "API driver does not support wait-until conditions.");
-        }
+        assertSupportedWaitCondition(step);
         const requestedMs = Math.max(0, step.forMs ?? 0);
         const remainingMs = this.remainingMs();
         const waitMs = Math.min(requestedMs, remainingMs);
