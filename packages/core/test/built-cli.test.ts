@@ -85,7 +85,7 @@ describe("built verifier CLI", () => {
       "Test Files 31 passed (31)",
       "Tests 316 passed (316)"
     ].join("\n");
-    const prompt = `# Issue\nKeep passing test output non-blocking.\n\n# Builder result\nAdded regression coverage.\n\n# Mechanical verification\n${verifyLogs}\n\n# Changed files\ntest/example.test.ts\n\n# Decision rules\nReturn a verdict.`;
+    const prompt = `# Issue\nKeep passing test output non-blocking.\n\n# Builder result\nAdded regression coverage.\n\n# Mechanical verification\n${verifyLogs}\n\n# Changed files\ntest/example.test.ts\n\n# Diff\n\ndiff --git a/test/example.test.ts b/test/example.test.ts\n+test("regression", () => {})\n\n# Decision rules\nReturn a verdict.`;
 
     const { stdout } = await spawnWithInput(process.execPath, ["dist/cli.js"], prompt, {
       ...process.env,
