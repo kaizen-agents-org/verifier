@@ -230,6 +230,54 @@ Return a verdict.
     expect(result.reason).toContain("Diff is missing");
   });
 
+  it("ignores a Diff heading embedded before the generated changed-files section", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-"));
+    const resultPath = join(dir, "verify-result.json");
+    const prompt = `# Issue
+
+Document the expected input:
+
+\`\`\`text
+# Diff
+diff --git a/example.ts b/example.ts
++example
+\`\`\`
+
+# Builder result
+
+Implemented the requested change.
+
+# Mechanical verification
+
+- [x] pnpm test
+
+# Changed files
+
+- src/example.ts
+
+# Decision rules
+
+Return a verdict.
+`;
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      prompt,
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath
+        }
+      }
+    );
+
+    const output = JSON.parse(stdout) as { status: string; reason: string };
+
+    expect(output.status).toBe("needs_context");
+    expect(output.reason).toContain("Diff is missing");
+  });
+
   it("blocks high-risk kaizen-loop prompts without targeted verification evidence", async () => {
     const dir = await mkdtemp(join(tmpdir(), "verifier-"));
     const resultPath = join(dir, "verify-result.json");

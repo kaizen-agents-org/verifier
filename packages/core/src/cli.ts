@@ -152,8 +152,16 @@ function parseKaizenLoopPrompt(prompt: string) {
     task: section(prompt, "# Issue", "# Builder result") || prompt,
     builderReport: section(prompt, "# Builder result", "# Mechanical verification"),
     verifyLogs: section(prompt, "# Mechanical verification", "# Changed files"),
-    diff: section(prompt, "# Diff", "# Decision rules")
+    diff: sectionAfter(prompt, "# Changed files", "# Diff", "# Decision rules")
   };
+}
+
+function sectionAfter(text: string, anchorMarker: string, startMarker: string, endMarker: string): string {
+  const anchor = new RegExp(
+    `(?:^|\\r?\\n)${escapeRegExp(anchorMarker)}[\\t ]*(?:\\r?\\n|$)`
+  ).exec(text);
+  if (!anchor) return "";
+  return section(text.slice(anchor.index + anchor[0].length), startMarker, endMarker);
 }
 
 function section(text: string, startMarker: string, endMarker: string): string {
