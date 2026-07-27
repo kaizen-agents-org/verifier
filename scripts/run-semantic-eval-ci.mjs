@@ -10,7 +10,11 @@ const changedFiles = baseSha && !/^0+$/.test(baseSha)
   : "packages/agents/";
 
 if (changedFiles.split(/\r?\n/).some((path) => semanticPaths.test(path))) {
-  run(["eval:semantic", "--", "--mode", "full", "--output", "fixtures/semantic-metrics.json"]);
+  const fullArgs = ["eval:semantic", "--", "--mode", "full"];
+  if (process.env.SEMANTIC_EVAL_WRITE_METRICS !== "false") {
+    fullArgs.push("--output", "fixtures/semantic-metrics.json");
+  }
+  run(fullArgs);
 }
 
 function run(args) {
