@@ -541,6 +541,76 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("classifies changed children below an unchanged authorization policy header", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Change an authorization policy effect",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "@@ -1,3 +1,3 @@\n" +
+        " policy:\n" +
+        "-  effect: Allow\n" +
+        "+  effect: Deny\n" +
+        "   principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Changed the policy effect."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.evidence?.includes("+effect: Deny"))).toBe(true);
+  });
+
+  it("classifies a removed policy header across its replacement line", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Rename an authorization policy block",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "@@ -1,3 +1,3 @@\n" +
+        "-policy:\n" +
+        "+configuration:\n" +
+        "   effect: Allow\n" +
+        "   principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Renamed the policy block."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.evidence?.includes("-policy:"))).toBe(true);
+  });
+
+  it("does not treat unrelated scalar policy settings as auth/authz code", () => {
+    for (const value of ["always", "pull-push", "retryPolicy"]) {
+      const verdict = evaluateMinimalVerdict({
+        task: "Update a generic service policy",
+        diff:
+          "diff --git a/config/service.yml b/config/service.yml\n" +
+          `+policy: ${value}`,
+        verifyLogs: "all tests passed",
+        builderReport: "Updated the service policy."
+      });
+
+      expect(verdict.verdict).toBe("open_pr");
+      expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
+    }
+  });
+
+  it("does not combine policy evidence across diff hunks", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update unrelated configuration sections",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "@@ -1,1 +1,1 @@\n" +
+        "+policy:\n" +
+        "@@ -100,2 +100,2 @@\n" +
+        "   effect: Allow\n" +
+        "   principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Updated service configuration."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
+  });
+
   it("treats a bare policy block in an authz path as auth/authz code", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Add an authorization policy document",
