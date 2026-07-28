@@ -335,12 +335,20 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
 
     const blockLines: DiffRiskLine[] = [];
     let enteredBlock = false;
+    let replacementKind: DiffRiskLine["kind"] | null = null;
     for (const candidate of lines.slice(index + 1)) {
       if (candidate.path !== line.path || candidate.hunk !== line.hunk) break;
       const candidateIndent = /^\s*/.exec(candidate.content)?.[0].length ?? 0;
       if (candidateIndent <= policyIndent) {
-        if (!enteredBlock && candidate.kind !== "context") continue;
+        if (line.kind !== "context" && !enteredBlock && candidate.kind !== "context" && candidate.kind !== line.kind) {
+          replacementKind = candidate.kind;
+          continue;
+        }
         break;
+      }
+      if (line.kind !== "context") {
+        if (replacementKind && candidate.kind === replacementKind) break;
+        if (candidate.kind !== line.kind && candidate.kind !== "context") break;
       }
       enteredBlock = true;
       blockLines.push(candidate);

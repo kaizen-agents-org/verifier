@@ -577,6 +577,24 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.evidence?.includes("-policy:"))).toBe(true);
   });
 
+  it("does not attribute added replacement children to a removed empty policy", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Replace an empty generic policy with service configuration",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "@@ -1,1 +1,3 @@\n" +
+        "-policy:\n" +
+        "+configuration:\n" +
+        "+  effect: Allow\n" +
+        "+  principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Added service configuration."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
+  });
+
   it("does not treat unrelated scalar policy settings as auth/authz code", () => {
     for (const value of ["always", "pull-push", "retryPolicy"]) {
       const verdict = evaluateMinimalVerdict({
