@@ -347,7 +347,7 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
         break;
       }
       if (line.kind !== "context") {
-        if (replacementKind && candidate.kind === replacementKind) break;
+        if (replacementKind && candidate.kind === replacementKind) continue;
         if (candidate.kind !== line.kind && candidate.kind !== "context") break;
       }
       enteredBlock = true;

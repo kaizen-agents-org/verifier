@@ -595,6 +595,25 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
   });
 
+  it("finds shared policy context after replacement-only children", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Replace an authorization policy with service configuration",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "@@ -1,3 +1,4 @@\n" +
+        "-policy:\n" +
+        "+configuration:\n" +
+        "+  description: settings\n" +
+        "   effect: Allow\n" +
+        "   principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Replaced the policy block."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.evidence?.includes("-policy:"))).toBe(true);
+  });
+
   it("does not treat unrelated scalar policy settings as auth/authz code", () => {
     for (const value of ["always", "pull-push", "retryPolicy"]) {
       const verdict = evaluateMinimalVerdict({
