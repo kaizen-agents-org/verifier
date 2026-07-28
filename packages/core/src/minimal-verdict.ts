@@ -101,9 +101,9 @@ const HIGH_RISK_DIFF_SIGNALS = [
   {
     label: "auth/authz",
     addedPattern:
-      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpermissionRank\s*\(/i,
+      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpolicy\s*[:=]\s*["']?(?:admin|auth|authoriz|permission|role|rbac|access|allow|deny)\w*|\bpermissionRank\s*\(/i,
     removedPattern:
-      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpermissionRank\s*\(/i,
+      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpolicy\s*[:=]\s*["']?(?:admin|auth|authoriz|permission|role|rbac|access|allow|deny)\w*|\bpermissionRank\s*\(/i,
     coveragePattern: /\b(?:admin|auth|authz|authn|authorization|authentication|guard|permission|role|access control|401|403|security)\b/i
   },
   {

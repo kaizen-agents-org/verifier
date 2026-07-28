@@ -487,6 +487,21 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
   });
 
+  it("treats an authorization policy assignment as auth/authz code", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure the admin authorization policy",
+      diff:
+        "diff --git a/src/authorization.yml b/src/authorization.yml\n" +
+        "+policy: adminOnly",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+    expect(verdict.must_fix.some((item) => item.evidence?.includes("+policy: adminOnly"))).toBe(true);
+  });
+
   it("blocks removed admin guards without targeted verification evidence", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Keep the admin update handler protected",
