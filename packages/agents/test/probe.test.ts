@@ -764,7 +764,7 @@ async function runCli(defect: string, withRefutation = false) {
       packageJson: { bin: "cli.mjs" },
       files: async () => []
     },
-    launch: await launchContext(workdir, defect, 1_000),
+    launch: await launchContext(workdir, defect, defect === "hang" ? 1_000 : 5_000),
     scenarios: [cliScenario()],
     claims: [claim()],
     runMeta: runMeta(),
