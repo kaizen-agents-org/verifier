@@ -502,6 +502,24 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.evidence?.includes("+policy: ownerOnly"))).toBe(true);
   });
 
+  it.each([
+    ["JSON", "src/authorization.json", '\"policy\": \"ownerOnly\"'],
+    ["YAML list", "config/service.yml", "- policy: ownerOnly"],
+    ["inline object", "config/service.ts", "{ policy: ownerOnly, mode: \"strict\" }"]
+  ])("treats a %s authorization policy property as auth/authz code", (_syntax, path, property) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        `diff --git a/${path} b/${path}\n` +
+        `+${property}`,
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("treats a block-style authorization policy as auth/authz code", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Configure an authorization policy block",
@@ -615,12 +633,12 @@ describe("evaluateMinimalVerdict", () => {
   });
 
   it("does not treat unrelated scalar policy settings as auth/authz code", () => {
-    for (const value of ["always", "pull-push", "retryPolicy"]) {
+    for (const property of ["policy: always", "policy: pull-push", "policy: retryPolicy", '"policy": "always"']) {
       const verdict = evaluateMinimalVerdict({
         task: "Update a generic service policy",
         diff:
           "diff --git a/config/service.yml b/config/service.yml\n" +
-          `+policy: ${value}`,
+          `+${property}`,
         verifyLogs: "all tests passed",
         builderReport: "Updated the service policy."
       });

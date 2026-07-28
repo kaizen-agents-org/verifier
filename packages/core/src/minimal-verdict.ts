@@ -322,16 +322,17 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }
 function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
   const matches: DiffRiskLine[] = [];
   for (const [index, line] of lines.entries()) {
-    const policyMatch = /^(\s*)policy\s*[:=]\s*(.*?)\s*$/i.exec(line.content);
-    if (!policyMatch) continue;
+    const policyProperty = parsePolicyProperty(line.content);
+    if (!policyProperty) continue;
 
-    const policyIndent = policyMatch[1]?.length ?? 0;
-    const scalarValue = policyMatch[2] ?? "";
+    const policyIndent = policyProperty.indent;
+    const scalarValue = policyProperty.value;
     const authPath = isAuthorizationPath(line.path);
     if (scalarValue) {
       if ((authPath || isAuthorizationPolicyValue(scalarValue)) && line.kind !== "context") matches.push(line);
       continue;
     }
+    if (policyProperty.inline) continue;
 
     const blockLines: DiffRiskLine[] = [];
     let enteredBlock = false;
@@ -367,6 +368,24 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     }
   }
   return matches;
+}
+
+function parsePolicyProperty(content: string): { indent: number; value: string; inline: boolean } | null {
+  const leading = /^(\s*)(?:-\s*)?["']?policy["']?\s*[:=]\s*([^,}]*)/i.exec(content);
+  if (leading) {
+    return {
+      indent: leading[1]?.length ?? 0,
+      value: leading[2]?.trim() ?? "",
+      inline: false
+    };
+  }
+  const inline = /[{,]\s*["']?policy["']?\s*[:=]\s*([^,}]*)/i.exec(content);
+  if (!inline) return null;
+  return {
+    indent: /^\s*/.exec(content)?.[0].length ?? 0,
+    value: inline[1]?.trim() ?? "",
+    inline: true
+  };
 }
 
 function isAuthorizationPath(path: string): boolean {
