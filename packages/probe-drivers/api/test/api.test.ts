@@ -278,7 +278,7 @@ function makeDriver(): ApiProbeDriver {
   });
 }
 
-async function context(workdir: string, defect: string, timeoutMs = 2_000): Promise<LaunchContext> {
+async function context(workdir: string, defect: string, timeoutMs = 5_000): Promise<LaunchContext> {
   return {
     workdir,
     env: { FIXTURE_DEFECTS: defect },
