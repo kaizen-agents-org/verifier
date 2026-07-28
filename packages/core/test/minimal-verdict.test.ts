@@ -511,7 +511,7 @@ describe("evaluateMinimalVerdict", () => {
         "+  version: 1\n" +
         "+  statement:\n" +
         "+    sid: invoices\n" +
-        "+  effect: Allow\n" +
+        "+  - effect: Allow\n" +
         "+  resources: [invoices]\n" +
         "+  principals: [admin]",
       verifyLogs: "all tests passed",
@@ -521,6 +521,38 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
     expect(verdict.must_fix.some((item) => item.evidence?.includes("+policy:"))).toBe(true);
+  });
+
+  it("uses unchanged block context to classify a changed policy header", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Rename a configuration block to an authorization policy",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "@@ -1,3 +1,3 @@\n" +
+        "-config:\n" +
+        "+policy:\n" +
+        "   effect: Allow\n" +
+        "   principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Renamed the configuration block."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
+  it("treats a bare policy block in an authz path as auth/authz code", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add an authorization policy document",
+      diff:
+        "diff --git a/src/authz/policy.yml b/src/authz/policy.yml\n" +
+        "+policy:",
+      verifyLogs: "all tests passed",
+      builderReport: "Added the policy document."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
   it("blocks removed admin guards without targeted verification evidence", () => {

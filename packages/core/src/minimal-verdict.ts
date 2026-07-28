@@ -298,13 +298,13 @@ function collectSoftRisks(
 
 function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }> {
   if (!diff) return [];
-  const changedLines = parseDiffRiskLines(diff).filter((line) => isRuntimeRiskLine(line));
+  const diffLines = parseDiffRiskLines(diff).filter((line) => isRuntimeRiskLine(line));
   return HIGH_RISK_DIFF_SIGNALS.flatMap((signal) => {
-    const matches = changedLines.filter((line, index) => {
+    const matches = diffLines.filter((line, index) => {
       if (line.kind === "added" && signal.addedPattern.test(line.content)) return true;
       if (line.kind === "removed" && signal.removedPattern?.test(line.content)) return true;
-      if (signal.label === "auth/authz" && isAuthorizationPolicyBlock(changedLines, index)) return true;
-      return Boolean(signal.pathPattern?.test(line.path));
+      if (line.kind !== "context" && signal.label === "auth/authz" && isAuthorizationPolicyBlock(diffLines, index)) return true;
+      return line.kind !== "context" && Boolean(signal.pathPattern?.test(line.path));
     });
     if (matches.length === 0) return [];
     return [{
@@ -318,26 +318,26 @@ function isAuthorizationPolicyBlock(lines: DiffRiskLine[], index: number): boole
   const line = lines[index];
   const policyMatch = line ? /^(\s*)policy\s*:\s*$/i.exec(line.content) : null;
   if (!line || !policyMatch) return false;
-  if (/(?:^|[/_.-])(?:auth|authorization|permissions?|rbac|iam|access[-_]?control|security)(?:[/_.-]|$)/i.test(line.path)) {
+  if (/(?:^|[/_.-])(?:auth|authz|authn|authorization|permissions?|rbac|iam|access[-_]?control|security)(?:[/_.-]|$)/i.test(line.path)) {
     return true;
   }
 
   const policyIndent = policyMatch[1]?.length ?? 0;
   const blockLines: string[] = [];
   for (const candidate of lines.slice(index + 1)) {
-    if (candidate.path !== line.path || candidate.kind !== line.kind) break;
+    if (candidate.path !== line.path || (candidate.kind !== line.kind && candidate.kind !== "context")) break;
     const candidateIndent = /^\s*/.exec(candidate.content)?.[0].length ?? 0;
     if (candidateIndent <= policyIndent) break;
     blockLines.push(candidate.content);
   }
   return (
-    blockLines.some((content) => /^\s*effect\s*:\s*(?:allow|deny)\b/i.test(content)) &&
-    blockLines.some((content) => /^\s*(?:principals?|roles?|permissions?|resources?|actions?)\s*:/i.test(content))
+    blockLines.some((content) => /^\s*(?:-\s*)?effect\s*:\s*(?:allow|deny)\b/i.test(content)) &&
+    blockLines.some((content) => /^\s*(?:-\s*)?(?:principals?|roles?|permissions?|resources?|actions?)\s*:/i.test(content))
   );
 }
 
 interface DiffRiskLine {
-  kind: "added" | "removed";
+  kind: "added" | "removed" | "context";
   path: string;
   content: string;
 }
@@ -345,17 +345,23 @@ interface DiffRiskLine {
 function parseDiffRiskLines(diff: string): DiffRiskLine[] {
   const changedLines: DiffRiskLine[] = [];
   let currentPath = "unknown";
+  let inHunk = false;
 
   for (const line of diff.split(/\r?\n/)) {
     if (line.startsWith("diff --git ")) {
       const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
       currentPath = match?.[2] ?? currentPath;
+      inHunk = false;
     } else if (line.startsWith("+++ b/")) {
       currentPath = line.slice(6);
+    } else if (line.startsWith("@@")) {
+      inHunk = true;
     } else if (line.startsWith("+") && !line.startsWith("+++")) {
       changedLines.push({ kind: "added", path: currentPath, content: line.slice(1) });
     } else if (line.startsWith("-") && !line.startsWith("---")) {
       changedLines.push({ kind: "removed", path: currentPath, content: line.slice(1) });
+    } else if (inHunk && line.startsWith(" ")) {
+      changedLines.push({ kind: "context", path: currentPath, content: line.slice(1) });
     }
   }
 
