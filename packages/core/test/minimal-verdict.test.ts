@@ -492,14 +492,14 @@ describe("evaluateMinimalVerdict", () => {
       task: "Configure the admin authorization policy",
       diff:
         "diff --git a/src/authorization.yml b/src/authorization.yml\n" +
-        "+policy: adminOnly",
+        "+policy: ownerOnly",
       verifyLogs: "all tests passed",
       builderReport: "Configured the authorization policy."
     });
 
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
-    expect(verdict.must_fix.some((item) => item.evidence?.includes("+policy: adminOnly"))).toBe(true);
+    expect(verdict.must_fix.some((item) => item.evidence?.includes("+policy: ownerOnly"))).toBe(true);
   });
 
   it("treats a block-style authorization policy as auth/authz code", () => {
@@ -508,7 +508,11 @@ describe("evaluateMinimalVerdict", () => {
       diff:
         "diff --git a/config/service.yml b/config/service.yml\n" +
         "+policy:\n" +
+        "+  version: 1\n" +
+        "+  statement:\n" +
+        "+    sid: invoices\n" +
         "+  effect: Allow\n" +
+        "+  resources: [invoices]\n" +
         "+  principals: [admin]",
       verifyLogs: "all tests passed",
       builderReport: "Configured a policy block."

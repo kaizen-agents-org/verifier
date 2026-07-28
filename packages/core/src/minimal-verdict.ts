@@ -101,9 +101,9 @@ const HIGH_RISK_DIFF_SIGNALS = [
   {
     label: "auth/authz",
     addedPattern:
-      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpolicy\s*[:=]\s*["']?(?:admin|auth|authoriz|permission|role|rbac|access|allow|deny)\w*|\bpermissionRank\s*\(/i,
+      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpolicy\s*[:=]\s*["']?\S+|\bpermissionRank\s*\(/i,
     removedPattern:
-      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpolicy\s*[:=]\s*["']?(?:admin|auth|authoriz|permission|role|rbac|access|allow|deny)\w*|\bpermissionRank\s*\(/i,
+      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpolicy\s*[:=]\s*["']?\S+|\bpermissionRank\s*\(/i,
     coveragePattern: /\b(?:admin|auth|authz|authn|authorization|authentication|guard|permission|role|access control|401|403|security)\b/i
   },
   {
@@ -316,15 +316,20 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }
 
 function isAuthorizationPolicyBlock(lines: DiffRiskLine[], index: number): boolean {
   const line = lines[index];
-  if (!line || !/^\s*policy\s*:\s*$/i.test(line.content)) return false;
+  const policyMatch = line ? /^(\s*)policy\s*:\s*$/i.exec(line.content) : null;
+  if (!line || !policyMatch) return false;
   if (/(?:^|[/_.-])(?:auth|authorization|permissions?|rbac|iam|access[-_]?control|security)(?:[/_.-]|$)/i.test(line.path)) {
     return true;
   }
 
-  const blockLines = lines
-    .slice(index + 1, index + 5)
-    .filter((candidate) => candidate.path === line.path && candidate.kind === line.kind)
-    .map((candidate) => candidate.content);
+  const policyIndent = policyMatch[1]?.length ?? 0;
+  const blockLines: string[] = [];
+  for (const candidate of lines.slice(index + 1)) {
+    if (candidate.path !== line.path || candidate.kind !== line.kind) break;
+    const candidateIndent = /^\s*/.exec(candidate.content)?.[0].length ?? 0;
+    if (candidateIndent <= policyIndent) break;
+    blockLines.push(candidate.content);
+  }
   return (
     blockLines.some((content) => /^\s*effect\s*:\s*(?:allow|deny)\b/i.test(content)) &&
     blockLines.some((content) => /^\s*(?:principals?|roles?|permissions?|resources?|actions?)\s*:/i.test(content))
