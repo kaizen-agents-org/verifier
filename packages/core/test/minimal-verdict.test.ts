@@ -472,6 +472,21 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.evidence?.includes("src/route.ts: +auth: false"))).toBe(true);
   });
 
+  it("does not treat a generic policy fixture key as auth/authz code", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add a deterministic onboarding contract checker",
+      diff:
+        "diff --git a/onboarding/scripts/test-onboarding-contract.sh b/onboarding/scripts/test-onboarding-contract.sh\n" +
+        "+policy:",
+      verifyLogs: "all tests passed",
+      builderReport: "Onboarding contract tests passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.risk).toBe("low");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
+  });
+
   it("blocks removed admin guards without targeted verification evidence", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Keep the admin update handler protected",
