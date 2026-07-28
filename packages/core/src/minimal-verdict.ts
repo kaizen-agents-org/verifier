@@ -300,9 +300,10 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }
   if (!diff) return [];
   const changedLines = parseDiffRiskLines(diff).filter((line) => isRuntimeRiskLine(line));
   return HIGH_RISK_DIFF_SIGNALS.flatMap((signal) => {
-    const matches = changedLines.filter((line) => {
+    const matches = changedLines.filter((line, index) => {
       if (line.kind === "added" && signal.addedPattern.test(line.content)) return true;
       if (line.kind === "removed" && signal.removedPattern?.test(line.content)) return true;
+      if (signal.label === "auth/authz" && isAuthorizationPolicyBlock(changedLines, index)) return true;
       return Boolean(signal.pathPattern?.test(line.path));
     });
     if (matches.length === 0) return [];
@@ -311,6 +312,23 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }
       evidence: matches.slice(0, 3).map(formatDiffEvidence).join("\n")
     }];
   });
+}
+
+function isAuthorizationPolicyBlock(lines: DiffRiskLine[], index: number): boolean {
+  const line = lines[index];
+  if (!line || !/^\s*policy\s*:\s*$/i.test(line.content)) return false;
+  if (/(?:^|[/_.-])(?:auth|authorization|permissions?|rbac|iam|access[-_]?control|security)(?:[/_.-]|$)/i.test(line.path)) {
+    return true;
+  }
+
+  const blockLines = lines
+    .slice(index + 1, index + 5)
+    .filter((candidate) => candidate.path === line.path && candidate.kind === line.kind)
+    .map((candidate) => candidate.content);
+  return (
+    blockLines.some((content) => /^\s*effect\s*:\s*(?:allow|deny)\b/i.test(content)) &&
+    blockLines.some((content) => /^\s*(?:principals?|roles?|permissions?|resources?|actions?)\s*:/i.test(content))
+  );
 }
 
 interface DiffRiskLine {

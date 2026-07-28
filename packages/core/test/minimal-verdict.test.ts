@@ -502,6 +502,23 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.evidence?.includes("+policy: adminOnly"))).toBe(true);
   });
 
+  it("treats a block-style authorization policy as auth/authz code", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy block",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "+policy:\n" +
+        "+  effect: Allow\n" +
+        "+  principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured a policy block."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+    expect(verdict.must_fix.some((item) => item.evidence?.includes("+policy:"))).toBe(true);
+  });
+
   it("blocks removed admin guards without targeted verification evidence", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Keep the admin update handler protected",
