@@ -505,7 +505,8 @@ describe("evaluateMinimalVerdict", () => {
   it.each([
     ["JSON", "src/authorization.json", '\"policy\": \"ownerOnly\"'],
     ["YAML list", "config/service.yml", "- policy: ownerOnly"],
-    ["inline object", "config/service.ts", "{ policy: ownerOnly, mode: \"strict\" }"]
+    ["inline object", "config/service.ts", "{ policy: ownerOnly, mode: \"strict\" }"],
+    ["JSON array", "config/service.json", '\"policy\": [\"viewer\", \"admin\"],']
   ])("treats a %s authorization policy property as auth/authz code", (_syntax, path, property) => {
     const verdict = evaluateMinimalVerdict({
       task: "Configure an authorization policy",
@@ -539,6 +540,23 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
     expect(verdict.must_fix.some((item) => item.evidence?.includes("+policy:"))).toBe(true);
+  });
+
+  it("treats a JSON object-valued authorization policy as auth/authz code", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure a JSON authorization policy",
+      diff:
+        "diff --git a/config/service.json b/config/service.json\n" +
+        '+\"policy\": {\n' +
+        '+  \"effect\": \"Allow\",\n' +
+        '+  \"principals\": [\"admin\"]\n' +
+        "+}",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the JSON policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
   it("uses unchanged block context to classify a changed policy header", () => {
@@ -633,7 +651,13 @@ describe("evaluateMinimalVerdict", () => {
   });
 
   it("does not treat unrelated scalar policy settings as auth/authz code", () => {
-    for (const property of ["policy: always", "policy: pull-push", "policy: retryPolicy", '"policy": "always"']) {
+    for (const property of [
+      "policy: always",
+      "policy: pull-push",
+      "policy: retryPolicy",
+      '"policy": "always"',
+      '"policy": ["pull", "push"]'
+    ]) {
       const verdict = evaluateMinimalVerdict({
         task: "Update a generic service policy",
         diff:

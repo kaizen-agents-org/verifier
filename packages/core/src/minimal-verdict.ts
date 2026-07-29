@@ -326,7 +326,7 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     if (!policyProperty) continue;
 
     const policyIndent = policyProperty.indent;
-    const scalarValue = policyProperty.value;
+    const scalarValue = /^(?:\{|\[)$/.test(policyProperty.value) ? "" : policyProperty.value;
     const authPath = isAuthorizationPath(line.path);
     if (scalarValue) {
       if ((authPath || isAuthorizationPolicyValue(scalarValue)) && line.kind !== "context") matches.push(line);
@@ -357,9 +357,11 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     const isAuthorizationBlock =
       authPath ||
       (
-        blockLines.some((candidate) => /^\s*(?:-\s*)?effect\s*:\s*(?:allow|deny)\b/i.test(candidate.content)) &&
         blockLines.some((candidate) =>
-          /^\s*(?:-\s*)?(?:principals?|roles?|permissions?|resources?|actions?)\s*:/i.test(candidate.content)
+          /^\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(candidate.content)
+        ) &&
+        blockLines.some((candidate) =>
+          /^\s*(?:-\s*)?["']?(?:principals?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(candidate.content)
         )
       );
     if (!isAuthorizationBlock) continue;
@@ -371,21 +373,56 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
 }
 
 function parsePolicyProperty(content: string): { indent: number; value: string; inline: boolean } | null {
-  const leading = /^(\s*)(?:-\s*)?["']?policy["']?\s*[:=]\s*([^,}]*)/i.exec(content);
+  const leading = /^(\s*)(?:-\s*)?["']?policy["']?\s*[:=]\s*/i.exec(content);
   if (leading) {
     return {
       indent: leading[1]?.length ?? 0,
-      value: leading[2]?.trim() ?? "",
+      value: extractPropertyValue(content.slice(leading[0].length)),
       inline: false
     };
   }
-  const inline = /[{,]\s*["']?policy["']?\s*[:=]\s*([^,}]*)/i.exec(content);
+  const inline = /[{,]\s*["']?policy["']?\s*[:=]\s*/i.exec(content);
   if (!inline) return null;
   return {
     indent: /^\s*/.exec(content)?.[0].length ?? 0,
-    value: inline[1]?.trim() ?? "",
+    value: extractPropertyValue(content.slice((inline.index ?? 0) + inline[0].length)),
     inline: true
   };
+}
+
+function extractPropertyValue(input: string): string {
+  let quote = "";
+  let escaped = false;
+  let depth = 0;
+  let end = input.length;
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index] ?? "";
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "[" || character === "{") {
+      depth += 1;
+    } else if (character === "]" || character === "}") {
+      if (depth === 0) {
+        end = index;
+        break;
+      }
+      depth -= 1;
+    } else if (character === "," && depth === 0) {
+      end = index;
+      break;
+    }
+  }
+  return input.slice(0, end).trim();
 }
 
 function isAuthorizationPath(path: string): boolean {
