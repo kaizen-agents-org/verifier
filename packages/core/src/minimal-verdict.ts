@@ -326,7 +326,8 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     if (!policyProperty) continue;
 
     const policyIndent = policyProperty.indent;
-    const scalarValue = /^(?:\{|\[)$/.test(policyProperty.value) ? "" : policyProperty.value;
+    const structuredOpener = /^(?:\{|\[)$/.test(policyProperty.value) ? policyProperty.value : "";
+    const scalarValue = structuredOpener ? "" : policyProperty.value;
     const authPath = isAuthorizationPath(line.path);
     if (scalarValue) {
       if ((authPath || isAuthorizationPolicyValue(scalarValue)) && line.kind !== "context") matches.push(line);
@@ -356,14 +357,16 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     }
     const isAuthorizationBlock =
       authPath ||
-      (
-        blockLines.some((candidate) =>
-          /^\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(candidate.content)
-        ) &&
-        blockLines.some((candidate) =>
-          /^\s*(?:-\s*)?["']?(?:principals?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(candidate.content)
-        )
-      );
+      (structuredOpener === "["
+        ? blockLines.some((candidate) => isAuthorizationPolicyValue(candidate.content))
+        : (
+            blockLines.some((candidate) =>
+              /^\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(candidate.content)
+            ) &&
+            blockLines.some((candidate) =>
+              /^\s*(?:-\s*)?["']?(?:principals?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(candidate.content)
+            )
+          ));
     if (!isAuthorizationBlock) continue;
     for (const candidate of [line, ...blockLines]) {
       if (candidate.kind !== "context" && !matches.includes(candidate)) matches.push(candidate);
