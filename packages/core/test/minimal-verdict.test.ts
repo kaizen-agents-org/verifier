@@ -559,6 +559,55 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("recognizes subjects as authorization policy evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "+policy:\n" +
+        "+  effect: Allow\n" +
+        "+  subjects: [staff]",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
+  it("scans structured policy values through their closing delimiter", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/config/service.json b/config/service.json\n" +
+        '+\"policy\": {\n' +
+        '+\"effect\": \"Allow\",\n' +
+        '+\"principals\": [\"admin\"]\n' +
+        "+}",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
+  it("scans YAML block-scalar policy values", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "+policy: |-\n" +
+        "+  effect: Allow\n" +
+        "+  principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("treats a multiline authorization policy array as auth/authz code", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Configure a multiline authorization policy",
@@ -732,26 +781,27 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.evidence?.includes("-policy:"))).toBe(true);
   });
 
-  it("does not treat unrelated scalar policy settings as auth/authz code", () => {
-    for (const property of [
-      "policy: always",
-      "policy: pull-push",
-      "policy: retryPolicy",
-      '"policy": "always"',
-      '"policy": ["pull", "push"]'
-    ]) {
-      const verdict = evaluateMinimalVerdict({
-        task: "Update a generic service policy",
-        diff:
-          "diff --git a/config/service.yml b/config/service.yml\n" +
-          `+${property}`,
-        verifyLogs: "all tests passed",
-        builderReport: "Updated the service policy."
-      });
+  it.each([
+    "policy: always",
+    "policy: allowlist-sync",
+    "policy: allowOverwrite",
+    "policy: accessLogRotate",
+    "policy: pull-push",
+    "policy: retryPolicy",
+    '"policy": "always"',
+    '"policy": ["pull", "push"]'
+  ])("does not treat the unrelated scalar policy setting %s as auth/authz code", (property) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update a generic service policy",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        `+${property}`,
+      verifyLogs: "all tests passed",
+      builderReport: "Updated the service policy."
+    });
 
-      expect(verdict.verdict).toBe("open_pr");
-      expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
-    }
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
   });
 
   it("does not combine policy evidence across diff hunks", () => {

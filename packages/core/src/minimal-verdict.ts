@@ -327,7 +327,8 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
 
     const policyIndent = policyProperty.indent;
     const structuredOpener = getUnterminatedStructure(policyProperty.value);
-    const scalarValue = structuredOpener ? "" : policyProperty.value;
+    const blockScalar = /^[|>][-+]?\d*$/.test(policyProperty.value);
+    const scalarValue = structuredOpener || blockScalar ? "" : policyProperty.value;
     const authPath = isAuthorizationPath(line.path);
     if (scalarValue) {
       if ((authPath || isAuthorizationPolicyValue(scalarValue)) && line.kind !== "context") matches.push(line);
@@ -336,8 +337,17 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     const blockLines: DiffRiskLine[] = [];
     let enteredBlock = false;
     let replacementKind: DiffRiskLine["kind"] | null = null;
+    let structuredValue = policyProperty.value;
     for (const candidate of lines.slice(index + 1)) {
       if (candidate.path !== line.path || candidate.hunk !== line.hunk) break;
+      if (structuredOpener) {
+        if (line.kind !== "context" && candidate.kind !== line.kind && candidate.kind !== "context") break;
+        enteredBlock = true;
+        blockLines.push(candidate);
+        structuredValue += `\n${candidate.content}`;
+        if (!getUnterminatedStructure(structuredValue)) break;
+        continue;
+      }
       const candidateIndent = /^\s*/.exec(candidate.content)?.[0].length ?? 0;
       if (candidateIndent <= policyIndent) {
         if (line.kind !== "context" && !enteredBlock && candidate.kind !== "context" && candidate.kind !== line.kind) {
@@ -366,7 +376,7 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
               /(?:^|[{,])\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(content)
             ) &&
             blockContents.some((content) =>
-              /(?:^|[{,])\s*(?:-\s*)?["']?(?:principals?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(content)
+              /(?:^|[{,])\s*(?:-\s*)?["']?(?:principals?|subjects?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(content)
             )
           ));
     if (!isAuthorizationBlock) continue;
@@ -467,7 +477,8 @@ function isAuthorizationPath(path: string): boolean {
 function isAuthorizationPolicyValue(value: string): boolean {
   const normalized = value.replace(/^["']|["'],?$/g, "");
   return (
-    /(?:admin|owner|auth|authoriz|permissions?|roles?|rbac|access|allow|deny|mfa)/i.test(normalized) ||
+    /(?:admin|owner|auth|authoriz|permissions?|roles?|rbac|mfa)/i.test(normalized) ||
+    /(?:^|[^A-Za-z])(?:access|allow|deny)(?:$|[^A-Za-z])/i.test(normalized) ||
     /^(?:can|require|must)[A-Z_]/.test(normalized)
   );
 }
