@@ -511,7 +511,11 @@ function isRuntimeRiskLine(line: DiffRiskLine): boolean {
   if (/(?:^|\/)(?:docs?|test|tests|__tests__|fixtures?|eval\/corpus)(?:\/|$)/i.test(line.path)) {
     return false;
   }
-  if (/\.(?:md|mdx|txt|snap)$/i.test(line.path) || /\.(?:test|spec)\.[^/]+$/i.test(line.path)) {
+  if (
+    /\.(?:md|mdx|txt|snap)$/i.test(line.path) ||
+    /\.(?:test|spec)\.[^/]+$/i.test(line.path) ||
+    /(?:^|\/)(?:test|spec)-[^/]+\.sh$/i.test(line.path)
+  ) {
     return false;
   }
   const content = line.content.trim();
