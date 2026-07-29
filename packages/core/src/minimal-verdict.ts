@@ -333,8 +333,6 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
       if ((authPath || isAuthorizationPolicyValue(scalarValue)) && line.kind !== "context") matches.push(line);
       continue;
     }
-    if (policyProperty.inline) continue;
-
     const blockLines: DiffRiskLine[] = [];
     let enteredBlock = false;
     let replacementKind: DiffRiskLine["kind"] | null = null;
@@ -365,10 +363,10 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
         ? blockContents.some((content) => isAuthorizationPolicyValue(content))
         : (
             blockContents.some((content) =>
-              /^\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(content)
+              /(?:^|[{,])\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(content)
             ) &&
             blockContents.some((content) =>
-              /^\s*(?:-\s*)?["']?(?:principals?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(content)
+              /(?:^|[{,])\s*(?:-\s*)?["']?(?:principals?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(content)
             )
           ));
     if (!isAuthorizationBlock) continue;

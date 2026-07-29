@@ -592,6 +592,38 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("treats a continued inline policy array as auth/authz code", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an inline authorization policy",
+      diff:
+        "diff --git a/config/service.ts b/config/service.ts\n" +
+        "+const config = { policy: [\n" +
+        '+  "admin"\n' +
+        "+] };",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the policy roles."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
+  it("finds authorization properties after another property on a partial object line", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an object authorization policy",
+      diff:
+        "diff --git a/config/service.json b/config/service.json\n" +
+        '+\"policy\": {\"effect\": \"Allow\", \"principals\": [\n' +
+        '+  \"admin\"\n' +
+        "+]}",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("does not treat a generic multiline policy array as auth/authz code", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Configure a generic synchronization policy",
