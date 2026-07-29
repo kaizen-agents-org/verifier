@@ -576,6 +576,22 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("treats a partially inline multiline authorization policy array as auth/authz code", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure a multiline authorization policy",
+      diff:
+        "diff --git a/config/service.json b/config/service.json\n" +
+        '+\"policy\": [\"viewer\",\n' +
+        '+  \"admin\"\n' +
+        "+]",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the policy roles."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("does not treat a generic multiline policy array as auth/authz code", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Configure a generic synchronization policy",

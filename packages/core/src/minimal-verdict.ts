@@ -326,7 +326,7 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     if (!policyProperty) continue;
 
     const policyIndent = policyProperty.indent;
-    const structuredOpener = /^(?:\{|\[)$/.test(policyProperty.value) ? policyProperty.value : "";
+    const structuredOpener = getUnterminatedStructure(policyProperty.value);
     const scalarValue = structuredOpener ? "" : policyProperty.value;
     const authPath = isAuthorizationPath(line.path);
     if (scalarValue) {
@@ -355,16 +355,20 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
       enteredBlock = true;
       blockLines.push(candidate);
     }
+    const blockContents = [
+      structuredOpener ? policyProperty.value.slice(1).trim() : "",
+      ...blockLines.map((candidate) => candidate.content)
+    ].filter(Boolean);
     const isAuthorizationBlock =
       authPath ||
       (structuredOpener === "["
-        ? blockLines.some((candidate) => isAuthorizationPolicyValue(candidate.content))
+        ? blockContents.some((content) => isAuthorizationPolicyValue(content))
         : (
-            blockLines.some((candidate) =>
-              /^\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(candidate.content)
+            blockContents.some((content) =>
+              /^\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(content)
             ) &&
-            blockLines.some((candidate) =>
-              /^\s*(?:-\s*)?["']?(?:principals?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(candidate.content)
+            blockContents.some((content) =>
+              /^\s*(?:-\s*)?["']?(?:principals?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(content)
             )
           ));
     if (!isAuthorizationBlock) continue;
@@ -426,6 +430,36 @@ function extractPropertyValue(input: string): string {
     }
   }
   return input.slice(0, end).trim();
+}
+
+function getUnterminatedStructure(value: string): "{" | "[" | "" {
+  const opener = value[0];
+  if (opener !== "{" && opener !== "[") return "";
+  const stack: string[] = [];
+  let quote = "";
+  let escaped = false;
+  for (const character of value) {
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "{" || character === "[") {
+      stack.push(character);
+    } else if (character === "}" && stack.at(-1) === "{") {
+      stack.pop();
+    } else if (character === "]" && stack.at(-1) === "[") {
+      stack.pop();
+    }
+  }
+  return stack.length > 0 ? opener : "";
 }
 
 function isAuthorizationPath(path: string): boolean {
