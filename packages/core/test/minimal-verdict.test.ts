@@ -514,6 +514,21 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.should_fix).toHaveLength(0);
   });
 
+  it("ignores high-risk fixture lines in hyphenated shell test files", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Add onboarding contract fixtures",
+      diff:
+        "diff --git a/onboarding/scripts/test-onboarding-contract.sh b/onboarding/scripts/test-onboarding-contract.sh\n" +
+        "+auth: false",
+      verifyLogs: "all tests passed",
+      builderReport: "Onboarding contract tests passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.risk).toBe("low");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
+  });
+
   it("opens high-risk diffs with a warning when targeted verification is present", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Refactor billing token handling",
