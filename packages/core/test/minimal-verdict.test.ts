@@ -910,6 +910,57 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("scans policy code inside a multiline template interpolation", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/src/config.ts b/src/config.ts\n" +
+        "+const rendered = `policy summary:\n" +
+        "+${(() => {\n" +
+        '+  const policy = "admin";\n' +
+        "+  return policy;\n" +
+        "+})()}\n" +
+        "+`;",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
+  it("ignores comment braces while scanning a structured policy", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/src/config.ts b/src/config.ts\n" +
+        "+const policy = { // details }\n" +
+        '+  effect: "Allow",\n' +
+        '+  principals: ["admin"],\n' +
+        "+};",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
+  it("resumes policy scanning on the line that closes a multiline comment", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/src/config.ts b/src/config.ts\n" +
+        "+/* documentation\n" +
+        '+end */ const policy = "admin";',
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("tracks multiline comment state independently on each diff side", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Enable an authorization policy",

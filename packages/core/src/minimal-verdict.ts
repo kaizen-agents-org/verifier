@@ -323,144 +323,121 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }
 
 function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
   const matches: DiffRiskLine[] = [];
-  const literalLines = findMultilineLiteralLines(lines);
+  const executableLines = findExecutableCodeLines(lines);
   for (const [index, line] of lines.entries()) {
-    const liveSides = sidesForLine(line).filter((side) => !literalLines[side].has(line));
-    if (liveSides.length === 0) continue;
-    const policyProperty = parsePolicyProperty(line.content);
-    if (!policyProperty) continue;
+    for (const side of sidesForLine(line)) {
+      const lineContent = executableLines[side].get(line) ?? "";
+      const policyProperty = parsePolicyProperty(lineContent);
+      if (!policyProperty) continue;
 
-    const policyIndent = policyProperty.indent;
-    const policyValue = /\.ya?ml$/i.test(line.path)
-      ? stripYamlComment(policyProperty.value)
-      : policyProperty.value;
-    const structuredOpener = getUnterminatedStructure(policyValue);
-    const blockScalar = /^[|>][-+]?\d*$/.test(policyValue);
-    const scalarValue = structuredOpener || blockScalar ? "" : policyValue;
-    const authPath = isAuthorizationPath(line.path);
-    if (scalarValue) {
-      if ((authPath || isAuthorizationPolicyValue(scalarValue)) && line.kind !== "context") matches.push(line);
-      continue;
-    }
-    const blockLines: DiffRiskLine[] = [];
-    let enteredBlock = false;
-    let replacementKind: DiffRiskLine["kind"] | null = null;
-    let structuredValue = policyValue;
-    for (const candidate of lines.slice(index + 1)) {
-      if (candidate.path !== line.path || candidate.hunk !== line.hunk) break;
-      if (structuredOpener) {
-        if (line.kind !== "context") {
-          if (replacementKind && candidate.kind === replacementKind) continue;
-          if (candidate.kind !== line.kind && candidate.kind !== "context") {
-            if (!enteredBlock && !replacementKind) {
-              replacementKind = candidate.kind;
-              continue;
-            }
-            break;
-          }
+      const policyIndent = policyProperty.indent;
+      const policyValue = /\.ya?ml$/i.test(line.path)
+        ? stripYamlComment(policyProperty.value)
+        : policyProperty.value;
+      const structuredOpener = getUnterminatedStructure(policyValue);
+      const blockScalar = /^[|>][-+]?\d*$/.test(policyValue);
+      const scalarValue = structuredOpener || blockScalar ? "" : policyValue;
+      const authPath = isAuthorizationPath(line.path);
+      if (scalarValue) {
+        if ((authPath || isAuthorizationPolicyValue(scalarValue)) && line.kind !== "context") {
+          if (!matches.includes(line)) matches.push(line);
         }
-        enteredBlock = true;
-        blockLines.push(candidate);
-        structuredValue += `\n${candidate.content}`;
-        if (!getUnterminatedStructure(structuredValue)) break;
         continue;
       }
-      const candidateIndent = /^\s*/.exec(candidate.content)?.[0].length ?? 0;
-      if (candidateIndent <= policyIndent) {
-        if (line.kind !== "context" && !enteredBlock && candidate.kind !== "context" && candidate.kind !== line.kind) {
-          replacementKind = candidate.kind;
+      const blockLines: DiffRiskLine[] = [];
+      let structuredValue = policyValue;
+      for (const candidate of lines.slice(index + 1)) {
+        if (candidate.path !== line.path || candidate.hunk !== line.hunk) break;
+        if (candidate.kind !== "context" && candidate.kind !== side) continue;
+        const candidateContent = executableLines[side].get(candidate) ?? "";
+        if (structuredOpener) {
+          blockLines.push(candidate);
+          structuredValue += `\n${candidateContent}`;
+          if (!getUnterminatedStructure(structuredValue)) break;
           continue;
         }
-        break;
+        const candidateIndent = /^\s*/.exec(candidate.content)?.[0].length ?? 0;
+        if (candidateIndent <= policyIndent) break;
+        blockLines.push(candidate);
       }
-      if (line.kind !== "context") {
-        if (replacementKind && candidate.kind === replacementKind) continue;
-        if (candidate.kind !== line.kind && candidate.kind !== "context") break;
-      }
-      enteredBlock = true;
-      blockLines.push(candidate);
-    }
-    const blockContents = [
-      structuredOpener ? policyValue.slice(1).trim() : "",
-      ...blockLines
-        .filter(
-          (candidate) =>
-            blockScalar ||
-            liveSides.some(
-              (side) =>
-                (candidate.kind === "context" || candidate.kind === side) &&
-                !literalLines[side].has(candidate)
-            )
-        )
-        .map((candidate) => candidate.content)
-    ].filter(Boolean);
-    const isAuthorizationBlock =
-      authPath ||
-      (structuredOpener === "["
-        ? blockContents.some((content) => isAuthorizationPolicyValue(content))
-        : (
-            blockContents.some((content) =>
-              /(?:^|[{,])\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(content)
-            ) &&
-            blockContents.some((content) =>
-              /(?:^|[{,])\s*(?:-\s*)?["']?(?:principals?|subjects?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(content)
-            )
-          ));
-    if (!isAuthorizationBlock) continue;
-    for (const candidate of [line, ...blockLines]) {
-      if (
-        candidate.kind !== "context" &&
-        liveSides.includes(candidate.kind) &&
-        !matches.includes(candidate)
-      ) {
-        matches.push(candidate);
+      const blockContents = [
+        structuredOpener ? policyValue.slice(1).trim() : "",
+        ...blockLines
+          .map((candidate) =>
+            blockScalar ? candidate.content : (executableLines[side].get(candidate) ?? "")
+          )
+      ].filter(Boolean);
+      const isAuthorizationBlock =
+        authPath ||
+        (structuredOpener === "["
+          ? blockContents.some((content) => isAuthorizationPolicyValue(content))
+          : (
+              blockContents.some((content) =>
+                /(?:^|[{,])\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(content)
+              ) &&
+              blockContents.some((content) =>
+                /(?:^|[{,])\s*(?:-\s*)?["']?(?:principals?|subjects?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(content)
+              )
+            ));
+      if (!isAuthorizationBlock) continue;
+      for (const candidate of [line, ...blockLines]) {
+        if (candidate.kind === side && !matches.includes(candidate)) matches.push(candidate);
       }
     }
   }
   return matches;
 }
 
-function findMultilineLiteralLines(lines: DiffRiskLine[]): Record<DiffSide, Set<DiffRiskLine>> {
-  const literalLines = {
-    added: new Set<DiffRiskLine>(),
-    removed: new Set<DiffRiskLine>()
+interface CodeScanState {
+  blockComment: boolean;
+  templateExpressionDepths: number[];
+}
+
+function findExecutableCodeLines(lines: DiffRiskLine[]): Record<DiffSide, Map<DiffRiskLine, string>> {
+  const executableLines = {
+    added: new Map<DiffRiskLine, string>(),
+    removed: new Map<DiffRiskLine, string>()
   };
-  const codeStates = new Map<string, { template: boolean; blockComment: boolean }>();
+  const codeStates = new Map<string, CodeScanState>();
   const yamlScalarIndents = new Map<string, number | null>();
   for (const line of lines) {
     for (const side of sidesForLine(line)) {
       const key = `${line.path}\0${line.hunk}\0${side}`;
       if (/\.(?:[cm]?[jt]sx?)$/i.test(line.path)) {
-        const state = codeStates.get(key) ?? { template: false, blockComment: false };
-        if (state.template || state.blockComment) literalLines[side].add(line);
-        codeStates.set(key, updateCodeLiteralState(line.content, state));
-      }
-      if (/\.ya?ml$/i.test(line.path)) {
+        const state = codeStates.get(key) ?? {
+          blockComment: false,
+          templateExpressionDepths: []
+        };
+        const scanned = scanExecutableCode(line.content, state);
+        executableLines[side].set(line, scanned.content);
+        codeStates.set(key, scanned.state);
+      } else if (/\.ya?ml$/i.test(line.path)) {
         const indent = /^\s*/.exec(line.content)?.[0].length ?? 0;
         const isBlank = line.content.trim().length === 0;
         let scalarIndent = yamlScalarIndents.get(key) ?? null;
         if (scalarIndent !== null && !isBlank && indent <= scalarIndent) scalarIndent = null;
-        if (scalarIndent !== null) literalLines[side].add(line);
+        executableLines[side].set(line, scalarIndent === null ? line.content : "");
         if (/:\s*[|>][-+]?\d*(?:\s+#.*)?$/.test(line.content)) scalarIndent = indent;
         yamlScalarIndents.set(key, scalarIndent);
+      } else {
+        executableLines[side].set(line, line.content);
       }
     }
   }
-  return literalLines;
+  return executableLines;
 }
 
 function sidesForLine(line: DiffRiskLine): DiffSide[] {
   return line.kind === "context" ? ["added", "removed"] : [line.kind];
 }
 
-function updateCodeLiteralState(
+function scanExecutableCode(
   content: string,
-  initial: { template: boolean; blockComment: boolean }
-): { template: boolean; blockComment: boolean } {
-  let template = initial.template;
+  initial: CodeScanState
+): { content: string; state: CodeScanState } {
   let blockComment = initial.blockComment;
-  let quote = "";
-  let escaped = false;
+  const templateExpressionDepths = [...initial.templateExpressionDepths];
+  const output = [...content].map(() => " ");
   for (let index = 0; index < content.length; index += 1) {
     const character = content[index] ?? "";
     const next = content[index + 1] ?? "";
@@ -471,23 +448,15 @@ function updateCodeLiteralState(
       }
       continue;
     }
-    if (template) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
+    const templateDepth = templateExpressionDepths.at(-1);
+    if (templateDepth === 0) {
+      if (character === "\\") {
+        index += 1;
       } else if (character === "`") {
-        template = false;
-      }
-      continue;
-    }
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === quote) {
-        quote = "";
+        templateExpressionDepths.pop();
+      } else if (character === "$" && next === "{") {
+        templateExpressionDepths[templateExpressionDepths.length - 1] = 1;
+        index += 1;
       }
       continue;
     }
@@ -495,13 +464,46 @@ function updateCodeLiteralState(
     if (character === "/" && next === "*") {
       blockComment = true;
       index += 1;
-    } else if (character === "`") {
-      template = true;
-    } else if (character === '"' || character === "'") {
-      quote = character;
+      continue;
     }
+    if (character === '"' || character === "'") {
+      const quote = character;
+      output[index] = character;
+      for (index += 1; index < content.length; index += 1) {
+        const quotedCharacter = content[index] ?? "";
+        output[index] = quotedCharacter;
+        if (quotedCharacter === "\\") {
+          index += 1;
+          if (index < content.length) output[index] = content[index] ?? "";
+        } else if (quotedCharacter === quote) {
+          break;
+        }
+      }
+      continue;
+    }
+    if (character === "/" && isRegexLiteralStart(content, index)) {
+      index = findRegexLiteralEnd(content, index);
+      continue;
+    }
+    if (character === "`") {
+      templateExpressionDepths.push(0);
+      continue;
+    }
+    if (templateDepth !== undefined) {
+      if (character === "{") {
+        templateExpressionDepths[templateExpressionDepths.length - 1] = templateDepth + 1;
+      } else if (character === "}") {
+        const nextDepth = templateDepth - 1;
+        templateExpressionDepths[templateExpressionDepths.length - 1] = nextDepth;
+        if (nextDepth === 0) continue;
+      }
+    }
+    output[index] = character;
   }
-  return { template, blockComment };
+  return {
+    content: output.join(""),
+    state: { blockComment, templateExpressionDepths }
+  };
 }
 
 function parsePolicyProperty(content: string): { indent: number; value: string; inline: boolean } | null {
