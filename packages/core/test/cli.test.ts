@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -232,6 +232,34 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(code).toBe(2);
     expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR");
     await expect(readFile(outsidePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects a multiply-linked result file before truncating it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+    const workspace = join(dir, "workspace");
+    const outsidePath = join(dir, "outside-result.json");
+    const resultPath = join(workspace, "verify-result.json");
+    await mkdir(workspace);
+    await writeFile(outsidePath, "preserve me\n", "utf8");
+    await link(outsidePath, resultPath);
+
+    const { stderr, code } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      kaizenLoopPrompt(),
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
+          KAIZEN_WORKSPACE_DIR: workspace
+        },
+        allowFailure: true
+      }
+    );
+
+    expect(code).toBe(2);
+    expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely");
+    expect(await readFile(outsidePath, "utf8")).toBe("preserve me\n");
   });
 
   it("needs context for kaizen-loop prompts with only a changed-file inventory", async () => {

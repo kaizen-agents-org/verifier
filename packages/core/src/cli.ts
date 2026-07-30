@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { access, lstat, readFile, realpath, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { constants } from "node:fs";
+import { access, lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
 import { VerdictInputSchema } from "./types.js";
@@ -143,16 +144,22 @@ async function runKaizenLoopMode(): Promise<{
     reason
   };
 
-  const resultPath = await resolveKaizenResultPath(process.env.KAIZEN_VERIFIER_RESULT_PATH!);
-  await writeFile(resultPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await writeKaizenResult(
+    process.env.KAIZEN_VERIFIER_RESULT_PATH!,
+    `${JSON.stringify(payload, null, 2)}\n`
+  );
   return payload;
 }
 
-async function resolveKaizenResultPath(configuredPath: string): Promise<string> {
+async function writeKaizenResult(configuredPath: string, content: string): Promise<void> {
   const workspace = resolve(process.env.KAIZEN_WORKSPACE_DIR ?? process.cwd());
   const resultPath = resolve(workspace, configuredPath);
   if (isPathOutside(workspace, resultPath)) {
     throw new Error("KAIZEN_VERIFIER_RESULT_PATH must stay within KAIZEN_WORKSPACE_DIR.");
+  }
+
+  if (resultPath === workspace) {
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH must name a file within KAIZEN_WORKSPACE_DIR.");
   }
 
   let ancestor = resultPath;
@@ -161,16 +168,48 @@ async function resolveKaizenResultPath(configuredPath: string): Promise<string> 
     if (parent === ancestor) break;
     ancestor = parent;
   }
-
-  const [realWorkspace, realAncestor] = await Promise.all([
+  const [initialWorkspace, initialAncestor] = await Promise.all([
     realpath(workspace),
     realpath(ancestor)
   ]);
-  if (isPathOutside(realWorkspace, realAncestor)) {
+  if (isPathOutside(initialWorkspace, initialAncestor)) {
     throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR.");
   }
 
-  return resultPath;
+  await mkdir(dirname(resultPath), { recursive: true });
+  const resultHandle = await open(
+    resultPath,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW,
+    0o600
+  );
+  try {
+    const [realWorkspace, realResult, openedStat, pathStat] = await Promise.all([
+      realpath(workspace),
+      realpath(resultPath),
+      resultHandle.stat(),
+      lstat(resultPath)
+    ]);
+    if (isPathOutside(realWorkspace, realResult)) {
+      throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR.");
+    }
+    if (
+      !openedStat.isFile() ||
+      openedStat.nlink !== 1 ||
+      openedStat.dev !== pathStat.dev ||
+      openedStat.ino !== pathStat.ino
+    ) {
+      throw new Error("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely.");
+    }
+    await resultHandle.truncate(0);
+    await resultHandle.writeFile(content, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") {
+      throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves through a symbolic link.");
+    }
+    throw error;
+  } finally {
+    await resultHandle.close();
+  }
 }
 
 function isPathOutside(parent: string, child: string): boolean {
