@@ -101,9 +101,9 @@ const HIGH_RISK_DIFF_SIGNALS = [
   {
     label: "auth/authz",
     addedPattern:
-      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|policy|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpermissionRank\s*\(/i,
+      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpermissionRank\s*\(/i,
     removedPattern:
-      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|policy|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpermissionRank\s*\(/i,
+      /\b(?:authz|authn)\s*\.|\b(?:authorize|authenticate)\w*\s*\(|\b(?:require|check|verify|enforce|assert)(?:Admin|Auth|Authorization|Authentication|Permission|Access|Role)\w*\s*\(|\b(?:auth|authorized|authorization|authentication|permission|permissions|role|rbac|accessControl)\w*\s*(?:[=:]|[<>])|\bpermissionRank\s*\(/i,
     coveragePattern: /\b(?:admin|auth|authz|authn|authorization|authentication|guard|permission|role|access control|401|403|security)\b/i
   },
   {
@@ -298,13 +298,21 @@ function collectSoftRisks(
 
 function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }> {
   if (!diff) return [];
-  const changedLines = parseDiffRiskLines(diff).filter((line) => isRuntimeRiskLine(line));
+  const allDiffLines = parseDiffRiskLines(diff);
+  const diffLines = allDiffLines.filter((line) => isRuntimeRiskLine(line));
+  const authorizationPolicyMatches = findAuthorizationPolicyMatches(allDiffLines)
+    .filter((line) => isRuntimeRiskLine(line));
   return HIGH_RISK_DIFF_SIGNALS.flatMap((signal) => {
-    const matches = changedLines.filter((line) => {
+    const matches = diffLines.filter((line, index) => {
       if (line.kind === "added" && signal.addedPattern.test(line.content)) return true;
       if (line.kind === "removed" && signal.removedPattern?.test(line.content)) return true;
-      return Boolean(signal.pathPattern?.test(line.path));
+      return line.kind !== "context" && Boolean(signal.pathPattern?.test(line.path));
     });
+    if (signal.label === "auth/authz") {
+      for (const line of authorizationPolicyMatches) {
+        if (!matches.includes(line)) matches.push(line);
+      }
+    }
     if (matches.length === 0) return [];
     return [{
       label: signal.label,
@@ -313,26 +321,430 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }
   });
 }
 
+function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
+  const matches: DiffRiskLine[] = [];
+  const executableLines = findExecutableCodeLines(lines);
+  for (const [index, line] of lines.entries()) {
+    for (const side of sidesForLine(line)) {
+      const lineContent = executableLines[side].get(line) ?? "";
+      const policyProperty = parsePolicyProperty(lineContent);
+      if (!policyProperty) continue;
+
+      const policyIndent = policyProperty.indent;
+      const policyValue = /\.ya?ml$/i.test(line.path)
+        ? stripYamlNodeProperties(stripYamlComment(policyProperty.value))
+        : policyProperty.value;
+      const structuredOpener = getUnterminatedStructure(policyValue);
+      const blockScalar = /^[|>][-+]?\d*$/.test(policyValue);
+      const scalarValue = structuredOpener || blockScalar ? "" : policyValue;
+      const authPath = isAuthorizationPath(line.path);
+      if (scalarValue) {
+        if ((authPath || isAuthorizationPolicyValue(scalarValue)) && line.kind !== "context") {
+          if (!matches.includes(line)) matches.push(line);
+        }
+        continue;
+      }
+      const blockLines: DiffRiskLine[] = [];
+      let structuredValue = policyValue;
+      for (const candidate of lines.slice(index + 1)) {
+        if (candidate.path !== line.path || candidate.hunk !== line.hunk) break;
+        if (candidate.kind !== "context" && candidate.kind !== side) continue;
+        const candidateContent = executableLines[side].get(candidate) ?? "";
+        if (structuredOpener) {
+          blockLines.push(candidate);
+          structuredValue += `\n${candidateContent}`;
+          if (!getUnterminatedStructure(structuredValue)) break;
+          continue;
+        }
+        const candidateIndent = /^\s*/.exec(candidate.content)?.[0].length ?? 0;
+        if (candidateIndent <= policyIndent) break;
+        blockLines.push(candidate);
+      }
+      const blockContents = [
+        structuredOpener ? policyValue.slice(1).trim() : "",
+        ...blockLines
+          .map((candidate) =>
+            blockScalar ? candidate.content : (executableLines[side].get(candidate) ?? "")
+          )
+      ].filter(Boolean);
+      const isAuthorizationBlock =
+        authPath ||
+        (structuredOpener === "["
+          ? blockContents.some((content) => isAuthorizationPolicyValue(content))
+          : (
+              blockContents.some((content) =>
+                /(?:^|[{,])\s*(?:-\s*)?["']?effect["']?\s*:\s*["']?(?:allow|deny)\b/i.test(content)
+              ) &&
+              blockContents.some((content) =>
+                /(?:^|[{,])\s*(?:-\s*)?["']?(?:principals?|subjects?|roles?|permissions?|resources?|actions?)["']?\s*:/i.test(content)
+              )
+            ));
+      if (!isAuthorizationBlock) continue;
+      for (const candidate of [line, ...blockLines]) {
+        if (candidate.kind === side && !matches.includes(candidate)) matches.push(candidate);
+      }
+    }
+  }
+  return matches;
+}
+
+interface CodeScanState {
+  blockComment: boolean;
+  templateExpressionDepths: number[];
+}
+
+function findExecutableCodeLines(lines: DiffRiskLine[]): Record<DiffSide, Map<DiffRiskLine, string>> {
+  const executableLines = {
+    added: new Map<DiffRiskLine, string>(),
+    removed: new Map<DiffRiskLine, string>()
+  };
+  const codeStates = new Map<string, CodeScanState>();
+  const yamlScalarIndents = new Map<string, number | null>();
+  for (const line of lines) {
+    for (const side of sidesForLine(line)) {
+      const key = `${line.path}\0${line.hunk}\0${side}`;
+      if (/\.(?:[cm]?[jt]sx?)$/i.test(line.path)) {
+        const state = codeStates.get(key) ?? {
+          blockComment: false,
+          templateExpressionDepths: []
+        };
+        const scanned = scanExecutableCode(line.content, state);
+        executableLines[side].set(line, scanned.content);
+        codeStates.set(key, scanned.state);
+      } else if (/\.ya?ml$/i.test(line.path)) {
+        const indent = /^\s*/.exec(line.content)?.[0].length ?? 0;
+        const isBlank = line.content.trim().length === 0;
+        let scalarIndent = yamlScalarIndents.get(key) ?? null;
+        if (scalarIndent !== null && !isBlank && indent <= scalarIndent) scalarIndent = null;
+        executableLines[side].set(line, scalarIndent === null ? line.content : "");
+        if (/:\s*[|>][-+]?\d*(?:\s+#.*)?$/.test(line.content)) scalarIndent = indent;
+        yamlScalarIndents.set(key, scalarIndent);
+      } else {
+        executableLines[side].set(line, line.content);
+      }
+    }
+  }
+  return executableLines;
+}
+
+function sidesForLine(line: DiffRiskLine): DiffSide[] {
+  return line.kind === "context" ? ["added", "removed"] : [line.kind];
+}
+
+function scanExecutableCode(
+  content: string,
+  initial: CodeScanState
+): { content: string; state: CodeScanState } {
+  let blockComment = initial.blockComment;
+  const templateExpressionDepths = [...initial.templateExpressionDepths];
+  const output = [...content].map(() => " ");
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    const next = content[index + 1] ?? "";
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    const templateDepth = templateExpressionDepths.at(-1);
+    if (templateDepth === 0) {
+      if (character === "\\") {
+        index += 1;
+      } else if (character === "`") {
+        templateExpressionDepths.pop();
+      } else if (character === "$" && next === "{") {
+        templateExpressionDepths[templateExpressionDepths.length - 1] = 1;
+        index += 1;
+      }
+      continue;
+    }
+    if (character === "/" && next === "/") break;
+    if (character === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      const quote = character;
+      output[index] = character;
+      for (index += 1; index < content.length; index += 1) {
+        const quotedCharacter = content[index] ?? "";
+        output[index] = quotedCharacter;
+        if (quotedCharacter === "\\") {
+          index += 1;
+          if (index < content.length) output[index] = content[index] ?? "";
+        } else if (quotedCharacter === quote) {
+          break;
+        }
+      }
+      continue;
+    }
+    if (character === "/" && isRegexLiteralStart(content, index)) {
+      index = findRegexLiteralEnd(content, index);
+      continue;
+    }
+    if (character === "`") {
+      templateExpressionDepths.push(0);
+      continue;
+    }
+    if (templateDepth !== undefined) {
+      if (character === "{") {
+        templateExpressionDepths[templateExpressionDepths.length - 1] = templateDepth + 1;
+      } else if (character === "}") {
+        const nextDepth = templateDepth - 1;
+        templateExpressionDepths[templateExpressionDepths.length - 1] = nextDepth;
+        if (nextDepth === 0) continue;
+      }
+    }
+    output[index] = character;
+  }
+  return {
+    content: output.join(""),
+    state: { blockComment, templateExpressionDepths }
+  };
+}
+
+function parsePolicyProperty(content: string): { indent: number; value: string; inline: boolean } | null {
+  const leading = /^(\s*)(?:-\s*)?(?:(["'])policy\2|policy)\s*[:=]\s*/i.exec(content);
+  if (leading) {
+    return {
+      indent: leading[1]?.length ?? 0,
+      value: extractPropertyValue(content.slice(leading[0].length)),
+      inline: false
+    };
+  }
+  const inlineValueStart = findInlinePolicyValueStart(content);
+  if (inlineValueStart === null) return null;
+  return {
+    indent: /^\s*/.exec(content)?.[0].length ?? 0,
+    value: extractPropertyValue(content.slice(inlineValueStart)),
+    inline: true
+  };
+}
+
+function findInlinePolicyValueStart(content: string): number | null {
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "/" && content[index + 1] === "/") return null;
+    if (character === "/" && content[index + 1] === "*") {
+      const end = content.indexOf("*/", index + 2);
+      if (end < 0) return null;
+      index = end + 1;
+      continue;
+    }
+    if (character === "/" && isRegexLiteralStart(content, index)) {
+      index = findRegexLiteralEnd(content, index);
+      continue;
+    }
+    const assignment = /^(?:(?:const|let|var)\s+policy(?:\s*:\s*[^=]+)?|(?:[A-Za-z_$][\w$]*\.)+policy)\s*=\s*/i.exec(
+      content.slice(index)
+    );
+    const hasTokenBoundary = index === 0 || !/[\w$]/.test(content[index - 1] ?? "");
+    if (assignment && hasTokenBoundary) return index + assignment[0].length;
+    if (character !== "{" && character !== ",") continue;
+    const property = /^[{,]\s*(?:(["'])policy\1|policy)\s*[:=]\s*/i.exec(content.slice(index));
+    if (property) return index + property[0].length;
+  }
+  return null;
+}
+
+function isRegexLiteralStart(content: string, index: number): boolean {
+  const prefix = content.slice(0, index).trimEnd();
+  return (
+    prefix.length === 0 ||
+    /[=>(:,!&|?;[\]{}]$/.test(prefix) ||
+    /(?:^|[^\w$])(?:return|throw|case|yield|await)\s*$/i.test(prefix)
+  );
+}
+
+function findRegexLiteralEnd(content: string, start: number): number {
+  let escaped = false;
+  let characterClass = false;
+  for (let index = start + 1; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (escaped) {
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (character === "[") {
+      characterClass = true;
+    } else if (character === "]") {
+      characterClass = false;
+    } else if (character === "/" && !characterClass) {
+      return index;
+    }
+  }
+  return content.length - 1;
+}
+
+function stripYamlComment(value: string): string {
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index] ?? "";
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "#") {
+      return value.slice(0, index).trim();
+    }
+  }
+  return value;
+}
+
+function stripYamlNodeProperties(value: string): string {
+  return value.replace(/^(?:(?:&[\w.-]+|![^\s,[\]{}]+)\s*)+/, "").trim();
+}
+
+function extractPropertyValue(input: string): string {
+  let quote = "";
+  let escaped = false;
+  let depth = 0;
+  let end = input.length;
+  for (let index = 0; index < input.length; index += 1) {
+    const character = input[index] ?? "";
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "[" || character === "{") {
+      depth += 1;
+    } else if (character === "]" || character === "}") {
+      if (depth === 0) {
+        end = index;
+        break;
+      }
+      depth -= 1;
+    } else if (character === "," && depth === 0) {
+      end = index;
+      break;
+    }
+  }
+  return input.slice(0, end).trim();
+}
+
+function getUnterminatedStructure(value: string): "{" | "[" | "" {
+  const opener = value[0];
+  if (opener !== "{" && opener !== "[") return "";
+  const stack: string[] = [];
+  let quote = "";
+  let escaped = false;
+  for (const character of value) {
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "{" || character === "[") {
+      stack.push(character);
+    } else if (character === "}" && stack.at(-1) === "{") {
+      stack.pop();
+    } else if (character === "]" && stack.at(-1) === "[") {
+      stack.pop();
+    }
+  }
+  return stack.length > 0 ? opener : "";
+}
+
+function isAuthorizationPath(path: string): boolean {
+  return /(?:^|[/_.-])(?:auth|authz|authn|authorization|permissions?|rbac|iam|access[-_]?control|security)(?:[/_.-]|$)/i.test(path);
+}
+
+function isAuthorizationPolicyValue(value: string): boolean {
+  const normalized = value.replace(/^["']|["'],?$/g, "");
+  const tokens = normalized.match(/[A-Z]+(?=[A-Z][a-z]|$)|[A-Z]?[a-z]+/g) ?? [];
+  const authorizationTokens = new Set([
+    "admin",
+    "owner",
+    "auth",
+    "authn",
+    "authz",
+    "authorization",
+    "permission",
+    "permissions",
+    "role",
+    "roles",
+    "rbac",
+    "mfa"
+  ]);
+  return (
+    tokens.some((token) => authorizationTokens.has(token.toLowerCase())) ||
+    /(?:^|[^A-Za-z])(?:access|allow|deny)(?:$|[^A-Za-z])/i.test(normalized) ||
+    /^(?:can|require|must)[A-Z_]/.test(normalized)
+  );
+}
+
 interface DiffRiskLine {
-  kind: "added" | "removed";
+  kind: "added" | "removed" | "context";
   path: string;
   content: string;
+  hunk: number;
 }
+
+type DiffSide = Exclude<DiffRiskLine["kind"], "context">;
 
 function parseDiffRiskLines(diff: string): DiffRiskLine[] {
   const changedLines: DiffRiskLine[] = [];
   let currentPath = "unknown";
+  let inHunk = false;
+  let hunk = 0;
 
   for (const line of diff.split(/\r?\n/)) {
     if (line.startsWith("diff --git ")) {
       const match = /^diff --git a\/(.+) b\/(.+)$/.exec(line);
       currentPath = match?.[2] ?? currentPath;
+      inHunk = false;
     } else if (line.startsWith("+++ b/")) {
       currentPath = line.slice(6);
+    } else if (line.startsWith("@@")) {
+      inHunk = true;
+      hunk += 1;
     } else if (line.startsWith("+") && !line.startsWith("+++")) {
-      changedLines.push({ kind: "added", path: currentPath, content: line.slice(1) });
+      changedLines.push({ kind: "added", path: currentPath, content: line.slice(1), hunk });
     } else if (line.startsWith("-") && !line.startsWith("---")) {
-      changedLines.push({ kind: "removed", path: currentPath, content: line.slice(1) });
+      changedLines.push({ kind: "removed", path: currentPath, content: line.slice(1), hunk });
+    } else if (inHunk && line.startsWith(" ")) {
+      changedLines.push({ kind: "context", path: currentPath, content: line.slice(1), hunk });
     }
   }
 
