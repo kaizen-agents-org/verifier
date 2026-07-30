@@ -325,7 +325,8 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
   const matches: DiffRiskLine[] = [];
   const literalLines = findMultilineLiteralLines(lines);
   for (const [index, line] of lines.entries()) {
-    if (literalLines.has(line)) continue;
+    const liveSides = sidesForLine(line).filter((side) => !literalLines[side].has(line));
+    if (liveSides.length === 0) continue;
     const policyProperty = parsePolicyProperty(line.content);
     if (!policyProperty) continue;
 
@@ -382,7 +383,15 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     const blockContents = [
       structuredOpener ? policyValue.slice(1).trim() : "",
       ...blockLines
-        .filter((candidate) => blockScalar || !literalLines.has(candidate))
+        .filter(
+          (candidate) =>
+            blockScalar ||
+            liveSides.some(
+              (side) =>
+                (candidate.kind === "context" || candidate.kind === side) &&
+                !literalLines[side].has(candidate)
+            )
+        )
         .map((candidate) => candidate.content)
     ].filter(Boolean);
     const isAuthorizationBlock =
@@ -399,23 +408,31 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
           ));
     if (!isAuthorizationBlock) continue;
     for (const candidate of [line, ...blockLines]) {
-      if (candidate.kind !== "context" && !matches.includes(candidate)) matches.push(candidate);
+      if (
+        candidate.kind !== "context" &&
+        liveSides.includes(candidate.kind) &&
+        !matches.includes(candidate)
+      ) {
+        matches.push(candidate);
+      }
     }
   }
   return matches;
 }
 
-function findMultilineLiteralLines(lines: DiffRiskLine[]): Set<DiffRiskLine> {
-  const literalLines = new Set<DiffRiskLine>();
+function findMultilineLiteralLines(lines: DiffRiskLine[]): Record<DiffSide, Set<DiffRiskLine>> {
+  const literalLines = {
+    added: new Set<DiffRiskLine>(),
+    removed: new Set<DiffRiskLine>()
+  };
   const codeStates = new Map<string, { template: boolean; blockComment: boolean }>();
   const yamlScalarIndents = new Map<string, number | null>();
   for (const line of lines) {
-    const sides = line.kind === "context" ? ["added", "removed"] : [line.kind];
-    for (const side of sides) {
+    for (const side of sidesForLine(line)) {
       const key = `${line.path}\0${line.hunk}\0${side}`;
       if (/\.(?:[cm]?[jt]sx?)$/i.test(line.path)) {
         const state = codeStates.get(key) ?? { template: false, blockComment: false };
-        if (state.template || state.blockComment) literalLines.add(line);
+        if (state.template || state.blockComment) literalLines[side].add(line);
         codeStates.set(key, updateCodeLiteralState(line.content, state));
       }
       if (/\.ya?ml$/i.test(line.path)) {
@@ -423,13 +440,17 @@ function findMultilineLiteralLines(lines: DiffRiskLine[]): Set<DiffRiskLine> {
         const isBlank = line.content.trim().length === 0;
         let scalarIndent = yamlScalarIndents.get(key) ?? null;
         if (scalarIndent !== null && !isBlank && indent <= scalarIndent) scalarIndent = null;
-        if (scalarIndent !== null) literalLines.add(line);
+        if (scalarIndent !== null) literalLines[side].add(line);
         if (/:\s*[|>][-+]?\d*(?:\s+#.*)?$/.test(line.content)) scalarIndent = indent;
         yamlScalarIndents.set(key, scalarIndent);
       }
     }
   }
   return literalLines;
+}
+
+function sidesForLine(line: DiffRiskLine): DiffSide[] {
+  return line.kind === "context" ? ["added", "removed"] : [line.kind];
 }
 
 function updateCodeLiteralState(
@@ -678,6 +699,8 @@ interface DiffRiskLine {
   content: string;
   hunk: number;
 }
+
+type DiffSide = Exclude<DiffRiskLine["kind"], "context">;
 
 function parseDiffRiskLines(diff: string): DiffRiskLine[] {
   const changedLines: DiffRiskLine[] = [];

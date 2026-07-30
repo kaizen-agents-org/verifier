@@ -910,6 +910,26 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("tracks multiline comment state independently on each diff side", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Enable an authorization policy",
+      diff:
+        "diff --git a/src/config.ts b/src/config.ts\n" +
+        "@@ -1,4 +1,5 @@\n" +
+        "-/* disabled policy\n" +
+        "+// enabled policy\n" +
+        " const policy = {\n" +
+        '+  effect: "Deny",\n' +
+        '+  principals: ["guest"],\n' +
+        " };",
+      verifyLogs: "all tests passed",
+      builderReport: "Enabled the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("ignores policy-shaped lines inside a YAML block scalar", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Update embedded documentation",
