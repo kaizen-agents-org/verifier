@@ -321,7 +321,9 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }
 
 function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
   const matches: DiffRiskLine[] = [];
+  const literalLines = findMultilineLiteralLines(lines);
   for (const [index, line] of lines.entries()) {
+    if (literalLines.has(line)) continue;
     const policyProperty = parsePolicyProperty(line.content);
     if (!policyProperty) continue;
 
@@ -374,7 +376,9 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     }
     const blockContents = [
       structuredOpener ? policyProperty.value.slice(1).trim() : "",
-      ...blockLines.map((candidate) => candidate.content)
+      ...blockLines
+        .filter((candidate) => blockScalar || !literalLines.has(candidate))
+        .map((candidate) => candidate.content)
     ].filter(Boolean);
     const isAuthorizationBlock =
       authPath ||
@@ -394,6 +398,84 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     }
   }
   return matches;
+}
+
+function findMultilineLiteralLines(lines: DiffRiskLine[]): Set<DiffRiskLine> {
+  const literalLines = new Set<DiffRiskLine>();
+  const codeStates = new Map<string, { template: boolean; blockComment: boolean }>();
+  const yamlScalarIndents = new Map<string, number | null>();
+  for (const line of lines) {
+    const sides = line.kind === "context" ? ["added", "removed"] : [line.kind];
+    for (const side of sides) {
+      const key = `${line.path}\0${line.hunk}\0${side}`;
+      if (/\.(?:[cm]?[jt]sx?)$/i.test(line.path)) {
+        const state = codeStates.get(key) ?? { template: false, blockComment: false };
+        if (state.template || state.blockComment) literalLines.add(line);
+        codeStates.set(key, updateCodeLiteralState(line.content, state));
+      }
+      if (/\.ya?ml$/i.test(line.path)) {
+        const indent = /^\s*/.exec(line.content)?.[0].length ?? 0;
+        const isBlank = line.content.trim().length === 0;
+        let scalarIndent = yamlScalarIndents.get(key) ?? null;
+        if (scalarIndent !== null && !isBlank && indent <= scalarIndent) scalarIndent = null;
+        if (scalarIndent !== null) literalLines.add(line);
+        if (/:\s*[|>][-+]?\d*(?:\s+#.*)?$/.test(line.content)) scalarIndent = indent;
+        yamlScalarIndents.set(key, scalarIndent);
+      }
+    }
+  }
+  return literalLines;
+}
+
+function updateCodeLiteralState(
+  content: string,
+  initial: { template: boolean; blockComment: boolean }
+): { template: boolean; blockComment: boolean } {
+  let template = initial.template;
+  let blockComment = initial.blockComment;
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    const next = content[index + 1] ?? "";
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (template) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === "`") {
+        template = false;
+      }
+      continue;
+    }
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === "/" && next === "/") break;
+    if (character === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+    } else if (character === "`") {
+      template = true;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    }
+  }
+  return { template, blockComment };
 }
 
 function parsePolicyProperty(content: string): { indent: number; value: string; inline: boolean } | null {
@@ -433,6 +515,17 @@ function findInlinePolicyValueStart(content: string): number | null {
       quote = character;
       continue;
     }
+    if (character === "/" && content[index + 1] === "/") return null;
+    if (character === "/" && content[index + 1] === "*") {
+      const end = content.indexOf("*/", index + 2);
+      if (end < 0) return null;
+      index = end + 1;
+      continue;
+    }
+    if (character === "/" && isRegexLiteralStart(content, index)) {
+      index = findRegexLiteralEnd(content, index);
+      continue;
+    }
     const assignment = /^(?:(?:const|let|var)\s+policy|(?:[A-Za-z_$][\w$]*\.)+policy)\s*=\s*/i.exec(
       content.slice(index)
     );
@@ -443,6 +536,31 @@ function findInlinePolicyValueStart(content: string): number | null {
     if (property) return index + property[0].length;
   }
   return null;
+}
+
+function isRegexLiteralStart(content: string, index: number): boolean {
+  const prefix = content.slice(0, index).trimEnd();
+  return prefix.length === 0 || /[=(:,!&|?;[\]{}]$/.test(prefix);
+}
+
+function findRegexLiteralEnd(content: string, start: number): number {
+  let escaped = false;
+  let characterClass = false;
+  for (let index = start + 1; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (escaped) {
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (character === "[") {
+      characterClass = true;
+    } else if (character === "]") {
+      characterClass = false;
+    } else if (character === "/" && !characterClass) {
+      return index;
+    }
+  }
+  return content.length - 1;
 }
 
 function extractPropertyValue(input: string): string {

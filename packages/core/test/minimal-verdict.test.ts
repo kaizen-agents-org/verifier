@@ -842,7 +842,9 @@ describe("evaluateMinimalVerdict", () => {
 
   it.each([
     'const label = "{ policy: admin }";',
-    '  "policy: admin",'
+    '  "policy: admin",',
+    "const value = 1; // { policy: admin }",
+    "const matcher = /{ policy: admin }/;"
   ])("ignores policy-shaped text inside the string literal %s", (line) => {
     const verdict = evaluateMinimalVerdict({
       task: "Update a service label",
@@ -851,6 +853,37 @@ describe("evaluateMinimalVerdict", () => {
         `+${line}`,
       verifyLogs: "all tests passed",
       builderReport: "Updated the service label."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
+  });
+
+  it("ignores policy-shaped lines inside a multiline template literal", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update an embedded fixture",
+      diff:
+        "diff --git a/src/fixture.ts b/src/fixture.ts\n" +
+        "+const fixture = `\n" +
+        "+policy: admin\n" +
+        "+`;",
+      verifyLogs: "all tests passed",
+      builderReport: "Updated the embedded fixture."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
+  });
+
+  it("ignores policy-shaped lines inside a YAML block scalar", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update embedded documentation",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "+documentation: |-\n" +
+        "+  policy: admin",
+      verifyLogs: "all tests passed",
+      builderReport: "Updated embedded documentation."
     });
 
     expect(verdict.verdict).toBe("open_pr");
