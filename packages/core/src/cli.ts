@@ -56,9 +56,16 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (argv.length === 0 && process.env.KAIZEN_VERIFIER_RESULT_PATH) {
-    const payload = await runKaizenLoopMode();
-    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
-    return 0;
+    const resultWriter = await prepareKaizenResult(
+      process.env.KAIZEN_VERIFIER_RESULT_PATH
+    );
+    try {
+      const payload = await runKaizenLoopMode(resultWriter.write);
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+      return 0;
+    } finally {
+      await resultWriter.close();
+    }
   }
 
   const options = parseArgs(argv);
@@ -114,7 +121,7 @@ async function main(argv: string[]): Promise<number> {
   return 0;
 }
 
-async function runKaizenLoopMode(): Promise<{
+async function runKaizenLoopMode(writeResult: (content: string) => Promise<void>): Promise<{
   status: "open_pr" | "open_pr_with_warning" | "block_pr" | "needs_context";
   summary: string;
   notes: string;
@@ -144,14 +151,14 @@ async function runKaizenLoopMode(): Promise<{
     reason
   };
 
-  await writeKaizenResult(
-    process.env.KAIZEN_VERIFIER_RESULT_PATH!,
-    `${JSON.stringify(payload, null, 2)}\n`
-  );
+  await writeResult(`${JSON.stringify(payload, null, 2)}\n`);
   return payload;
 }
 
-async function writeKaizenResult(configuredPath: string, content: string): Promise<void> {
+async function prepareKaizenResult(configuredPath: string): Promise<{
+  write: (content: string) => Promise<void>;
+  close: () => Promise<void>;
+}> {
   const workspace = resolve(process.env.KAIZEN_WORKSPACE_DIR ?? process.cwd());
   const resultPath = resolve(workspace, configuredPath);
   if (isPathOutside(workspace, resultPath)) {
@@ -183,32 +190,36 @@ async function writeKaizenResult(configuredPath: string, content: string): Promi
     0o600
   );
   try {
-    const [realWorkspace, realResult, openedStat, pathStat] = await Promise.all([
-      realpath(workspace),
-      realpath(resultPath),
-      resultHandle.stat(),
-      lstat(resultPath)
-    ]);
-    if (isPathOutside(realWorkspace, realResult)) {
-      throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR.");
-    }
-    if (
-      !openedStat.isFile() ||
-      openedStat.nlink !== 1 ||
-      openedStat.dev !== pathStat.dev ||
-      openedStat.ino !== pathStat.ino
-    ) {
-      throw new Error("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely.");
-    }
-    await resultHandle.truncate(0);
-    await resultHandle.writeFile(content, "utf8");
+    const realWorkspace = await realpath(workspace);
+    return {
+      write: async (content: string) => {
+        const [realResult, openedStat, pathStat] = await Promise.all([
+          realpath(resultPath),
+          resultHandle.stat(),
+          lstat(resultPath)
+        ]);
+        if (isPathOutside(realWorkspace, realResult)) {
+          throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR.");
+        }
+        if (
+          !openedStat.isFile() ||
+          openedStat.nlink !== 1 ||
+          openedStat.dev !== pathStat.dev ||
+          openedStat.ino !== pathStat.ino
+        ) {
+          throw new Error("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely.");
+        }
+        await resultHandle.truncate(0);
+        await resultHandle.writeFile(content, "utf8");
+      },
+      close: () => resultHandle.close()
+    };
   } catch (error) {
+    await resultHandle.close();
     if ((error as NodeJS.ErrnoException).code === "ELOOP") {
       throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves through a symbolic link.");
     }
     throw error;
-  } finally {
-    await resultHandle.close();
   }
 }
 

@@ -401,6 +401,13 @@ current working directory when it is unset. The resolved result path must stay
 inside that workspace; paths that escape it directly or through symbolic links
 are rejected before the result is written.
 
+The launcher is responsible for choosing the workspace and result path before
+starting any untrusted agent work. `verifier` pre-opens the result file before
+reading stdin, does not pass that descriptor to child processes, and after
+evaluation revalidates the path, inode, and link count before truncating and
+writing through the same descriptor. Races by an independent same-privilege
+process before `verifier` starts are outside this boundary.
+
 The integration payload is:
 
 ```json

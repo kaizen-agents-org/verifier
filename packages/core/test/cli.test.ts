@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
-import { link, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { link, lstat, mkdir, mkdtemp, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -260,6 +260,42 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(code).toBe(2);
     expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely");
     expect(await readFile(outsidePath, "utf8")).toBe("preserve me\n");
+  });
+
+  it("rejects a result path replaced after the file is pre-opened", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+    const workspace = join(dir, "workspace");
+    const resultPath = join(workspace, "verify-result.json");
+    const openedPath = join(workspace, "pre-opened-result.json");
+    const outsidePath = join(dir, "outside-result.json");
+    await mkdir(workspace);
+    await writeFile(outsidePath, "preserve me\n", "utf8");
+
+    const child = spawn(process.execPath, ["--import", "tsx", "src/cli.ts"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
+        KAIZEN_WORKSPACE_DIR: workspace
+      },
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    await waitForPath(resultPath);
+    await rename(resultPath, openedPath);
+    await symlink(outsidePath, resultPath);
+    child.stdin.end(kaizenLoopPrompt());
+    const code = await new Promise<number | null>((resolve) => child.once("close", resolve));
+
+    expect(code).toBe(2);
+    expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR");
+    expect(await readFile(outsidePath, "utf8")).toBe("preserve me\n");
+    expect(await readFile(openedPath, "utf8")).toBe("");
   });
 
   it("needs context for kaizen-loop prompts with only a changed-file inventory", async () => {
@@ -1057,6 +1093,19 @@ function spawnWithInput(
     });
     child.stdin.end(input);
   });
+}
+
+async function waitForPath(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      await lstat(path);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for ${path}`);
 }
 
 async function createChangedRepo(): Promise<string> {
