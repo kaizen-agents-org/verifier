@@ -111,9 +111,9 @@ describe("CLI", { timeout: 20_000 }, () => {
     expect(output.verdict).toBe("open_pr");
   });
 
-  it("supports the kaizen-loop stdin/result-file contract", async () => {
+  it("creates the result parent directory for the kaizen-loop stdin/result-file contract", async () => {
     const dir = await mkdtemp(join(tmpdir(), "verifier-"));
-    const resultPath = join(dir, "verify-result.json");
+    const resultPath = join(dir, ".kaizen", "verifier", "verify-result.json");
     const prompt = `You are the verifier for the kaizen-loop run in "repo".
 
 # Issue #1: Add signup validation
