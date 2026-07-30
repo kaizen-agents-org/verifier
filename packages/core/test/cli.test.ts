@@ -262,6 +262,34 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(await readFile(outsidePath, "utf8")).toBe("preserve me\n");
   });
 
+  it.runIf(process.platform !== "win32")(
+    "rejects a FIFO result path without waiting for a reader",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+      const workspace = join(dir, "workspace");
+      const resultPath = join(workspace, "verify-result.json");
+      await mkdir(workspace);
+      await execFileAsync("mkfifo", [resultPath]);
+
+      const { stderr, code } = await spawnWithInput(
+        process.execPath,
+        ["--import", "tsx", "src/cli.ts"],
+        kaizenLoopPrompt(),
+        {
+          env: {
+            ...process.env,
+            KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
+            KAIZEN_WORKSPACE_DIR: workspace
+          },
+          allowFailure: true
+        }
+      );
+
+      expect(code).toBe(2);
+      expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH must be a regular file");
+    }
+  );
+
   it("rejects a result path replaced after the file is pre-opened", async () => {
     const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
     const workspace = join(dir, "workspace");

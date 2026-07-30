@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { constants } from "node:fs";
 import { access, lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
@@ -184,11 +185,26 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
   }
 
   await mkdir(dirname(resultPath), { recursive: true });
-  const resultHandle = await open(
-    resultPath,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_NOFOLLOW,
-    0o600
-  );
+  let resultHandle: FileHandle;
+  try {
+    resultHandle = await open(
+      resultPath,
+      constants.O_WRONLY |
+        constants.O_CREAT |
+        constants.O_NOFOLLOW |
+        constants.O_NONBLOCK,
+      0o600
+    );
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ELOOP") {
+      throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves through a symbolic link.");
+    }
+    if (code === "ENXIO") {
+      throw new Error("KAIZEN_VERIFIER_RESULT_PATH must be a regular file.");
+    }
+    throw error;
+  }
   try {
     const realWorkspace = await realpath(workspace);
     return {
@@ -216,9 +232,6 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
     };
   } catch (error) {
     await resultHandle.close();
-    if ((error as NodeJS.ErrnoException).code === "ELOOP") {
-      throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves through a symbolic link.");
-    }
     throw error;
   }
 }
