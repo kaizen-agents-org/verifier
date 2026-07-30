@@ -35,7 +35,7 @@ flowchart TB
     Checks --> Verifier["verifier<br/>independent judgment"]
     Verifier --> Loop["kaizen-loop<br/>policy + PR/handoff"]
 
-    Verifier -.does not.-> Edit["edit files"]
+    Verifier -.does not.-> Edit["edit project source files"]
     Verifier -.does not.-> Merge["approve merge"]
     Verifier -.does not.-> PRCreate["create PRs"]
 ```
@@ -59,7 +59,7 @@ Useful package commands:
 | Command | Purpose |
 |---|---|
 | `pnpm typecheck` | Type-check the workspace. |
-| `pnpm test` | Run Vitest tests. |
+| `pnpm test` | Run the source-level Vitest tests (the built CLI test is separate). |
 | `pnpm build` | Build the CLI and embed its source commit in `dist/build-info.json`. |
 | `pnpm test:built-cli` | Exercise the built CLI, including provenance and ANSI-log regressions. |
 | `pnpm eval` | Run the committed verifier eval corpus and print metrics. |
@@ -207,7 +207,8 @@ inference.
 
 Verdicts include `evidence_grade` so callers can distinguish executed local
 checks from reported text. Workspace mode emits `executed` only after at least
-one `--verify-command` ran; direct contract inputs such as
+one verification command ran, whether selected by CLI, config, or inference;
+direct contract inputs such as
 `--verify-logs "all tests passed"`, kaizen-loop stdin mode, and workspace checks
 with no verification commands emit `reported`.
 
@@ -240,6 +241,11 @@ node packages/core/dist/cli.js check \
   --verify-command "pnpm test" \
   --fail-on conditional
 ```
+
+`--fail-on conditional` (and `--fail-on mergeable`) exits `1` for
+`conditional` or `not_mergeable`; `--fail-on inconclusive` exits `1` for
+`inconclusive` or `not_mergeable`; and `--fail-on not_mergeable` exits `1` only
+for `not_mergeable`.
 
 `verifier verdict` and bare options are accepted for compatibility. Unless
 `--markdown` is used, completed judgments write JSON to stdout and exit:
@@ -386,7 +392,6 @@ passes a verifier prompt on stdin, and expects a compact payload at
 
 ```sh
 KAIZEN_VERIFIER_RESULT_PATH=.kaizen/verifier/verify-result.json \
-KAIZEN_WORKSPACE_DIR="$PWD" \
 verifier < prompt.txt
 ```
 
@@ -396,7 +401,7 @@ The integration payload is:
 {
   "status": "open_pr",
   "summary": "Open PR with 0 should_fix item(s); risk is low.",
-  "notes": "risk=low\nconfidence=82",
+  "notes": "evidence_grade=reported\nrisk=low\nconfidence=82",
   "reason": ""
 }
 ```
@@ -404,9 +409,12 @@ The integration payload is:
 `status` is one of `open_pr`, `open_pr_with_warning`, `block_pr`, or
 `needs_context`.
 
-`verifier` does not edit files, create branches, commit changes, create pull
-requests, or grant merge approval. It returns an independent gate decision for
-the orchestrator and human reviewers.
+`verifier` does not edit project source files, create branches, commit changes,
+create pull requests, or grant merge approval. Workspace checks do write their
+evidence artifacts under `.verifier/runs/` (or the configured output directory)
+and run the configured verification commands, so those commands should be
+chosen with their normal side effects in mind. The verifier returns an
+independent gate decision for the orchestrator and human reviewers.
 
 ## Current MVP Scope
 
