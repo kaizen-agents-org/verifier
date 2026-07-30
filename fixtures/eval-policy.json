@@ -1,7 +1,12 @@
 {
   "baseline": {
     "rawRecallMin": 0.7273,
-    "rawVerdictAgreementMin": 0.7857
+    "rawVerdictAgreementMin": 0.7857,
+    "debtCaseIds": [
+      "sb-005-file-handle-leak",
+      "sb-007-multibyte-cache-collision",
+      "sb-010-intent-implementation-mismatch"
+    ]
   },
   "knownGapDebt": [
     {

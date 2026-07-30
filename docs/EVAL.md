@@ -125,10 +125,11 @@ timeoutMinutes: 15
 
 `knownGap: true` は fixture 単独では承認にならない。
 `fixtures/eval-policy.json` の `knownGapDebt` に同じ `caseId` の `active` recordを追加し、
-検出できない理由、owner、follow-up、導入日を記録する。レビューでは正しい期待値を
-保っていること、実際の結果が false negative であること、follow-up が具体的であることを
-確認する。recordがない追加、recordだけ残したケース削除、`knownGap` だけの解除は
-fixture gateを失敗させる。
+検出できない理由、owner、follow-up、導入日を記録し、baseline の `debtCaseIds` にも
+case IDを登録する。レビューでは正しい期待値を保っていること、実際の結果が false
+negative であること、follow-up が具体的であることを確認する。recordがない追加、
+recordだけ残したケース削除、ケースとrecordの同時削除、`knownGap` だけの解除は
+fixture gateを失敗させる。`debtCaseIds` はactive/retired双方の台帳なので削除しない。
 
 返済時は fixture を削除せず、実装修正によってケースを合格させる。同じ変更で
 `knownGap` を削除し、debt recordを `retired` にして `retiredOn` を記録する。retired

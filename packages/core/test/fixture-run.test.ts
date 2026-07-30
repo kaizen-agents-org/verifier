@@ -95,7 +95,11 @@ function metricFixture(
 
 function policy(
   knownGapDebt: FixtureEvalPolicy["knownGapDebt"],
-  baseline = { rawRecallMin: 0, rawVerdictAgreementMin: 0 }
+  baseline = {
+    rawRecallMin: 0,
+    rawVerdictAgreementMin: 0,
+    debtCaseIds: knownGapDebt.map((debt) => debt.caseId)
+  }
 ): FixtureEvalPolicy {
   return { baseline, knownGapDebt };
 }
@@ -257,6 +261,22 @@ describe("fixture known-gap debt policy", () => {
     );
   });
 
+  it("rejects deleting both a known-gap fixture and its debt record", () => {
+    const result = assessFixturePolicy(
+      [],
+      calculateFixtureMetrics([], 0),
+      policy([], {
+        rawRecallMin: 0,
+        rawVerdictAgreementMin: 0,
+        debtCaseIds: ["deleted-gap"]
+      })
+    );
+
+    expect(result.gateFailures).toContain(
+      "registered known-gap debt deleted-gap has no debt record"
+    );
+  });
+
   it("rejects raw recall and verdict-agreement regressions", () => {
     const falseNegative = metricFixture("regression", true, "mergeable", "conditional");
     const metrics = calculateFixtureMetrics([falseNegative], 0);
@@ -264,7 +284,7 @@ describe("fixture known-gap debt policy", () => {
     const result = assessFixturePolicy(
       [falseNegative],
       metrics,
-      policy([], { rawRecallMin: 0.75, rawVerdictAgreementMin: 0.8 })
+      policy([], { rawRecallMin: 0.75, rawVerdictAgreementMin: 0.8, debtCaseIds: [] })
     );
 
     expect(result.gateFailures).toContain("raw recall 0.0000 fell below baseline 0.7500");

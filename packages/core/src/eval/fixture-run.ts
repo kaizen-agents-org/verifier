@@ -74,7 +74,8 @@ const KnownGapDebtBaseSchema = z.object({
 const FixtureEvalPolicySchema = z.object({
   baseline: z.object({
     rawRecallMin: z.number().min(0).max(1),
-    rawVerdictAgreementMin: z.number().min(0).max(1)
+    rawVerdictAgreementMin: z.number().min(0).max(1),
+    debtCaseIds: z.array(z.string().min(1))
   }),
   knownGapDebt: z.array(
     z.discriminatedUnion("status", [
@@ -86,6 +87,17 @@ const FixtureEvalPolicySchema = z.object({
     ])
   )
 }).superRefine((policy, context) => {
+  const registeredDebtIds = new Set<string>();
+  policy.baseline.debtCaseIds.forEach((caseId, index) => {
+    if (registeredDebtIds.has(caseId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "debtCaseIds must be unique",
+        path: ["baseline", "debtCaseIds", index]
+      });
+    }
+    registeredDebtIds.add(caseId);
+  });
   policy.knownGapDebt.forEach((debt, index) => {
     if (debt.status === "retired" && debt.retiredOn < debt.introducedOn) {
       context.addIssue({
@@ -406,6 +418,18 @@ export function assessFixturePolicy(
   }
   for (const caseId of duplicateDebtIds) {
     gateFailures.push(`duplicate known-gap debt record: ${caseId}`);
+  }
+
+  const registeredDebtIds = new Set(policy.baseline.debtCaseIds);
+  for (const caseId of registeredDebtIds) {
+    if (!debtByCaseId.has(caseId)) {
+      gateFailures.push(`registered known-gap debt ${caseId} has no debt record`);
+    }
+  }
+  for (const debt of policy.knownGapDebt) {
+    if (!registeredDebtIds.has(debt.caseId)) {
+      gateFailures.push(`known-gap debt ${debt.caseId} is not registered in baseline debtCaseIds`);
+    }
   }
 
   const activeDebts = policy.knownGapDebt.filter((debt) => debt.status === "active");
