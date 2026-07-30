@@ -406,7 +406,8 @@ starting any untrusted agent work. `verifier` pre-opens the result file before
 reading stdin, does not pass that descriptor to child processes, and after
 evaluation revalidates the path, inode, and link count before truncating and
 writing through the same descriptor. Races by an independent same-privilege
-process before `verifier` starts are outside this boundary.
+process before or during `verifier` execution are outside this boundary; the
+launcher must isolate the workspace from such processes while verification runs.
 
 The integration payload is:
 
