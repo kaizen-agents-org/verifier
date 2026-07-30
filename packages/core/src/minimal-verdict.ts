@@ -388,7 +388,7 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
 }
 
 function parsePolicyProperty(content: string): { indent: number; value: string; inline: boolean } | null {
-  const leading = /^(\s*)(?:-\s*)?["']?policy["']?\s*[:=]\s*/i.exec(content);
+  const leading = /^(\s*)(?:-\s*)?(?:(["'])policy\2|policy)\s*[:=]\s*/i.exec(content);
   if (leading) {
     return {
       indent: leading[1]?.length ?? 0,
@@ -396,13 +396,39 @@ function parsePolicyProperty(content: string): { indent: number; value: string; 
       inline: false
     };
   }
-  const inline = /[{,]\s*["']?policy["']?\s*[:=]\s*/i.exec(content);
-  if (!inline) return null;
+  const inlineValueStart = findInlinePolicyValueStart(content);
+  if (inlineValueStart === null) return null;
   return {
     indent: /^\s*/.exec(content)?.[0].length ?? 0,
-    value: extractPropertyValue(content.slice((inline.index ?? 0) + inline[0].length)),
+    value: extractPropertyValue(content.slice(inlineValueStart)),
     inline: true
   };
+}
+
+function findInlinePolicyValueStart(content: string): number | null {
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character !== "{" && character !== ",") continue;
+    const property = /^[{,]\s*(?:(["'])policy\1|policy)\s*[:=]\s*/i.exec(content.slice(index));
+    if (property) return index + property[0].length;
+  }
+  return null;
 }
 
 function extractPropertyValue(input: string): string {

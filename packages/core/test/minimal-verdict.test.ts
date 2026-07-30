@@ -804,6 +804,23 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
   });
 
+  it.each([
+    'const label = "{ policy: admin }";',
+    '  "policy: admin",'
+  ])("ignores policy-shaped text inside the string literal %s", (line) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Update a service label",
+      diff:
+        "diff --git a/src/label.ts b/src/label.ts\n" +
+        `+${line}`,
+      verifyLogs: "all tests passed",
+      builderReport: "Updated the service label."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
+  });
+
   it("does not combine policy evidence across diff hunks", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Update unrelated configuration sections",
