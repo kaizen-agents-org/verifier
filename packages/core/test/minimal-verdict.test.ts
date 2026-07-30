@@ -542,6 +542,22 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.evidence?.includes("+policy:"))).toBe(true);
   });
 
+  it("treats a commented empty policy key as a block-style authorization policy", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy block",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "+policy: # access rules\n" +
+        "+  effect: Allow\n" +
+        "+  principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("treats a JSON object-valued authorization policy as auth/authz code", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Configure a JSON authorization policy",
@@ -659,6 +675,7 @@ describe("evaluateMinimalVerdict", () => {
 
   it.each([
     'const policy = { effect: "Allow", principals: ["admin"] };',
+    'const policy: ServicePolicy = { effect: "Allow", principals: ["admin"] };',
     'config.policy = { effect: "Allow", principals: ["admin"] };'
   ])("treats the policy assignment %s as auth/authz code", (assignment) => {
     const verdict = evaluateMinimalVerdict({
@@ -844,7 +861,8 @@ describe("evaluateMinimalVerdict", () => {
     'const label = "{ policy: admin }";',
     '  "policy: admin",',
     "const value = 1; // { policy: admin }",
-    "const matcher = /{ policy: admin }/;"
+    "const matcher = /{ policy: admin }/;",
+    "return /{ policy: admin }/;"
   ])("ignores policy-shaped text inside the string literal %s", (line) => {
     const verdict = evaluateMinimalVerdict({
       task: "Update a service label",

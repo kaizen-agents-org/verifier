@@ -328,9 +328,12 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     if (!policyProperty) continue;
 
     const policyIndent = policyProperty.indent;
-    const structuredOpener = getUnterminatedStructure(policyProperty.value);
-    const blockScalar = /^[|>][-+]?\d*$/.test(policyProperty.value);
-    const scalarValue = structuredOpener || blockScalar ? "" : policyProperty.value;
+    const policyValue = /\.ya?ml$/i.test(line.path)
+      ? stripYamlComment(policyProperty.value)
+      : policyProperty.value;
+    const structuredOpener = getUnterminatedStructure(policyValue);
+    const blockScalar = /^[|>][-+]?\d*$/.test(policyValue);
+    const scalarValue = structuredOpener || blockScalar ? "" : policyValue;
     const authPath = isAuthorizationPath(line.path);
     if (scalarValue) {
       if ((authPath || isAuthorizationPolicyValue(scalarValue)) && line.kind !== "context") matches.push(line);
@@ -339,7 +342,7 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     const blockLines: DiffRiskLine[] = [];
     let enteredBlock = false;
     let replacementKind: DiffRiskLine["kind"] | null = null;
-    let structuredValue = policyProperty.value;
+    let structuredValue = policyValue;
     for (const candidate of lines.slice(index + 1)) {
       if (candidate.path !== line.path || candidate.hunk !== line.hunk) break;
       if (structuredOpener) {
@@ -375,7 +378,7 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
       blockLines.push(candidate);
     }
     const blockContents = [
-      structuredOpener ? policyProperty.value.slice(1).trim() : "",
+      structuredOpener ? policyValue.slice(1).trim() : "",
       ...blockLines
         .filter((candidate) => blockScalar || !literalLines.has(candidate))
         .map((candidate) => candidate.content)
@@ -526,7 +529,7 @@ function findInlinePolicyValueStart(content: string): number | null {
       index = findRegexLiteralEnd(content, index);
       continue;
     }
-    const assignment = /^(?:(?:const|let|var)\s+policy|(?:[A-Za-z_$][\w$]*\.)+policy)\s*=\s*/i.exec(
+    const assignment = /^(?:(?:const|let|var)\s+policy(?:\s*:\s*[^=]+)?|(?:[A-Za-z_$][\w$]*\.)+policy)\s*=\s*/i.exec(
       content.slice(index)
     );
     const hasTokenBoundary = index === 0 || !/[\w$]/.test(content[index - 1] ?? "");
@@ -540,7 +543,11 @@ function findInlinePolicyValueStart(content: string): number | null {
 
 function isRegexLiteralStart(content: string, index: number): boolean {
   const prefix = content.slice(0, index).trimEnd();
-  return prefix.length === 0 || /[=(:,!&|?;[\]{}]$/.test(prefix);
+  return (
+    prefix.length === 0 ||
+    /[=(:,!&|?;[\]{}]$/.test(prefix) ||
+    /(?:^|[^\w$])(?:return|throw|case|yield|await)\s*$/i.test(prefix)
+  );
 }
 
 function findRegexLiteralEnd(content: string, start: number): number {
@@ -561,6 +568,28 @@ function findRegexLiteralEnd(content: string, start: number): number {
     }
   }
   return content.length - 1;
+}
+
+function stripYamlComment(value: string): string {
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index] ?? "";
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = "";
+      }
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "#") {
+      return value.slice(0, index).trim();
+    }
+  }
+  return value;
 }
 
 function extractPropertyValue(input: string): string {
