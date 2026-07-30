@@ -15,6 +15,8 @@ const NEUTRAL_BASE_COMMIT_MESSAGE = "base";
 const NEUTRAL_HEAD_COMMIT_MESSAGE = "apply changes";
 const FULL_GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA =
+  "04bea41333cdf444b2cb4a3f19ea6c532a3fc45f";
 
 const FixtureExpectedSchema = z
   .object({
@@ -68,7 +70,9 @@ const KnownGapDebtBaseSchema = z.object({
   reason: z.string().min(1),
   owner: z.string().min(1),
   followUp: z.string().min(1),
-  introducedOn: z.string().regex(ISO_DATE_PATTERN)
+  introducedOn: z.string().regex(ISO_DATE_PATTERN),
+  groundTruthDefect: z.literal(true),
+  expectedVerdicts: z.array(FinalVerdictKindSchema).min(1)
 });
 
 const FixtureEvalPolicySchema = z.object({
@@ -79,11 +83,11 @@ const FixtureEvalPolicySchema = z.object({
   }),
   knownGapDebt: z.array(
     z.discriminatedUnion("status", [
-      KnownGapDebtBaseSchema.extend({ status: z.literal("active") }),
+      KnownGapDebtBaseSchema.extend({ status: z.literal("active") }).strict(),
       KnownGapDebtBaseSchema.extend({
         status: z.literal("retired"),
         retiredOn: z.string().regex(ISO_DATE_PATTERN)
-      })
+      }).strict()
     ])
   )
 }).superRefine((policy, context) => {
@@ -99,6 +103,20 @@ const FixtureEvalPolicySchema = z.object({
     registeredDebtIds.add(caseId);
   });
   policy.knownGapDebt.forEach((debt, index) => {
+    if (new Set(debt.expectedVerdicts).size !== debt.expectedVerdicts.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "expectedVerdicts must be unique",
+        path: ["knownGapDebt", index, "expectedVerdicts"]
+      });
+    }
+    if (debt.expectedVerdicts.some((verdict) => !isDefectDetected(verdict))) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "known-gap debt expectedVerdicts must all detect a defect",
+        path: ["knownGapDebt", index, "expectedVerdicts"]
+      });
+    }
     if (debt.status === "retired" && debt.retiredOn < debt.introducedOn) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -111,6 +129,50 @@ const FixtureEvalPolicySchema = z.object({
 
 export type FixtureCase = z.infer<typeof FixtureCaseSchema>;
 export type FixtureEvalPolicy = z.infer<typeof FixtureEvalPolicySchema>;
+
+const BOOTSTRAP_FIXTURE_EVAL_POLICY: FixtureEvalPolicy = {
+  baseline: {
+    rawRecallMin: 0,
+    rawVerdictAgreementMin: 0,
+    debtCaseIds: [
+      "sb-005-file-handle-leak",
+      "sb-007-multibyte-cache-collision",
+      "sb-010-intent-implementation-mismatch"
+    ]
+  },
+  knownGapDebt: [
+    {
+      caseId: "sb-005-file-handle-leak",
+      reason: "Detecting error-path resource leaks requires the planned Stage 4 reproduction capability.",
+      owner: "kaizen-agents-org/verifier",
+      followUp: "https://github.com/kaizen-agents-org/verifier/issues/81",
+      introducedOn: "2026-07-22",
+      groundTruthDefect: true,
+      expectedVerdicts: ["conditional"],
+      status: "active"
+    },
+    {
+      caseId: "sb-007-multibyte-cache-collision",
+      reason: "Detecting multibyte cache-key collisions requires the planned Stage 4 reproduction capability.",
+      owner: "kaizen-agents-org/verifier",
+      followUp: "https://github.com/kaizen-agents-org/verifier/issues/81",
+      introducedOn: "2026-07-22",
+      groundTruthDefect: true,
+      expectedVerdicts: ["conditional"],
+      status: "active"
+    },
+    {
+      caseId: "sb-010-intent-implementation-mismatch",
+      reason: "Detecting semantic intent mismatches requires primary-source claim extraction and diff comparison.",
+      owner: "kaizen-agents-org/verifier",
+      followUp: "https://github.com/kaizen-agents-org/verifier/issues/81",
+      introducedOn: "2026-07-22",
+      groundTruthDefect: true,
+      expectedVerdicts: ["conditional", "not_mergeable"],
+      status: "active"
+    }
+  ]
+};
 
 export interface FixtureCaseResult {
   id: string;
@@ -199,9 +261,14 @@ export async function runFixtureEval(options: RunFixtureEvalOptions = {}): Promi
   }
 
   const metrics = calculateFixtureMetrics(results, harnessErrorDetails.length);
-  const policy = await loadFixtureEvalPolicy(options.policyFile, options.corpusDir !== undefined);
+  const customCorpus = options.corpusDir !== undefined;
+  const policy = await loadFixtureEvalPolicy(options.policyFile, customCorpus);
+  const previousPolicy =
+    policy && options.policyFile === undefined && !customCorpus
+      ? await loadPreviousFixtureEvalPolicy(process.env.BASE_SHA)
+      : undefined;
   const policyAssessment = policy
-    ? assessFixturePolicy(results, metrics, policy)
+    ? assessFixturePolicy(results, metrics, policy, previousPolicy)
     : emptyPolicyAssessment(metrics);
   const runResult: FixtureRunResult = {
     generatedAt: new Date().toISOString(),
@@ -397,7 +464,8 @@ export function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErr
 export function assessFixturePolicy(
   results: FixtureCaseResult[],
   metrics: FixtureMetrics,
-  policy: FixtureEvalPolicy
+  policy: FixtureEvalPolicy,
+  previousPolicy?: FixtureEvalPolicy
 ): Pick<FixtureRunResult, "adjustedMetrics" | "acceptedDebt" | "gateFailures"> {
   const gateFailures: string[] = [];
   const casesById = new Map<string, FixtureCaseResult>();
@@ -431,6 +499,9 @@ export function assessFixturePolicy(
       gateFailures.push(`known-gap debt ${debt.caseId} is not registered in baseline debtCaseIds`);
     }
   }
+  if (previousPolicy) {
+    compareDebtLedgers(policy, previousPolicy, gateFailures);
+  }
 
   const activeDebts = policy.knownGapDebt.filter((debt) => debt.status === "active");
   const retiredDebts = policy.knownGapDebt.filter((debt) => debt.status === "retired");
@@ -451,6 +522,7 @@ export function assessFixturePolicy(
     if (!result.expected.knownGap) {
       gateFailures.push(`active known-gap debt ${debt.caseId} is no longer marked knownGap`);
     }
+    validateDebtFixtureSnapshot(debt, result, gateFailures);
     if (result.passed) {
       gateFailures.push(`active known-gap debt ${debt.caseId} now passes and must be retired`);
     }
@@ -468,8 +540,17 @@ export function assessFixturePolicy(
     if (result.expected.knownGap) {
       gateFailures.push(`retired known-gap debt ${debt.caseId} is still marked knownGap`);
     }
+    validateDebtFixtureSnapshot(debt, result, gateFailures);
     if (!result.passed) {
       gateFailures.push(`retired known-gap debt ${debt.caseId} does not pass`);
+    }
+    if (
+      !isDefectDetected(result.actual.verdict) ||
+      !debt.expectedVerdicts.includes(result.actual.verdict)
+    ) {
+      gateFailures.push(
+        `retired known-gap debt ${debt.caseId} is not detected with its original expected verdict`
+      );
     }
   }
 
@@ -519,6 +600,93 @@ export function assessFixturePolicy(
     },
     gateFailures
   };
+}
+
+function compareDebtLedgers(
+  policy: FixtureEvalPolicy,
+  previousPolicy: FixtureEvalPolicy,
+  gateFailures: string[]
+): void {
+  if (policy.baseline.rawRecallMin < previousPolicy.baseline.rawRecallMin) {
+    gateFailures.push(
+      `raw recall baseline ${formatRate(
+        policy.baseline.rawRecallMin
+      )} was lowered from ${formatRate(previousPolicy.baseline.rawRecallMin)}`
+    );
+  }
+  if (
+    policy.baseline.rawVerdictAgreementMin <
+    previousPolicy.baseline.rawVerdictAgreementMin
+  ) {
+    gateFailures.push(
+      `raw verdict agreement baseline ${formatRate(
+        policy.baseline.rawVerdictAgreementMin
+      )} was lowered from ${formatRate(previousPolicy.baseline.rawVerdictAgreementMin)}`
+    );
+  }
+
+  const currentRegisteredIds = new Set(policy.baseline.debtCaseIds);
+  for (const caseId of previousPolicy.baseline.debtCaseIds) {
+    if (!currentRegisteredIds.has(caseId)) {
+      gateFailures.push(`previously registered known-gap debt ${caseId} was deleted`);
+    }
+  }
+
+  const previousDebts = new Map(previousPolicy.knownGapDebt.map((debt) => [debt.caseId, debt]));
+  const currentDebts = new Map(policy.knownGapDebt.map((debt) => [debt.caseId, debt]));
+  for (const previousDebt of previousPolicy.knownGapDebt) {
+    const currentDebt = currentDebts.get(previousDebt.caseId);
+    if (!currentDebt) {
+      gateFailures.push(`previous known-gap debt record ${previousDebt.caseId} was deleted`);
+      continue;
+    }
+    if (immutableDebtMetadata(currentDebt) !== immutableDebtMetadata(previousDebt)) {
+      gateFailures.push(`known-gap debt ${previousDebt.caseId} changed immutable metadata`);
+    }
+    if (previousDebt.status === "retired") {
+      if (currentDebt.status !== "retired") {
+        gateFailures.push(`retired known-gap debt ${previousDebt.caseId} was reactivated`);
+      } else if (currentDebt.retiredOn !== previousDebt.retiredOn) {
+        gateFailures.push(`retired known-gap debt ${previousDebt.caseId} changed retiredOn`);
+      }
+    }
+  }
+  for (const currentDebt of policy.knownGapDebt) {
+    if (!previousDebts.has(currentDebt.caseId) && currentDebt.status !== "active") {
+      gateFailures.push(`new known-gap debt ${currentDebt.caseId} must start active`);
+    }
+  }
+}
+
+function immutableDebtMetadata(
+  debt: FixtureEvalPolicy["knownGapDebt"][number]
+): string {
+  return JSON.stringify({
+    caseId: debt.caseId,
+    reason: debt.reason,
+    owner: debt.owner,
+    followUp: debt.followUp,
+    introducedOn: debt.introducedOn,
+    groundTruthDefect: debt.groundTruthDefect,
+    expectedVerdicts: [...debt.expectedVerdicts].sort()
+  });
+}
+
+function validateDebtFixtureSnapshot(
+  debt: FixtureEvalPolicy["knownGapDebt"][number],
+  result: FixtureCaseResult,
+  gateFailures: string[]
+): void {
+  if (result.groundTruth.defect !== debt.groundTruthDefect) {
+    gateFailures.push(`known-gap debt ${debt.caseId} changed its ground-truth defect label`);
+  }
+  const fixtureVerdicts = [
+    ...(result.expected.verdictAnyOf ?? (result.expected.verdict ? [result.expected.verdict] : []))
+  ].sort();
+  const debtVerdicts = [...debt.expectedVerdicts].sort();
+  if (JSON.stringify(fixtureVerdicts) !== JSON.stringify(debtVerdicts)) {
+    gateFailures.push(`known-gap debt ${debt.caseId} changed its expected verdicts`);
+  }
 }
 
 function emptyPolicyAssessment(
@@ -607,6 +775,56 @@ async function loadFixtureEvalPolicy(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to load fixture eval policy ${path}: ${message}`);
+  }
+}
+
+async function loadPreviousFixtureEvalPolicy(
+  baseSha: string | undefined
+): Promise<FixtureEvalPolicy> {
+  if (!baseSha) return BOOTSTRAP_FIXTURE_EVAL_POLICY;
+  if (!FULL_GIT_SHA_PATTERN.test(baseSha)) {
+    throw new Error(`Invalid BASE_SHA for fixture debt policy: ${baseSha}`);
+  }
+
+  const repositoryRoot = resolve(dirname(defaultFixtureEvalPolicyFile()), "..");
+  try {
+    await git(repositoryRoot, ["cat-file", "-e", `${baseSha}^{commit}`]);
+  } catch {
+    throw new Error(`BASE_SHA is not an available commit for fixture debt policy: ${baseSha}`);
+  }
+
+  let policyPathExists: boolean;
+  try {
+    const { stdout } = await git(repositoryRoot, [
+      "ls-tree",
+      "--name-only",
+      baseSha,
+      "--",
+      "fixtures/eval-policy.json"
+    ]);
+    policyPathExists = stdout.trim() === "fixtures/eval-policy.json";
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to inspect fixture eval policy at BASE_SHA ${baseSha}: ${message}`);
+  }
+  if (!policyPathExists) {
+    if (baseSha !== FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA) {
+      throw new Error(
+        `Fixture eval policy is absent at unapproved bootstrap BASE_SHA ${baseSha}`
+      );
+    }
+    return BOOTSTRAP_FIXTURE_EVAL_POLICY;
+  }
+
+  try {
+    const { stdout } = await git(repositoryRoot, [
+      "show",
+      `${baseSha}:fixtures/eval-policy.json`
+    ]);
+    return FixtureEvalPolicySchema.parse(JSON.parse(stdout) as unknown);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to load fixture eval policy from BASE_SHA ${baseSha}: ${message}`);
   }
 }
 

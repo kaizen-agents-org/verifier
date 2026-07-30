@@ -125,16 +125,22 @@ timeoutMinutes: 15
 
 `knownGap: true` は fixture 単独では承認にならない。
 `fixtures/eval-policy.json` の `knownGapDebt` に同じ `caseId` の `active` recordを追加し、
-検出できない理由、owner、follow-up、導入日を記録し、baseline の `debtCaseIds` にも
-case IDを登録する。レビューでは正しい期待値を保っていること、実際の結果が false
-negative であること、follow-up が具体的であることを確認する。recordがない追加、
+検出できない理由、owner、follow-up、導入日、元の defect label と期待 verdictを記録し、
+baseline の `debtCaseIds` にも case IDを登録する。レビューでは正しい期待値を保って
+いること、実際の結果が false negative であること、follow-up が具体的であることを
+確認する。CI は PR base の policy を読み、既存 record と immutable metadata の削除・
+書き換えも拒否する。初回導入時の3件はコード内の bootstrap ledger と比較する。
+bootstrap はこの導入PRの明示的な base commit だけに限定し、それ以外で policy が
+見つからない場合は fail closed とする。recordがない追加、
 recordだけ残したケース削除、ケースとrecordの同時削除、`knownGap` だけの解除は
 fixture gateを失敗させる。`debtCaseIds` はactive/retired双方の台帳なので削除しない。
 
 返済時は fixture を削除せず、実装修正によってケースを合格させる。同じ変更で
 `knownGap` を削除し、debt recordを `retired` にして `retiredOn` を記録する。retired
 recordは履歴として残り、対応するケースが存在し、known gapでなく、合格していることを
-gateが継続確認する。したがって active debt count は減る一方、返済の証跡は失われない。
+gateが継続確認する。さらに actual verdict が記録済みの元の期待 verdict のいずれかで
+defectを検出している必要があり、期待値や ground truth の弱体化は返済にならない。
+したがって active debt count は減る一方、返済の証跡は失われない。
 
 ### 2.2 1ケースの実行手順（packages/core/src/eval/fixture-run.ts）
 

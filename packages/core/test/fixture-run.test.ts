@@ -177,7 +177,9 @@ describe("fixture known-gap debt policy", () => {
     reason: "Requires semantic reproduction.",
     owner: "kaizen-agents-org/verifier",
     followUp: "https://github.com/kaizen-agents-org/verifier/issues/81",
-    introducedOn: "2026-07-22"
+    introducedOn: "2026-07-22",
+    groundTruthDefect: true as const,
+    expectedVerdicts: ["conditional"] as const
   };
 
   it("rejects unauthorized known-gap growth", () => {
@@ -262,18 +264,88 @@ describe("fixture known-gap debt policy", () => {
   });
 
   it("rejects deleting both a known-gap fixture and its debt record", () => {
+    const previousDebt: FixtureEvalPolicy["knownGapDebt"][number] = {
+      caseId: "deleted-gap",
+      ...debtMetadata,
+      status: "active"
+    };
     const result = assessFixturePolicy(
       [],
       calculateFixtureMetrics([], 0),
-      policy([], {
-        rawRecallMin: 0,
-        rawVerdictAgreementMin: 0,
-        debtCaseIds: ["deleted-gap"]
-      })
+      policy([]),
+      policy([previousDebt])
     );
 
     expect(result.gateFailures).toContain(
-      "registered known-gap debt deleted-gap has no debt record"
+      "previously registered known-gap debt deleted-gap was deleted"
+    );
+    expect(result.gateFailures).toContain(
+      "previous known-gap debt record deleted-gap was deleted"
+    );
+  });
+
+  it("rejects retirement by weakening the defect labels", () => {
+    const weakened = metricFixture("weakened-gap", false, "mergeable", "mergeable");
+    const debt: FixtureEvalPolicy["knownGapDebt"][number] = {
+      caseId: "weakened-gap",
+      ...debtMetadata,
+      status: "retired",
+      retiredOn: "2026-07-30"
+    };
+
+    const result = assessFixturePolicy(
+      [weakened],
+      calculateFixtureMetrics([weakened], 0),
+      policy([debt])
+    );
+
+    expect(weakened.passed).toBe(true);
+    expect(result.gateFailures).toContain(
+      "known-gap debt weakened-gap changed its ground-truth defect label"
+    );
+    expect(result.gateFailures).toContain(
+      "known-gap debt weakened-gap changed its expected verdicts"
+    );
+    expect(result.gateFailures).toContain(
+      "retired known-gap debt weakened-gap is not detected with its original expected verdict"
+    );
+  });
+
+  it("rejects reactivation and retirement date changes", () => {
+    const previousDebt: FixtureEvalPolicy["knownGapDebt"][number] = {
+      caseId: "retired-gap",
+      ...debtMetadata,
+      status: "retired",
+      retiredOn: "2026-07-30"
+    };
+    const reactivatedDebt: FixtureEvalPolicy["knownGapDebt"][number] = {
+      caseId: "retired-gap",
+      ...debtMetadata,
+      status: "active"
+    };
+    const changedRetirement: FixtureEvalPolicy["knownGapDebt"][number] = {
+      ...previousDebt,
+      retiredOn: "2026-07-31"
+    };
+
+    const reactivated = assessFixturePolicy(
+      [],
+      calculateFixtureMetrics([], 0),
+      policy([reactivatedDebt]),
+      policy([previousDebt])
+    );
+    const changed = assessFixturePolicy(
+      [],
+      calculateFixtureMetrics([], 0),
+      policy([changedRetirement]),
+      policy([previousDebt])
+    );
+
+    expect(reactivated.gateFailures).toContain(
+      "retired known-gap debt retired-gap was reactivated"
+    );
+    expect(changed.gateFailures).toContain(
+      "retired known-gap debt retired-gap changed retiredOn"
     );
   });
 
@@ -290,6 +362,22 @@ describe("fixture known-gap debt policy", () => {
     expect(result.gateFailures).toContain("raw recall 0.0000 fell below baseline 0.7500");
     expect(result.gateFailures).toContain(
       "raw verdict agreement 0.0000 fell below baseline 0.8000"
+    );
+  });
+
+  it("rejects lowering committed raw metric baselines", () => {
+    const result = assessFixturePolicy(
+      [],
+      calculateFixtureMetrics([], 0),
+      policy([], { rawRecallMin: 0.5, rawVerdictAgreementMin: 0.6, debtCaseIds: [] }),
+      policy([], { rawRecallMin: 0.75, rawVerdictAgreementMin: 0.8, debtCaseIds: [] })
+    );
+
+    expect(result.gateFailures).toContain(
+      "raw recall baseline 0.5000 was lowered from 0.7500"
+    );
+    expect(result.gateFailures).toContain(
+      "raw verdict agreement baseline 0.6000 was lowered from 0.8000"
     );
   });
 });

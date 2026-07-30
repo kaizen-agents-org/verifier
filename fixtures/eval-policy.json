@@ -15,6 +15,8 @@
       "owner": "kaizen-agents-org/verifier",
       "followUp": "https://github.com/kaizen-agents-org/verifier/issues/81",
       "introducedOn": "2026-07-22",
+      "groundTruthDefect": true,
+      "expectedVerdicts": ["conditional"],
       "status": "active"
     },
     {
@@ -23,6 +25,8 @@
       "owner": "kaizen-agents-org/verifier",
       "followUp": "https://github.com/kaizen-agents-org/verifier/issues/81",
       "introducedOn": "2026-07-22",
+      "groundTruthDefect": true,
+      "expectedVerdicts": ["conditional"],
       "status": "active"
     },
     {
@@ -31,6 +35,8 @@
       "owner": "kaizen-agents-org/verifier",
       "followUp": "https://github.com/kaizen-agents-org/verifier/issues/81",
       "introducedOn": "2026-07-22",
+      "groundTruthDefect": true,
+      "expectedVerdicts": ["conditional", "not_mergeable"],
       "status": "active"
     }
   ]
