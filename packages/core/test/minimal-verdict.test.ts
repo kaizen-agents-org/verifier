@@ -862,7 +862,8 @@ describe("evaluateMinimalVerdict", () => {
     '  "policy: admin",',
     "const value = 1; // { policy: admin }",
     "const matcher = /{ policy: admin }/;",
-    "return /{ policy: admin }/;"
+    "return /{ policy: admin }/;",
+    "const predicate = () => /{ policy: admin }/;"
   ])("ignores policy-shaped text inside the string literal %s", (line) => {
     const verdict = evaluateMinimalVerdict({
       task: "Update a service label",

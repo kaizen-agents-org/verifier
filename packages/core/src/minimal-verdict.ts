@@ -545,7 +545,7 @@ function isRegexLiteralStart(content: string, index: number): boolean {
   const prefix = content.slice(0, index).trimEnd();
   return (
     prefix.length === 0 ||
-    /[=(:,!&|?;[\]{}]$/.test(prefix) ||
+    /[=>(:,!&|?;[\]{}]$/.test(prefix) ||
     /(?:^|[^\w$])(?:return|throw|case|yield|await)\s*$/i.test(prefix)
   );
 }
