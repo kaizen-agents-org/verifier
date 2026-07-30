@@ -894,6 +894,22 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(false);
   });
 
+  it("resumes policy scanning after a multiline block comment", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/src/config.ts b/src/config.ts\n" +
+        "+/* documentation\n" +
+        "+ */\n" +
+        '+const policy = "admin";',
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("ignores policy-shaped lines inside a YAML block scalar", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Update embedded documentation",

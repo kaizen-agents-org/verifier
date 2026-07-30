@@ -298,8 +298,10 @@ function collectSoftRisks(
 
 function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }> {
   if (!diff) return [];
-  const diffLines = parseDiffRiskLines(diff).filter((line) => isRuntimeRiskLine(line));
-  const authorizationPolicyMatches = findAuthorizationPolicyMatches(diffLines);
+  const allDiffLines = parseDiffRiskLines(diff);
+  const diffLines = allDiffLines.filter((line) => isRuntimeRiskLine(line));
+  const authorizationPolicyMatches = findAuthorizationPolicyMatches(allDiffLines)
+    .filter((line) => isRuntimeRiskLine(line));
   return HIGH_RISK_DIFF_SIGNALS.flatMap((signal) => {
     const matches = diffLines.filter((line, index) => {
       if (line.kind === "added" && signal.addedPattern.test(line.content)) return true;
