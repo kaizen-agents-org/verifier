@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -155,7 +155,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
       {
         env: {
           ...process.env,
-          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
           KAIZEN_WORKSPACE_DIR: dir
         }
       }
@@ -175,6 +175,63 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(result.notes).toContain("evidence_grade=reported");
     expect(output.reason).toBe("");
     expect(result.reason).toBe("");
+  });
+
+  it.each(["relative", "absolute"] as const)(
+    "rejects a %s kaizen-loop result path outside the workspace",
+    async (pathKind) => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+      const workspace = join(dir, "workspace");
+      const outsidePath = join(dir, `${pathKind}-result.json`);
+      await mkdir(workspace);
+      const resultPath = pathKind === "relative" ? `../${pathKind}-result.json` : outsidePath;
+
+      const { stderr, code } = await spawnWithInput(
+        process.execPath,
+        ["--import", "tsx", "src/cli.ts"],
+        kaizenLoopPrompt(),
+        {
+          env: {
+            ...process.env,
+            KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+            KAIZEN_WORKSPACE_DIR: workspace
+          },
+          allowFailure: true
+        }
+      );
+
+      expect(code).toBe(2);
+      expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH must stay within KAIZEN_WORKSPACE_DIR");
+      await expect(readFile(outsidePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  );
+
+  it("rejects a kaizen-loop result path that escapes through a symlink", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+    const workspace = join(dir, "workspace");
+    const outsideDir = join(dir, "outside");
+    const outsidePath = join(outsideDir, "verify-result.json");
+    await mkdir(workspace);
+    await mkdir(outsideDir);
+    await symlink(outsideDir, join(workspace, "results"));
+
+    const { stderr, code } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      kaizenLoopPrompt(),
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: "results/verify-result.json",
+          KAIZEN_WORKSPACE_DIR: workspace
+        },
+        allowFailure: true
+      }
+    );
+
+    expect(code).toBe(2);
+    expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR");
+    await expect(readFile(outsidePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("needs context for kaizen-loop prompts with only a changed-file inventory", async () => {
@@ -213,7 +270,8 @@ Return a verdict.
       {
         env: {
           ...process.env,
-          KAIZEN_VERIFIER_RESULT_PATH: resultPath
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_WORKSPACE_DIR: dir
         }
       }
     );
@@ -267,7 +325,8 @@ Return a verdict.
       {
         env: {
           ...process.env,
-          KAIZEN_VERIFIER_RESULT_PATH: resultPath
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_WORKSPACE_DIR: dir
         }
       }
     );
@@ -902,6 +961,34 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.final_verdict).toBe("mergeable");
   });
 });
+
+function kaizenLoopPrompt(): string {
+  return `# Issue
+
+Keep verifier artifacts inside the workspace.
+
+# Builder result
+
+Added a result path check.
+
+# Mechanical verification
+
+- [x] pnpm test
+
+# Changed files
+
+- packages/core/src/cli.ts
+
+# Diff
+
+diff --git a/packages/core/src/cli.ts b/packages/core/src/cli.ts
++validateResultPath()
+
+# Decision rules
+
+Return a verdict.
+`;
+}
 
 async function writePackageManifest(
   dir: string,

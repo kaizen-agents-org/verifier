@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { access, readFile, writeFile } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { access, lstat, readFile, realpath, writeFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
 import { VerdictInputSchema } from "./types.js";
@@ -143,8 +143,49 @@ async function runKaizenLoopMode(): Promise<{
     reason
   };
 
-  await writeFile(process.env.KAIZEN_VERIFIER_RESULT_PATH!, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  const resultPath = await resolveKaizenResultPath(process.env.KAIZEN_VERIFIER_RESULT_PATH!);
+  await writeFile(resultPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   return payload;
+}
+
+async function resolveKaizenResultPath(configuredPath: string): Promise<string> {
+  const workspace = resolve(process.env.KAIZEN_WORKSPACE_DIR ?? process.cwd());
+  const resultPath = resolve(workspace, configuredPath);
+  if (isPathOutside(workspace, resultPath)) {
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH must stay within KAIZEN_WORKSPACE_DIR.");
+  }
+
+  let ancestor = resultPath;
+  while (!(await pathEntryExists(ancestor))) {
+    const parent = resolve(ancestor, "..");
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+
+  const [realWorkspace, realAncestor] = await Promise.all([
+    realpath(workspace),
+    realpath(ancestor)
+  ]);
+  if (isPathOutside(realWorkspace, realAncestor)) {
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR.");
+  }
+
+  return resultPath;
+}
+
+function isPathOutside(parent: string, child: string): boolean {
+  const relativePath = relative(parent, child);
+  return relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
+}
+
+async function pathEntryExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 function parseKaizenLoopPrompt(prompt: string) {

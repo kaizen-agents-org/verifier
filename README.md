@@ -391,9 +391,15 @@ passes a verifier prompt on stdin, and expects a compact payload at
 `KAIZEN_VERIFIER_RESULT_PATH`.
 
 ```sh
+KAIZEN_WORKSPACE_DIR=/path/to/workspace \
 KAIZEN_VERIFIER_RESULT_PATH=.kaizen/verifier/verify-result.json \
 verifier < prompt.txt
 ```
+
+Relative result paths are resolved from `KAIZEN_WORKSPACE_DIR`, or from the
+current working directory when it is unset. The resolved result path must stay
+inside that workspace; paths that escape it directly or through symbolic links
+are rejected before the result is written.
 
 The integration payload is:
 
