@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { access, readFile, writeFile } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
 import { VerdictInputSchema } from "./types.js";
@@ -143,7 +143,9 @@ async function runKaizenLoopMode(): Promise<{
     reason
   };
 
-  await writeFile(process.env.KAIZEN_VERIFIER_RESULT_PATH!, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  const resultPath = resolve(process.env.KAIZEN_VERIFIER_RESULT_PATH!);
+  await mkdir(dirname(resultPath), { recursive: true });
+  await writeFile(resultPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   return payload;
 }
 
