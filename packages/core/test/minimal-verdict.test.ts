@@ -624,6 +624,22 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("treats a YAML anchor as a prefix to an authorization policy block", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "+policy: &default\n" +
+        "+  effect: Allow\n" +
+        "+  principals: [admin]",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("treats a multiline authorization policy array as auth/authz code", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Configure a multiline authorization policy",
@@ -839,6 +855,7 @@ describe("evaluateMinimalVerdict", () => {
     "policy: allowlist-sync",
     "policy: allowOverwrite",
     "policy: accessLogRotate",
+    "policy: authoritative",
     "policy: pull-push",
     "policy: retryPolicy",
     '"policy": "always"',

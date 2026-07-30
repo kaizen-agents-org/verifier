@@ -332,7 +332,7 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
 
       const policyIndent = policyProperty.indent;
       const policyValue = /\.ya?ml$/i.test(line.path)
-        ? stripYamlComment(policyProperty.value)
+        ? stripYamlNodeProperties(stripYamlComment(policyProperty.value))
         : policyProperty.value;
       const structuredOpener = getUnterminatedStructure(policyValue);
       const blockScalar = /^[|>][-+]?\d*$/.test(policyValue);
@@ -617,6 +617,10 @@ function stripYamlComment(value: string): string {
   return value;
 }
 
+function stripYamlNodeProperties(value: string): string {
+  return value.replace(/^(?:(?:&[\w.-]+|![^\s,[\]{}]+)\s*)+/, "").trim();
+}
+
 function extractPropertyValue(input: string): string {
   let quote = "";
   let escaped = false;
@@ -688,8 +692,23 @@ function isAuthorizationPath(path: string): boolean {
 
 function isAuthorizationPolicyValue(value: string): boolean {
   const normalized = value.replace(/^["']|["'],?$/g, "");
+  const tokens = normalized.match(/[A-Z]+(?=[A-Z][a-z]|$)|[A-Z]?[a-z]+/g) ?? [];
+  const authorizationTokens = new Set([
+    "admin",
+    "owner",
+    "auth",
+    "authn",
+    "authz",
+    "authorization",
+    "permission",
+    "permissions",
+    "role",
+    "roles",
+    "rbac",
+    "mfa"
+  ]);
   return (
-    /(?:admin|owner|auth|authoriz|permissions?|roles?|rbac|mfa)/i.test(normalized) ||
+    tokens.some((token) => authorizationTokens.has(token.toLowerCase())) ||
     /(?:^|[^A-Za-z])(?:access|allow|deny)(?:$|[^A-Za-z])/i.test(normalized) ||
     /^(?:can|require|must)[A-Z_]/.test(normalized)
   );
