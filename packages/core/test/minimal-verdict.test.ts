@@ -640,6 +640,20 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it("scans an authorization scalar after a verbatim YAML tag containing a comma", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/config/service.yml b/config/service.yml\n" +
+        "+policy: !<tag:example.com,2026:policy> ownerOnly",
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("treats a multiline authorization policy array as auth/authz code", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Configure a multiline authorization policy",
@@ -880,7 +894,9 @@ describe("evaluateMinimalVerdict", () => {
     "const value = 1; // { policy: admin }",
     "const matcher = /{ policy: admin }/;",
     "return /{ policy: admin }/;",
-    "const predicate = () => /{ policy: admin }/;"
+    "const predicate = () => /{ policy: admin }/;",
+    "const label = `{ policy: admin }`;",
+    "const label = `${name} policy: admin`;"
   ])("ignores policy-shaped text inside the string literal %s", (line) => {
     const verdict = evaluateMinimalVerdict({
       task: "Update a service label",

@@ -618,7 +618,7 @@ function stripYamlComment(value: string): string {
 }
 
 function stripYamlNodeProperties(value: string): string {
-  return value.replace(/^(?:(?:&[\w.-]+|![^\s,[\]{}]+)\s*)+/, "").trim();
+  return value.replace(/^(?:(?:&[\w.-]+|!<[^>]+>|![^\s,[\]{}]+)\s*)+/, "").trim();
 }
 
 function extractPropertyValue(input: string): string {
@@ -640,6 +640,10 @@ function extractPropertyValue(input: string): string {
     }
     if (character === '"' || character === "'") {
       quote = character;
+    } else if (character === "!" && input[index + 1] === "<") {
+      const tagEnd = input.indexOf(">", index + 2);
+      if (tagEnd < 0) break;
+      index = tagEnd;
     } else if (character === "[" || character === "{") {
       depth += 1;
     } else if (character === "]" || character === "}") {
