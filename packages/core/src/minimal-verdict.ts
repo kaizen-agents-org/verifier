@@ -341,7 +341,16 @@ function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
     for (const candidate of lines.slice(index + 1)) {
       if (candidate.path !== line.path || candidate.hunk !== line.hunk) break;
       if (structuredOpener) {
-        if (line.kind !== "context" && candidate.kind !== line.kind && candidate.kind !== "context") break;
+        if (line.kind !== "context") {
+          if (replacementKind && candidate.kind === replacementKind) continue;
+          if (candidate.kind !== line.kind && candidate.kind !== "context") {
+            if (!enteredBlock && !replacementKind) {
+              replacementKind = candidate.kind;
+              continue;
+            }
+            break;
+          }
+        }
         enteredBlock = true;
         blockLines.push(candidate);
         structuredValue += `\n${candidate.content}`;
@@ -424,6 +433,11 @@ function findInlinePolicyValueStart(content: string): number | null {
       quote = character;
       continue;
     }
+    const assignment = /^(?:(?:const|let|var)\s+policy|(?:[A-Za-z_$][\w$]*\.)+policy)\s*=\s*/i.exec(
+      content.slice(index)
+    );
+    const hasTokenBoundary = index === 0 || !/[\w$]/.test(content[index - 1] ?? "");
+    if (assignment && hasTokenBoundary) return index + assignment[0].length;
     if (character !== "{" && character !== ",") continue;
     const property = /^[{,]\s*(?:(["'])policy\1|policy)\s*[:=]\s*/i.exec(content.slice(index));
     if (property) return index + property[0].length;

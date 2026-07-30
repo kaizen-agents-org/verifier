@@ -657,6 +657,23 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
   });
 
+  it.each([
+    'const policy = { effect: "Allow", principals: ["admin"] };',
+    'config.policy = { effect: "Allow", principals: ["admin"] };'
+  ])("treats the policy assignment %s as auth/authz code", (assignment) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Configure an authorization policy",
+      diff:
+        "diff --git a/src/config.ts b/src/config.ts\n" +
+        `+${assignment}`,
+      verifyLogs: "all tests passed",
+      builderReport: "Configured the authorization policy."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("auth/authz"))).toBe(true);
+  });
+
   it("finds authorization properties after another property on a partial object line", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Configure an object authorization policy",
@@ -742,6 +759,25 @@ describe("evaluateMinimalVerdict", () => {
 
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.evidence?.includes("-policy:"))).toBe(true);
+  });
+
+  it("scans a removed structured policy past its replacement header", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Rename an authorization policy object",
+      diff:
+        "diff --git a/config/service.json b/config/service.json\n" +
+        "@@ -1,4 +1,4 @@\n" +
+        '-\"policy\": {\n' +
+        '+\"configuration\": {\n' +
+        ' \"effect\": \"Allow\",\n' +
+        ' \"principals\": [\"admin\"]\n' +
+        " }",
+      verifyLogs: "all tests passed",
+      builderReport: "Renamed the policy object."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.evidence?.includes('-\"policy\": {'))).toBe(true);
   });
 
   it("does not attribute added replacement children to a removed empty policy", () => {
