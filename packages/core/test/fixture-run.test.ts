@@ -4,8 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { calculateFixtureMetrics, fixtureRunExitCode, runFixtureEval } from "../src/eval/fixture-run.js";
-import type { FixtureCaseResult, FixtureRunResult } from "../src/eval/fixture-run.js";
+import {
+  assessFixturePolicy,
+  calculateFixtureMetrics,
+  fixtureRunExitCode,
+  runFixtureEval
+} from "../src/eval/fixture-run.js";
+import type {
+  FixtureCaseResult,
+  FixtureEvalPolicy,
+  FixtureRunResult
+} from "../src/eval/fixture-run.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -49,6 +58,17 @@ function runResult(cases: FixtureCaseResult[], harnessErrors = 0): FixtureRunRes
         golden: { total: 0, passed: 0, failed: 0 }
       }
     },
+    adjustedMetrics: {
+      recall: 0,
+      verdictAgreement: 0
+    },
+    acceptedDebt: {
+      activeCount: 0,
+      retiredCount: 0,
+      activeCaseIds: [],
+      retiredCaseIds: []
+    },
+    gateFailures: [],
     cases,
     harnessErrorDetails: []
   };
@@ -71,6 +91,13 @@ function metricFixture(
     actual: { verdict: actualVerdict, confidence: 60 },
     expected: { verdict: expectedVerdict }
   };
+}
+
+function policy(
+  knownGapDebt: FixtureEvalPolicy["knownGapDebt"],
+  baseline = { rawRecallMin: 0, rawVerdictAgreementMin: 0 }
+): FixtureEvalPolicy {
+  return { baseline, knownGapDebt };
 }
 
 describe("fixture eval exit status", () => {
@@ -104,6 +131,13 @@ describe("fixture eval exit status", () => {
     expect(fixtureRunExitCode(runResult([fixtureResult(false, true)], 1))).toBe(1);
   });
 
+  it("fails when the fixture policy gate fails", () => {
+    const result = runResult([fixtureResult(false, true)]);
+    result.gateFailures.push("known gap fixture has no approved debt");
+
+    expect(fixtureRunExitCode(result)).toBe(1);
+  });
+
   it("reports accepted gaps separately from unexpected failures", () => {
     const result = runResult([
       fixtureResult(true),
@@ -131,6 +165,112 @@ describe("fixture metrics", () => {
     expect(result.fpRate).toBe(0.5);
     expect(result.falsePositiveCases).toBe(1);
     expect(result.verdictAgreement).toBe(0.5);
+  });
+});
+
+describe("fixture known-gap debt policy", () => {
+  const debtMetadata = {
+    reason: "Requires semantic reproduction.",
+    owner: "kaizen-agents-org/verifier",
+    followUp: "https://github.com/kaizen-agents-org/verifier/issues/81",
+    introducedOn: "2026-07-22"
+  };
+
+  it("rejects unauthorized known-gap growth", () => {
+    const falseNegative = metricFixture("new-gap", true, "mergeable", "conditional");
+    falseNegative.expected.knownGap = true;
+    const metrics = calculateFixtureMetrics([falseNegative], 0);
+
+    const result = assessFixturePolicy([falseNegative], metrics, policy([]));
+
+    expect(result.gateFailures).toContain("known gap new-gap has no approved active debt record");
+  });
+
+  it("reports approved debt separately without hiding raw metrics", () => {
+    const falseNegative = metricFixture("approved-gap", true, "mergeable", "conditional");
+    falseNegative.expected.knownGap = true;
+    const metrics = calculateFixtureMetrics([falseNegative], 0);
+
+    const result = assessFixturePolicy(
+      [falseNegative],
+      metrics,
+      policy([{ caseId: "approved-gap", ...debtMetadata, status: "active" }])
+    );
+
+    expect(metrics).toMatchObject({ recall: 0, verdictAgreement: 0 });
+    expect(result.adjustedMetrics).toEqual({ recall: 1, verdictAgreement: 1 });
+    expect(result.acceptedDebt).toMatchObject({
+      activeCount: 1,
+      retiredCount: 0,
+      activeCaseIds: ["approved-gap"]
+    });
+    expect(result.gateFailures).toEqual([]);
+  });
+
+  it("accepts debt repayment only when the retained case passes", () => {
+    const repaired = metricFixture("repaired-gap", true, "conditional", "conditional");
+    const metrics = calculateFixtureMetrics([repaired], 0);
+
+    const result = assessFixturePolicy(
+      [repaired],
+      metrics,
+      policy([
+        {
+          caseId: "repaired-gap",
+          ...debtMetadata,
+          status: "retired",
+          retiredOn: "2026-07-30"
+        }
+      ])
+    );
+
+    expect(result.acceptedDebt).toMatchObject({
+      activeCount: 0,
+      retiredCount: 1,
+      retiredCaseIds: ["repaired-gap"]
+    });
+    expect(result.adjustedMetrics).toEqual({ recall: 1, verdictAgreement: 1 });
+    expect(result.gateFailures).toEqual([]);
+  });
+
+  it("rejects retirement by deleting the case or only removing knownGap", () => {
+    const stillFailing = metricFixture("repaid-gap", true, "mergeable", "conditional");
+    const debt: FixtureEvalPolicy["knownGapDebt"][number] = {
+      caseId: "repaid-gap",
+      ...debtMetadata,
+      status: "retired",
+      retiredOn: "2026-07-30"
+    };
+
+    const missing = assessFixturePolicy([], calculateFixtureMetrics([], 0), policy([debt]));
+    const relabeled = assessFixturePolicy(
+      [stillFailing],
+      calculateFixtureMetrics([stillFailing], 0),
+      policy([debt])
+    );
+
+    expect(missing.gateFailures).toContain(
+      "retired known-gap debt repaid-gap must retain its fixture case"
+    );
+    expect(relabeled.gateFailures).toContain(
+      "retired known-gap debt repaid-gap does not pass"
+    );
+  });
+
+  it("rejects raw recall and verdict-agreement regressions", () => {
+    const falseNegative = metricFixture("regression", true, "mergeable", "conditional");
+    const metrics = calculateFixtureMetrics([falseNegative], 0);
+
+    const result = assessFixturePolicy(
+      [falseNegative],
+      metrics,
+      policy([], { rawRecallMin: 0.75, rawVerdictAgreementMin: 0.8 })
+    );
+
+    expect(result.gateFailures).toContain("raw recall 0.0000 fell below baseline 0.7500");
+    expect(result.gateFailures).toContain(
+      "raw verdict agreement 0.0000 fell below baseline 0.8000"
+    );
   });
 });
 

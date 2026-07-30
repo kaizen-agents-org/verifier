@@ -1,0 +1,32 @@
+{
+  "baseline": {
+    "rawRecallMin": 0.7273,
+    "rawVerdictAgreementMin": 0.7857
+  },
+  "knownGapDebt": [
+    {
+      "caseId": "sb-005-file-handle-leak",
+      "reason": "Detecting error-path resource leaks requires the planned Stage 4 reproduction capability.",
+      "owner": "kaizen-agents-org/verifier",
+      "followUp": "https://github.com/kaizen-agents-org/verifier/issues/81",
+      "introducedOn": "2026-07-22",
+      "status": "active"
+    },
+    {
+      "caseId": "sb-007-multibyte-cache-collision",
+      "reason": "Detecting multibyte cache-key collisions requires the planned Stage 4 reproduction capability.",
+      "owner": "kaizen-agents-org/verifier",
+      "followUp": "https://github.com/kaizen-agents-org/verifier/issues/81",
+      "introducedOn": "2026-07-22",
+      "status": "active"
+    },
+    {
+      "caseId": "sb-010-intent-implementation-mismatch",
+      "reason": "Detecting semantic intent mismatches requires primary-source claim extraction and diff comparison.",
+      "owner": "kaizen-agents-org/verifier",
+      "followUp": "https://github.com/kaizen-agents-org/verifier/issues/81",
+      "introducedOn": "2026-07-22",
+      "status": "active"
+    }
+  ]
+}

@@ -4,12 +4,15 @@
 
 ## MVP implementation
 
-The repository now includes an executable MVP harness for the deterministic
-verdict contract:
+The repository includes executable harnesses for the deterministic verdict
+contract and repository fixtures:
 
 ```sh
 pnpm eval
 ```
+
+This root command runs both gates. The compact verdict harness remains available
+on its own as `pnpm --filter @verifier/core eval`.
 
 The committed corpus lives under `packages/core/eval/corpus/seeded` and
 `packages/core/eval/corpus/golden`. Cases are JSON for the MVP so the harness can
@@ -22,8 +25,9 @@ does not regress into false-positive blockers. The command emits JSON metrics,
 including `verdictAgreement` and `falsePositiveRate`, and exits non-zero when any
 case fails or the MVP threshold gate is not met.
 
-The repository-fixture pipeline described in §2 is available separately as
-`pnpm eval:fixtures`; it writes its measured baseline to `fixtures/metrics.json`.
+The repository-fixture pipeline described in §2 is also available separately as
+`pnpm eval:fixtures`; it writes its measured report to `fixtures/metrics.json`
+and gates it with `fixtures/eval-policy.json`.
 
 The committed MVP threshold file is `packages/core/eval/thresholds.json`.
 It currently gates the metrics implemented by the MVP harness:
@@ -89,12 +93,12 @@ expected:
                           # 指定時は列挙した区分のいずれかに一致すれば期待判定とみなす。
                           # verdict と同時指定しない（混在結果ケースは verdictAnyOf を使う）
   confidenceMax: 95       # 任意。確信度の上限期待（「確信度が下がること」の検証用）
-  knownGap: false          # 任意。デフォルトfalse。trueの場合、このケースがfailしても
-                          # eval:fixturesの終了コードには反映されない（既知の未実装ギャップ
-                          # を赤いまま可視化して記録するためのフラグ）。
+  knownGap: false          # 任意。デフォルトfalse。trueの場合、承認済みのactive debt
+                          # recordがあればfailを受容する（既知の未実装ギャップを赤いまま
+                          # 可視化して記録するためのフラグ）。
                           # 現在パイプラインが到達できない正しい期待値を設定しつつ、
                           # 「expectedを実装の現在の出力に合わせて書き換える」ことを防ぐ。
-                          # 追跡issueをdescriptionまたはコメントで参照すること（例: #104）。
+                          # fixtures/eval-policy.jsonにも必ず債務メタデータを記録する。
   findings:               # 期待Finding（検出率の分母）
     - category: security
       locationFile: src/routes/admin.ts
@@ -116,6 +120,20 @@ golden:                 # goldenのみ
     - node test/verify-replay.js
 timeoutMinutes: 15
 ```
+
+### 2.1.1 known-gap debt lifecycle
+
+`knownGap: true` は fixture 単独では承認にならない。
+`fixtures/eval-policy.json` の `knownGapDebt` に同じ `caseId` の `active` recordを追加し、
+検出できない理由、owner、follow-up、導入日を記録する。レビューでは正しい期待値を
+保っていること、実際の結果が false negative であること、follow-up が具体的であることを
+確認する。recordがない追加、recordだけ残したケース削除、`knownGap` だけの解除は
+fixture gateを失敗させる。
+
+返済時は fixture を削除せず、実装修正によってケースを合格させる。同じ変更で
+`knownGap` を削除し、debt recordを `retired` にして `retiredOn` を記録する。retired
+recordは履歴として残り、対応するケースが存在し、known gapでなく、合格していることを
+gateが継続確認する。したがって active debt count は減る一方、返済の証跡は失われない。
 
 ### 2.2 1ケースの実行手順（packages/core/src/eval/fixture-run.ts）
 
@@ -225,7 +243,12 @@ test(`${driver.targetType} clean run has no failures`, async () => {
 ## 4. メトリクス定義
 
 `fixture-run.ts` がrepo-fixtureコーパス全件にVerifierを実行し、
-`fixtures/metrics.json` を出力する。
+`fixtures/metrics.json` を出力する。`metrics.recall` と
+`metrics.verdictAgreement` は accepted debt を含めても補正しない raw 値である。
+`adjustedMetrics` は承認済み active debt を受容した結果を別に示し、
+`acceptedDebt` は active/retired の件数と case ID を示す。raw 値が
+`fixtures/eval-policy.json` の committed baseline を下回る場合は、known-gap debtが
+承認済みでも非0終了する。
 
 | 指標 | 定義 |
 |---|---|

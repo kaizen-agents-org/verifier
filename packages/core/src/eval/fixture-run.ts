@@ -14,6 +14,7 @@ const execFileAsync = promisify(execFile);
 const NEUTRAL_BASE_COMMIT_MESSAGE = "base";
 const NEUTRAL_HEAD_COMMIT_MESSAGE = "apply changes";
 const FULL_GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const FixtureExpectedSchema = z
   .object({
@@ -62,7 +63,42 @@ const FixtureCaseSchema = z.object({
   timeoutMinutes: z.number().positive().default(15)
 });
 
+const KnownGapDebtBaseSchema = z.object({
+  caseId: z.string().min(1),
+  reason: z.string().min(1),
+  owner: z.string().min(1),
+  followUp: z.string().min(1),
+  introducedOn: z.string().regex(ISO_DATE_PATTERN)
+});
+
+const FixtureEvalPolicySchema = z.object({
+  baseline: z.object({
+    rawRecallMin: z.number().min(0).max(1),
+    rawVerdictAgreementMin: z.number().min(0).max(1)
+  }),
+  knownGapDebt: z.array(
+    z.discriminatedUnion("status", [
+      KnownGapDebtBaseSchema.extend({ status: z.literal("active") }),
+      KnownGapDebtBaseSchema.extend({
+        status: z.literal("retired"),
+        retiredOn: z.string().regex(ISO_DATE_PATTERN)
+      })
+    ])
+  )
+}).superRefine((policy, context) => {
+  policy.knownGapDebt.forEach((debt, index) => {
+    if (debt.status === "retired" && debt.retiredOn < debt.introducedOn) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "retiredOn must not precede introducedOn",
+        path: ["knownGapDebt", index, "retiredOn"]
+      });
+    }
+  });
+});
+
 export type FixtureCase = z.infer<typeof FixtureCaseSchema>;
+export type FixtureEvalPolicy = z.infer<typeof FixtureEvalPolicySchema>;
 
 export interface FixtureCaseResult {
   id: string;
@@ -98,6 +134,17 @@ export interface FixtureRunResult {
   generatedAt: string;
   corpusDir: string;
   metrics: FixtureMetrics;
+  adjustedMetrics: {
+    recall: number;
+    verdictAgreement: number;
+  };
+  acceptedDebt: {
+    activeCount: number;
+    retiredCount: number;
+    activeCaseIds: string[];
+    retiredCaseIds: string[];
+  };
+  gateFailures: string[];
   cases: FixtureCaseResult[];
   harnessErrorDetails: Array<{ id: string; message: string }>;
 }
@@ -105,13 +152,18 @@ export interface FixtureRunResult {
 export interface RunFixtureEvalOptions {
   corpusDir?: string;
   outputFile?: string;
+  policyFile?: string | false;
 }
 
 export function fixtureRunExitCode(result: FixtureRunResult): 0 | 1 {
   const hasUnexpectedFailure = result.cases.some(
     (fixtureCase) => !fixtureCase.passed && fixtureCase.expected.knownGap !== true
   );
-  return result.metrics.harnessErrors === 0 && !hasUnexpectedFailure ? 0 : 1;
+  return result.metrics.harnessErrors === 0 &&
+    !hasUnexpectedFailure &&
+    result.gateFailures.length === 0
+    ? 0
+    : 1;
 }
 
 export async function runFixtureEval(options: RunFixtureEvalOptions = {}): Promise<FixtureRunResult> {
@@ -135,10 +187,17 @@ export async function runFixtureEval(options: RunFixtureEvalOptions = {}): Promi
   }
 
   const metrics = calculateFixtureMetrics(results, harnessErrorDetails.length);
+  const policy = await loadFixtureEvalPolicy(options.policyFile, options.corpusDir !== undefined);
+  const policyAssessment = policy
+    ? assessFixturePolicy(results, metrics, policy)
+    : emptyPolicyAssessment(metrics);
   const runResult: FixtureRunResult = {
     generatedAt: new Date().toISOString(),
     corpusDir: options.corpusDir ? corpusDir : "fixtures/corpus",
     metrics,
+    adjustedMetrics: policyAssessment.adjustedMetrics,
+    acceptedDebt: policyAssessment.acceptedDebt,
+    gateFailures: policyAssessment.gateFailures,
     cases: results,
     harnessErrorDetails
   };
@@ -323,6 +382,139 @@ export function calculateFixtureMetrics(results: FixtureCaseResult[], harnessErr
   };
 }
 
+export function assessFixturePolicy(
+  results: FixtureCaseResult[],
+  metrics: FixtureMetrics,
+  policy: FixtureEvalPolicy
+): Pick<FixtureRunResult, "adjustedMetrics" | "acceptedDebt" | "gateFailures"> {
+  const gateFailures: string[] = [];
+  const casesById = new Map<string, FixtureCaseResult>();
+  const duplicateCaseIds = new Set<string>();
+  for (const result of results) {
+    if (casesById.has(result.id)) duplicateCaseIds.add(result.id);
+    casesById.set(result.id, result);
+  }
+  for (const caseId of duplicateCaseIds) {
+    gateFailures.push(`duplicate fixture case id: ${caseId}`);
+  }
+
+  const debtByCaseId = new Map<string, FixtureEvalPolicy["knownGapDebt"][number]>();
+  const duplicateDebtIds = new Set<string>();
+  for (const debt of policy.knownGapDebt) {
+    if (debtByCaseId.has(debt.caseId)) duplicateDebtIds.add(debt.caseId);
+    debtByCaseId.set(debt.caseId, debt);
+  }
+  for (const caseId of duplicateDebtIds) {
+    gateFailures.push(`duplicate known-gap debt record: ${caseId}`);
+  }
+
+  const activeDebts = policy.knownGapDebt.filter((debt) => debt.status === "active");
+  const retiredDebts = policy.knownGapDebt.filter((debt) => debt.status === "retired");
+  const activeDebtIds = new Set(activeDebts.map((debt) => debt.caseId));
+
+  for (const result of results) {
+    if (result.expected.knownGap && !activeDebtIds.has(result.id)) {
+      gateFailures.push(`known gap ${result.id} has no approved active debt record`);
+    }
+  }
+
+  for (const debt of activeDebts) {
+    const result = casesById.get(debt.caseId);
+    if (!result) {
+      gateFailures.push(`active known-gap debt ${debt.caseId} has no fixture case`);
+      continue;
+    }
+    if (!result.expected.knownGap) {
+      gateFailures.push(`active known-gap debt ${debt.caseId} is no longer marked knownGap`);
+    }
+    if (result.passed) {
+      gateFailures.push(`active known-gap debt ${debt.caseId} now passes and must be retired`);
+    }
+    if (!result.groundTruth.defect || isDefectDetected(result.actual.verdict)) {
+      gateFailures.push(`active known-gap debt ${debt.caseId} is not a false negative`);
+    }
+  }
+
+  for (const debt of retiredDebts) {
+    const result = casesById.get(debt.caseId);
+    if (!result) {
+      gateFailures.push(`retired known-gap debt ${debt.caseId} must retain its fixture case`);
+      continue;
+    }
+    if (result.expected.knownGap) {
+      gateFailures.push(`retired known-gap debt ${debt.caseId} is still marked knownGap`);
+    }
+    if (!result.passed) {
+      gateFailures.push(`retired known-gap debt ${debt.caseId} does not pass`);
+    }
+  }
+
+  if (metrics.recall < policy.baseline.rawRecallMin) {
+    gateFailures.push(
+      `raw recall ${formatRate(metrics.recall)} fell below baseline ${formatRate(
+        policy.baseline.rawRecallMin
+      )}`
+    );
+  }
+  if (metrics.verdictAgreement < policy.baseline.rawVerdictAgreementMin) {
+    gateFailures.push(
+      `raw verdict agreement ${formatRate(
+        metrics.verdictAgreement
+      )} fell below baseline ${formatRate(policy.baseline.rawVerdictAgreementMin)}`
+    );
+  }
+
+  const activeFalseNegatives = results.filter(
+    (result) =>
+      activeDebtIds.has(result.id) &&
+      result.groundTruth.defect &&
+      !isDefectDetected(result.actual.verdict)
+  ).length;
+  const activeDisagreements = results.filter(
+    (result) =>
+      activeDebtIds.has(result.id) &&
+      compareFixtureVerdict(result.expected, result.actual).length > 0
+  ).length;
+  const detectedDefects = results.filter(
+    (result) => result.groundTruth.defect && isDefectDetected(result.actual.verdict)
+  ).length;
+  const verdictMatches = results.filter(
+    (result) => compareFixtureVerdict(result.expected, result.actual).length === 0
+  ).length;
+
+  return {
+    adjustedMetrics: {
+      recall: ratio(detectedDefects + activeFalseNegatives, metrics.defectCases),
+      verdictAgreement: ratio(verdictMatches + activeDisagreements, metrics.totalCases)
+    },
+    acceptedDebt: {
+      activeCount: activeDebts.length,
+      retiredCount: retiredDebts.length,
+      activeCaseIds: activeDebts.map((debt) => debt.caseId).sort(),
+      retiredCaseIds: retiredDebts.map((debt) => debt.caseId).sort()
+    },
+    gateFailures
+  };
+}
+
+function emptyPolicyAssessment(
+  metrics: FixtureMetrics
+): Pick<FixtureRunResult, "adjustedMetrics" | "acceptedDebt" | "gateFailures"> {
+  return {
+    adjustedMetrics: {
+      recall: metrics.recall,
+      verdictAgreement: metrics.verdictAgreement
+    },
+    acceptedDebt: {
+      activeCount: 0,
+      retiredCount: 0,
+      activeCaseIds: [],
+      retiredCaseIds: []
+    },
+    gateFailures: []
+  };
+}
+
 function isDefectDetected(verdict: FinalVerdictKind): boolean {
   return verdict === "conditional" || verdict === "not_mergeable";
 }
@@ -379,12 +571,35 @@ async function loadFixtureCase(path: string): Promise<FixtureCase> {
   }
 }
 
+async function loadFixtureEvalPolicy(
+  policyFile: RunFixtureEvalOptions["policyFile"],
+  customCorpus: boolean
+): Promise<FixtureEvalPolicy | undefined> {
+  if (policyFile === false || (customCorpus && policyFile === undefined)) return undefined;
+  const path = resolve(policyFile ?? defaultFixtureEvalPolicyFile());
+  try {
+    const parsed = JSON.parse(await readFile(path, "utf8")) as unknown;
+    return FixtureEvalPolicySchema.parse(parsed);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to load fixture eval policy ${path}: ${message}`);
+  }
+}
+
 function ratio(numerator: number, denominator: number): number {
   return denominator === 0 ? 0 : Number((numerator / denominator).toFixed(4));
 }
 
+function formatRate(value: number): string {
+  return value.toFixed(4);
+}
+
 function defaultFixtureCorpusDir(): string {
   return resolve(dirname(fileURLToPath(import.meta.url)), "../../../../fixtures/corpus");
+}
+
+function defaultFixtureEvalPolicyFile(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), "../../../../fixtures/eval-policy.json");
 }
 
 function parseArgs(argv: string[]): RunFixtureEvalOptions {
@@ -395,6 +610,10 @@ function parseArgs(argv: string[]): RunFixtureEvalOptions {
       options.corpusDir = readValue(argv, ++index, arg);
     } else if (arg === "--output") {
       options.outputFile = readValue(argv, ++index, arg);
+    } else if (arg === "--policy") {
+      options.policyFile = readValue(argv, ++index, arg);
+    } else if (arg === "--no-policy") {
+      options.policyFile = false;
     } else if (arg === "--help" || arg === "-h") {
       process.stdout.write(usage());
       process.exit(0);
@@ -412,11 +631,11 @@ function readValue(argv: string[], index: number, flag: string): string {
 }
 
 function usage(): string {
-  return `Usage: pnpm --filter @verifier/core eval:fixtures [--corpus <dir>] [--output <file>]
+  return `Usage: pnpm --filter @verifier/core eval:fixtures [--corpus <dir>] [--output <file>] [--policy <file>] [--no-policy]
 
 Runs the fixtures/corpus (case.json + repo/ + bug.patch) EVAL.md-style corpus
 through the deterministic verifier check pipeline and prints metrics and
-per-case results as JSON.
+per-case results as JSON. The default corpus is gated by fixtures/eval-policy.json.
 `;
 }
 

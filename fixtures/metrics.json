@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-19T04:29:05.445Z",
+  "generatedAt": "2026-07-30T06:11:10.635Z",
   "corpusDir": "fixtures/corpus",
   "metrics": {
     "totalCases": 14,
@@ -27,6 +27,21 @@
       }
     }
   },
+  "adjustedMetrics": {
+    "recall": 1,
+    "verdictAgreement": 1
+  },
+  "acceptedDebt": {
+    "activeCount": 3,
+    "retiredCount": 0,
+    "activeCaseIds": [
+      "sb-005-file-handle-leak",
+      "sb-007-multibyte-cache-collision",
+      "sb-010-intent-implementation-mismatch"
+    ],
+    "retiredCaseIds": []
+  },
+  "gateFailures": [],
   "cases": [
     {
       "id": "gp-001-pr-75-merged-success",
@@ -167,7 +182,7 @@
       "failures": [],
       "actual": {
         "verdict": "not_mergeable",
-        "confidence": 76
+        "confidence": 81
       },
       "expected": {
         "verdict": "not_mergeable",
