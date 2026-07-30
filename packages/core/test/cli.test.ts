@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
-import { link, lstat, mkdir, mkdtemp, readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { link, lstat, mkdir, mkdtemp, open, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -284,6 +285,44 @@ Return "block_pr" when the builder must revise the change before a PR is created
           allowFailure: true
         }
       );
+
+      expect(code).toBe(2);
+      expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH must be a regular file");
+    }
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "rejects a reader-attached FIFO before consuming stdin",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+      const workspace = join(dir, "workspace");
+      const resultPath = join(workspace, "verify-result.json");
+      await mkdir(workspace);
+      await execFileAsync("mkfifo", [resultPath]);
+      const reader = await open(resultPath, constants.O_RDONLY | constants.O_NONBLOCK);
+
+      const child = spawn(process.execPath, ["--import", "tsx", "src/cli.ts"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
+          KAIZEN_WORKSPACE_DIR: workspace
+        },
+        stdio: ["pipe", "pipe", "pipe"]
+      });
+      let stderr = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => {
+        stderr += chunk;
+      });
+
+      const code = await Promise.race([
+        new Promise<number | null>((resolve) => child.once("close", resolve)),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("verifier waited for stdin")), 2_000)
+        )
+      ]);
+      await reader.close();
 
       expect(code).toBe(2);
       expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH must be a regular file");

@@ -205,6 +205,15 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
     }
     throw error;
   }
+  const initialStat = await resultHandle.stat();
+  if (!initialStat.isFile()) {
+    await resultHandle.close();
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH must be a regular file.");
+  }
+  if (initialStat.nlink !== 1) {
+    await resultHandle.close();
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely.");
+  }
   try {
     const realWorkspace = await realpath(workspace);
     return {
