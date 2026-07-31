@@ -755,6 +755,72 @@ describe("fixture known-gap debt policy", () => {
   });
 });
 
+describe("seeded fixture input boundaries", () => {
+  it("rejects base directories and patches outside the fixture case directory", async () => {
+    const corpusDir = await mkdtemp(join(tmpdir(), "verifier-seeded-boundary-"));
+    const escapedBaseCaseDir = join(corpusDir, "seeded", "external-base");
+    const escapedPatchCaseDir = join(corpusDir, "seeded", "external-patch");
+    try {
+      await mkdir(join(corpusDir, "shared-repo"), { recursive: true });
+      await writeFile(join(corpusDir, "shared-repo", "source.ts"), "export const value = 1;\n");
+      await mkdir(escapedBaseCaseDir, { recursive: true });
+      await writeFile(
+        join(escapedBaseCaseDir, "case.json"),
+        `${JSON.stringify({
+          id: "external-base",
+          kind: "seeded",
+          description: "external base directory",
+          groundTruth: { defect: false },
+          expected: { verdict: "mergeable" },
+          setup: { baseDir: "../../shared-repo", verifyCommands: [] },
+          timeoutMinutes: 1
+        })}\n`
+      );
+
+      await mkdir(join(escapedPatchCaseDir, "repo"), { recursive: true });
+      await writeFile(
+        join(escapedPatchCaseDir, "repo", "source.ts"),
+        "export const value = 1;\n"
+      );
+      await writeFile(join(corpusDir, "outside.patch"), "external patch\n");
+      await writeFile(
+        join(escapedPatchCaseDir, "case.json"),
+        `${JSON.stringify({
+          id: "external-patch",
+          kind: "seeded",
+          description: "external patch",
+          groundTruth: { defect: true },
+          expected: { verdict: "not_mergeable" },
+          setup: {
+            baseDir: "repo",
+            patch: "../../outside.patch",
+            verifyCommands: []
+          },
+          timeoutMinutes: 1
+        })}\n`
+      );
+
+      const result = await runFixtureEval({ corpusDir, policyFile: false });
+
+      expect(result.metrics.harnessErrors).toBe(2);
+      expect(result.harnessErrorDetails).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "external-base",
+            message: "setup.baseDir must stay within its fixture case directory"
+          }),
+          expect.objectContaining({
+            id: "external-patch",
+            message: "setup.patch must stay within its fixture case directory"
+          })
+        ])
+      );
+    } finally {
+      await rm(corpusDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("golden fixture replay", () => {
   it("uses a vendored replay without cloning the provenance repository", async () => {
     const corpusDir = await mkdtemp(join(tmpdir(), "verifier-golden-test-"));

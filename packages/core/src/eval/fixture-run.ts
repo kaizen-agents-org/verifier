@@ -11,7 +11,14 @@ import {
   writeFile
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import {
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep as pathSeparator
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -392,7 +399,11 @@ async function prepareSeededWorkspace(
   caseDir: string,
   workspace: string
 ): Promise<{ baseSha: string; verifyCommands: string[] }> {
-  const baseDir = resolve(caseDir, setup.baseDir);
+  const baseDir = await resolveFixtureCaseInput(
+    caseDir,
+    setup.baseDir,
+    "setup.baseDir"
+  );
   await copyDirectory(baseDir, workspace);
   await git(workspace, ["init", "-q", "-b", "main"]);
   await git(workspace, ["add", "-A"]);
@@ -400,13 +411,31 @@ async function prepareSeededWorkspace(
   const { stdout: baseSha } = await git(workspace, ["rev-parse", "HEAD"]);
 
   if (setup.patch) {
-    const patchPath = resolve(caseDir, setup.patch);
+    const patchPath = await resolveFixtureCaseInput(caseDir, setup.patch, "setup.patch");
     await git(workspace, ["apply", patchPath]);
     await git(workspace, ["add", "-A"]);
     await gitCommit(workspace, NEUTRAL_HEAD_COMMIT_MESSAGE);
   }
 
   return { baseSha: baseSha.trim(), verifyCommands: setup.verifyCommands };
+}
+
+async function resolveFixtureCaseInput(
+  caseDir: string,
+  inputPath: string,
+  field: "setup.baseDir" | "setup.patch"
+): Promise<string> {
+  const fixtureRoot = await realpath(resolve(caseDir));
+  const input = await realpath(resolve(fixtureRoot, inputPath));
+  const relativeInput = relative(fixtureRoot, input);
+  if (
+    isAbsolute(relativeInput) ||
+    relativeInput === ".." ||
+    relativeInput.startsWith(`..${pathSeparator}`)
+  ) {
+    throw new Error(`${field} must stay within its fixture case directory`);
+  }
+  return input;
 }
 
 async function prepareGoldenWorkspace(
