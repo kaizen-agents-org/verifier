@@ -804,19 +804,28 @@ async function loadFixtureEvalPolicy(
   }
 }
 
-async function loadPreviousFixtureEvalPolicy(
+export async function loadPreviousFixtureEvalPolicy(
   baseSha: string | undefined
 ): Promise<FixtureEvalPolicy> {
-  if (!baseSha) return BOOTSTRAP_FIXTURE_EVAL_POLICY;
-  if (!FULL_GIT_SHA_PATTERN.test(baseSha)) {
-    throw new Error(`Invalid BASE_SHA for fixture debt policy: ${baseSha}`);
+  const repositoryRoot = resolve(dirname(defaultFixtureEvalPolicyFile()), "..");
+  let comparisonSha = baseSha;
+  if (!comparisonSha) {
+    try {
+      const { stdout } = await git(repositoryRoot, ["rev-parse", "HEAD"]);
+      comparisonSha = stdout.trim();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to resolve HEAD for fixture debt policy: ${message}`);
+    }
+  }
+  if (!FULL_GIT_SHA_PATTERN.test(comparisonSha)) {
+    throw new Error(`Invalid BASE_SHA for fixture debt policy: ${comparisonSha}`);
   }
 
-  const repositoryRoot = resolve(dirname(defaultFixtureEvalPolicyFile()), "..");
   try {
-    await git(repositoryRoot, ["cat-file", "-e", `${baseSha}^{commit}`]);
+    await git(repositoryRoot, ["cat-file", "-e", `${comparisonSha}^{commit}`]);
   } catch {
-    throw new Error(`BASE_SHA is not an available commit for fixture debt policy: ${baseSha}`);
+    throw new Error(`BASE_SHA is not an available commit for fixture debt policy: ${comparisonSha}`);
   }
 
   let policyPathExists: boolean;
@@ -824,14 +833,16 @@ async function loadPreviousFixtureEvalPolicy(
     const { stdout } = await git(repositoryRoot, [
       "ls-tree",
       "--name-only",
-      baseSha,
+      comparisonSha,
       "--",
       FIXTURE_EVAL_POLICY_REPO_PATH
     ]);
     policyPathExists = stdout.trim() === FIXTURE_EVAL_POLICY_REPO_PATH;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to inspect fixture eval policy at BASE_SHA ${baseSha}: ${message}`);
+    throw new Error(
+      `Failed to inspect fixture eval policy at BASE_SHA ${comparisonSha}: ${message}`
+    );
   }
   if (!policyPathExists) {
     let isUnmodifiedBootstrapDescendant = false;
@@ -840,12 +851,12 @@ async function loadPreviousFixtureEvalPolicy(
         "merge-base",
         "--is-ancestor",
         FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA,
-        baseSha
+        comparisonSha
       ]);
       const { stdout } = await git(repositoryRoot, [
         "log",
         "--format=%H",
-        `${FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA}..${baseSha}`,
+        `${FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA}..${comparisonSha}`,
         "--",
         FIXTURE_EVAL_POLICY_REPO_PATH
       ]);
@@ -855,7 +866,7 @@ async function loadPreviousFixtureEvalPolicy(
     }
     if (!isUnmodifiedBootstrapDescendant) {
       throw new Error(
-        `Fixture eval policy is absent at unapproved bootstrap BASE_SHA ${baseSha}`
+        `Fixture eval policy is absent at unapproved bootstrap BASE_SHA ${comparisonSha}`
       );
     }
     return BOOTSTRAP_FIXTURE_EVAL_POLICY;
@@ -864,12 +875,14 @@ async function loadPreviousFixtureEvalPolicy(
   try {
     const { stdout } = await git(repositoryRoot, [
       "show",
-      `${baseSha}:${FIXTURE_EVAL_POLICY_REPO_PATH}`
+      `${comparisonSha}:${FIXTURE_EVAL_POLICY_REPO_PATH}`
     ]);
     return FixtureEvalPolicySchema.parse(JSON.parse(stdout) as unknown);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to load fixture eval policy from BASE_SHA ${baseSha}: ${message}`);
+    throw new Error(
+      `Failed to load fixture eval policy from BASE_SHA ${comparisonSha}: ${message}`
+    );
   }
 }
 

@@ -9,6 +9,7 @@ import {
   calculateFixtureMetrics,
   FixtureEvalPolicySchema,
   fixtureRunExitCode,
+  loadPreviousFixtureEvalPolicy,
   runFixtureEval
 } from "../src/eval/fixture-run.js";
 import type {
@@ -472,6 +473,34 @@ describe("fixture known-gap debt policy", () => {
     );
     expect(result.gateFailures).toContain(
       "raw verdict agreement baseline 0.6000 was lowered from 0.8000"
+    );
+  });
+
+  it("uses the HEAD policy to reject local rollback when BASE_SHA is absent", async () => {
+    const previousPolicy = await loadPreviousFixtureEvalPolicy(undefined);
+    const loweredPolicy: FixtureEvalPolicy = {
+      ...previousPolicy,
+      baseline: {
+        ...previousPolicy.baseline,
+        rawRecallMin: 0,
+        rawVerdictAgreementMin: 0
+      }
+    };
+
+    const result = assessFixturePolicy(
+      [],
+      calculateFixtureMetrics([], 0),
+      loweredPolicy,
+      previousPolicy
+    );
+
+    expect(previousPolicy.baseline.rawRecallMin).toBeGreaterThan(0);
+    expect(previousPolicy.baseline.rawVerdictAgreementMin).toBeGreaterThan(0);
+    expect(result.gateFailures).toContain(
+      `raw recall baseline 0.0000 was lowered from ${previousPolicy.baseline.rawRecallMin.toFixed(4)}`
+    );
+    expect(result.gateFailures).toContain(
+      `raw verdict agreement baseline 0.0000 was lowered from ${previousPolicy.baseline.rawVerdictAgreementMin.toFixed(4)}`
     );
   });
 });
