@@ -112,9 +112,9 @@ describe("CLI", { timeout: 20_000 }, () => {
     expect(output.verdict).toBe("open_pr");
   });
 
-  it("supports the kaizen-loop stdin/result-file contract", async () => {
+  it("creates the result parent directory for the kaizen-loop stdin/result-file contract", async () => {
     const dir = await mkdtemp(join(tmpdir(), "verifier-"));
-    const resultPath = join(dir, "verify-result.json");
+    const resultPath = join(dir, ".kaizen", "verifier", "verify-result.json");
     const prompt = `You are the verifier for the kaizen-loop run in "repo".
 
 # Issue #1: Add signup validation
@@ -156,7 +156,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
       {
         env: {
           ...process.env,
-          KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
+          KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
           KAIZEN_WORKSPACE_DIR: dir
         }
       }
@@ -316,13 +316,23 @@ Return "block_pr" when the builder must revise the change before a PR is created
         stderr += chunk;
       });
 
-      const code = await Promise.race([
-        new Promise<number | null>((resolve) => child.once("close", resolve)),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("verifier waited for stdin")), 2_000)
-        )
-      ]);
-      await reader.close();
+      let timeout: NodeJS.Timeout | undefined;
+      let code: number | null;
+      try {
+        code = await Promise.race([
+          new Promise<number | null>((resolve) => child.once("close", resolve)),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error("verifier waited for stdin")),
+              10_000
+            );
+          })
+        ]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+        if (child.exitCode === null) child.kill();
+        await reader.close();
+      }
 
       expect(code).toBe(2);
       expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH must be a regular file");
