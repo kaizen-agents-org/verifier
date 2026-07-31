@@ -136,10 +136,12 @@ export function calculateEvalMetrics(results: EvalCaseResult[]): EvalMetrics {
     const verdictMatched =
       result.expected.verdictAnyOf?.includes(result.actual.verdict) ||
       result.expected.verdict === result.actual.verdict;
-    const confidenceWithinMax =
-      result.expected.confidenceMax === undefined ||
-      result.actual.confidence <= result.expected.confidenceMax;
-    if (verdictMatched && confidenceWithinMax) {
+    const confidenceWithinBounds =
+      (result.expected.confidenceMin === undefined ||
+        result.actual.confidence >= result.expected.confidenceMin) &&
+      (result.expected.confidenceMax === undefined ||
+        result.actual.confidence <= result.expected.confidenceMax);
+    if (verdictMatched && confidenceWithinBounds) {
       verdictMatches += 1;
     }
 
