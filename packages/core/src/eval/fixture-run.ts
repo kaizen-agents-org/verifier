@@ -1012,6 +1012,43 @@ async function loadFixtureEvalPolicy(
   }
 }
 
+async function resolveLocalPolicyComparisonSha(repositoryRoot: string): Promise<string> {
+  const { stdout: headStdout } = await git(repositoryRoot, ["rev-parse", "HEAD"]);
+  const headSha = headStdout.trim();
+  const { stdout: policyStatus } = await git(repositoryRoot, [
+    "status",
+    "--porcelain",
+    "--",
+    FIXTURE_EVAL_POLICY_REPO_PATH
+  ]);
+  if (policyStatus.trim()) return headSha;
+
+  for (const baseRef of ["origin/HEAD", "origin/main"]) {
+    try {
+      await git(repositoryRoot, ["rev-parse", "--verify", `${baseRef}^{commit}`]);
+      const { stdout } = await git(repositoryRoot, ["merge-base", "HEAD", baseRef]);
+      const mergeBaseSha = stdout.trim();
+      if (FULL_GIT_SHA_PATTERN.test(mergeBaseSha) && mergeBaseSha !== headSha) {
+        return mergeBaseSha;
+      }
+    } catch {
+      // The checkout may not have a remote-tracking default branch.
+    }
+  }
+
+  try {
+    const { stdout } = await git(repositoryRoot, ["rev-parse", "HEAD^"]);
+    const priorSha = stdout.trim();
+    if (FULL_GIT_SHA_PATTERN.test(priorSha)) return priorSha;
+  } catch {
+    // A single-commit checkout has no prior policy to compare against.
+  }
+
+  throw new Error(
+    "Failed to resolve a prior commit for fixture debt policy; set BASE_SHA explicitly"
+  );
+}
+
 export async function loadPreviousFixtureEvalPolicy(
   baseSha: string | undefined,
   repositoryRootOverride?: string
@@ -1022,11 +1059,10 @@ export async function loadPreviousFixtureEvalPolicy(
   let comparisonSha = baseSha;
   if (!comparisonSha) {
     try {
-      const { stdout } = await git(repositoryRoot, ["rev-parse", "HEAD"]);
-      comparisonSha = stdout.trim();
+      comparisonSha = await resolveLocalPolicyComparisonSha(repositoryRoot);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to resolve HEAD for fixture debt policy: ${message}`);
+      throw new Error(`Failed to resolve local fixture debt policy base: ${message}`);
     }
   }
   if (!FULL_GIT_SHA_PATTERN.test(comparisonSha)) {

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
@@ -561,34 +561,56 @@ describe("fixture known-gap debt policy", () => {
   });
 
   it("uses the HEAD policy to reject local rollback when BASE_SHA is absent", async () => {
-    const previousPolicy = await loadPreviousFixtureEvalPolicy(undefined);
-    const loweredPolicy: FixtureEvalPolicy = {
-      ...previousPolicy,
-      baseline: {
-        ...previousPolicy.baseline,
-        rawRecallMin: 0,
-        rawVerdictAgreementMin: 0
-      }
-    };
+    const repository = await mkdtemp(join(tmpdir(), "verifier-dirty-policy-"));
+    const policyPath = join(repository, "fixtures", "eval-policy.json");
+    const committedPolicy = policy([], {
+      rawRecallMin: 0.75,
+      rawVerdictAgreementMin: 0.8,
+      debtCaseIds: []
+    });
+    const loweredPolicy = policy([]);
+    try {
+      await mkdir(dirname(policyPath), { recursive: true });
+      await writeFile(policyPath, `${JSON.stringify(committedPolicy, null, 2)}\n`);
+      await execFileAsync("git", ["init", "-q", "-b", "main"], { cwd: repository });
+      await execFileAsync("git", ["add", "."], { cwd: repository });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.email=fixture@example.invalid",
+          "-c",
+          "user.name=verifier-fixture",
+          "commit",
+          "-q",
+          "-m",
+          "committed policy"
+        ],
+        { cwd: repository }
+      );
+      await writeFile(policyPath, `${JSON.stringify(loweredPolicy, null, 2)}\n`);
 
-    const result = assessFixturePolicy(
-      [],
-      calculateFixtureMetrics([], 0),
-      loweredPolicy,
-      previousPolicy
-    );
+      const previousPolicy = await loadPreviousFixtureEvalPolicy(undefined, repository);
+      const result = assessFixturePolicy(
+        [],
+        calculateFixtureMetrics([], 0),
+        loweredPolicy,
+        previousPolicy
+      );
 
-    expect(previousPolicy.baseline.rawRecallMin).toBeGreaterThan(0);
-    expect(previousPolicy.baseline.rawVerdictAgreementMin).toBeGreaterThan(0);
-    expect(result.gateFailures).toContain(
-      `raw recall baseline 0.0000 was lowered from ${previousPolicy.baseline.rawRecallMin.toFixed(4)}`
-    );
-    expect(result.gateFailures).toContain(
-      `raw verdict agreement baseline 0.0000 was lowered from ${previousPolicy.baseline.rawVerdictAgreementMin.toFixed(4)}`
-    );
+      expect(previousPolicy).toEqual(committedPolicy);
+      expect(result.gateFailures).toContain(
+        "raw recall baseline 0.0000 was lowered from 0.7500"
+      );
+      expect(result.gateFailures).toContain(
+        "raw verdict agreement baseline 0.0000 was lowered from 0.8000"
+      );
+    } finally {
+      await rm(repository, { recursive: true, force: true });
+    }
   });
 
-  it("derives a legacy policy fingerprint from its base revision", async () => {
+  it("derives a legacy fingerprint from the branch base when BASE_SHA is absent", async () => {
     const repository = await mkdtemp(join(tmpdir(), "verifier-legacy-policy-"));
     const caseDir = join(
       repository,
@@ -654,11 +676,12 @@ describe("fixture known-gap debt policy", () => {
       const { stdout: baseSha } = await execFileAsync("git", ["rev-parse", "HEAD"], {
         cwd: repository
       });
-
-      const previousPolicy = await loadPreviousFixtureEvalPolicy(
-        baseSha.trim(),
-        repository
+      await execFileAsync(
+        "git",
+        ["update-ref", "refs/remotes/origin/main", baseSha.trim()],
+        { cwd: repository }
       );
+
       await writeFile(join(caseDir, "repo", "source.ts"), "export const value = 2;\n");
       const replacementHash = await calculateFixtureContentSha256(caseDir);
       const replacement = metricFixture(
@@ -669,11 +692,35 @@ describe("fixture known-gap debt policy", () => {
       );
       replacement.fixtureContentSha256 = replacementHash;
       const rewrittenDebt: FixtureEvalPolicy["knownGapDebt"][number] = {
-        ...previousPolicy.knownGapDebt[0]!,
+        ...debtMetadata,
+        caseId: "legacy-gap",
         fixtureContentSha256: replacementHash,
+        groundTruthDefect: true,
+        expectedVerdicts: ["conditional"],
         status: "retired",
         retiredOn: "2026-07-31"
       };
+      await writeFile(
+        join(repository, "fixtures", "eval-policy.json"),
+        `${JSON.stringify(policy([rewrittenDebt]), null, 2)}\n`
+      );
+      await execFileAsync("git", ["add", "."], { cwd: repository });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.email=fixture@example.invalid",
+          "-c",
+          "user.name=verifier-fixture",
+          "commit",
+          "-q",
+          "-m",
+          "replace fixture"
+        ],
+        { cwd: repository }
+      );
+
+      const previousPolicy = await loadPreviousFixtureEvalPolicy(undefined, repository);
 
       const result = assessFixturePolicy(
         [replacement],
