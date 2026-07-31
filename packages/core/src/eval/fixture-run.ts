@@ -808,7 +808,26 @@ async function loadPreviousFixtureEvalPolicy(
     throw new Error(`Failed to inspect fixture eval policy at BASE_SHA ${baseSha}: ${message}`);
   }
   if (!policyPathExists) {
-    if (baseSha !== FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA) {
+    let isUnmodifiedBootstrapDescendant = false;
+    try {
+      await git(repositoryRoot, [
+        "merge-base",
+        "--is-ancestor",
+        FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA,
+        baseSha
+      ]);
+      const { stdout } = await git(repositoryRoot, [
+        "log",
+        "--format=%H",
+        `${FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA}..${baseSha}`,
+        "--",
+        "fixtures/eval-policy.json"
+      ]);
+      isUnmodifiedBootstrapDescendant = stdout.trim().length === 0;
+    } catch {
+      isUnmodifiedBootstrapDescendant = false;
+    }
+    if (!isUnmodifiedBootstrapDescendant) {
       throw new Error(
         `Fixture eval policy is absent at unapproved bootstrap BASE_SHA ${baseSha}`
       );
