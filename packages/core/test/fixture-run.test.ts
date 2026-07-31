@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import {
   assessFixturePolicy,
+  calculateFixtureContentSha256,
   calculateFixtureMetrics,
   FixtureEvalPolicySchema,
   fixtureRunExitCode,
@@ -19,12 +20,14 @@ import type {
 } from "../src/eval/fixture-run.js";
 
 const execFileAsync = promisify(execFile);
+const FIXTURE_CONTENT_SHA256 = "a".repeat(64);
 
 function fixtureResult(passed: boolean, knownGap = false): FixtureCaseResult {
   return {
     id: "fixture",
     kind: "seeded",
     description: "fixture",
+    fixtureContentSha256: FIXTURE_CONTENT_SHA256,
     groundTruth: { defect: true },
     passed,
     failures: passed ? [] : ["unexpected verdict"],
@@ -87,6 +90,7 @@ function metricFixture(
     id,
     kind: "seeded",
     description: id,
+    fixtureContentSha256: FIXTURE_CONTENT_SHA256,
     groundTruth: { defect },
     passed,
     failures: passed ? [] : ["unexpected verdict"],
@@ -181,7 +185,8 @@ describe("fixture known-gap debt policy", () => {
     followUp: "https://github.com/kaizen-agents-org/verifier/issues/81",
     introducedOn: "2026-07-22",
     groundTruthDefect: true as const,
-    expectedVerdicts: ["conditional"] as const
+    expectedVerdicts: ["conditional"] as const,
+    fixtureContentSha256: FIXTURE_CONTENT_SHA256
   };
 
   it("rejects impossible calendar dates and duplicate debt records", () => {
@@ -406,6 +411,85 @@ describe("fixture known-gap debt policy", () => {
     );
   });
 
+  it("rejects retirement after replacing the original fixture contents", () => {
+    const replacement = metricFixture(
+      "replaced-gap",
+      true,
+      "conditional",
+      "conditional"
+    );
+    replacement.fixtureContentSha256 = "b".repeat(64);
+    const previousDebt: FixtureEvalPolicy["knownGapDebt"][number] = {
+      caseId: "replaced-gap",
+      ...debtMetadata,
+      status: "active"
+    };
+    const retiredDebt: FixtureEvalPolicy["knownGapDebt"][number] = {
+      ...previousDebt,
+      status: "retired",
+      retiredOn: "2026-07-30"
+    };
+
+    const pinned = assessFixturePolicy(
+      [replacement],
+      calculateFixtureMetrics([replacement], 0),
+      policy([retiredDebt]),
+      policy([previousDebt])
+    );
+    const rewrittenDebt = {
+      ...retiredDebt,
+      fixtureContentSha256: replacement.fixtureContentSha256
+    };
+    const rewritten = assessFixturePolicy(
+      [replacement],
+      calculateFixtureMetrics([replacement], 0),
+      policy([rewrittenDebt]),
+      policy([previousDebt])
+    );
+
+    expect(replacement.passed).toBe(true);
+    expect(pinned.gateFailures).toContain(
+      "known-gap debt replaced-gap changed its fixture contents"
+    );
+    expect(rewritten.gateFailures).toContain(
+      "known-gap debt replaced-gap changed immutable metadata"
+    );
+  });
+
+  it("fingerprints fixture metadata and repository contents", async () => {
+    const fixtureDir = await mkdtemp(join(tmpdir(), "verifier-fixture-hash-"));
+    try {
+      await mkdir(join(fixtureDir, "repo"));
+      await writeFile(
+        join(fixtureDir, "case.json"),
+        '{"id":"fixture","expected":{"verdict":"conditional","knownGap":true}}\n'
+      );
+      await writeFile(join(fixtureDir, "repo", "source.ts"), "export const value = 1;\n");
+      const original = await calculateFixtureContentSha256(fixtureDir);
+
+      await writeFile(
+        join(fixtureDir, "case.json"),
+        '{"id":"fixture","expected":{"verdict":"conditional","knownGap":false}}\n'
+      );
+      const retired = await calculateFixtureContentSha256(fixtureDir);
+      await writeFile(join(fixtureDir, "repo", "source.ts"), "export const value = 2;\n");
+      const changed = await calculateFixtureContentSha256(fixtureDir);
+
+      expect(original).toMatch(/^[0-9a-f]{64}$/);
+      expect(retired).toBe(original);
+      expect(changed).toMatch(/^[0-9a-f]{64}$/);
+      expect(changed).not.toBe(original);
+
+      await writeFile(join(fixtureDir, "repo", "artifact.bin"), Buffer.from([0x80]));
+      const firstBinary = await calculateFixtureContentSha256(fixtureDir);
+      await writeFile(join(fixtureDir, "repo", "artifact.bin"), Buffer.from([0x81]));
+      const secondBinary = await calculateFixtureContentSha256(fixtureDir);
+      expect(secondBinary).not.toBe(firstBinary);
+    } finally {
+      await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
   it("rejects reactivation and retirement date changes", () => {
     const previousDebt: FixtureEvalPolicy["knownGapDebt"][number] = {
       caseId: "retired-gap",
@@ -502,6 +586,111 @@ describe("fixture known-gap debt policy", () => {
     expect(result.gateFailures).toContain(
       `raw verdict agreement baseline 0.0000 was lowered from ${previousPolicy.baseline.rawVerdictAgreementMin.toFixed(4)}`
     );
+  });
+
+  it("derives a legacy policy fingerprint from its base revision", async () => {
+    const repository = await mkdtemp(join(tmpdir(), "verifier-legacy-policy-"));
+    const caseDir = join(
+      repository,
+      "fixtures",
+      "corpus",
+      "seeded",
+      "legacy-gap"
+    );
+    try {
+      await mkdir(join(caseDir, "repo"), { recursive: true });
+      await writeFile(
+        join(caseDir, "case.json"),
+        `${JSON.stringify({
+          id: "legacy-gap",
+          kind: "seeded",
+          description: "legacy debt",
+          groundTruth: { defect: true },
+          expected: { verdict: "conditional", knownGap: true },
+          setup: { baseDir: "repo", verifyCommands: [] },
+          timeoutMinutes: 1
+        })}\n`
+      );
+      await writeFile(join(caseDir, "repo", "source.ts"), "export const value = 1;\n");
+      await writeFile(join(caseDir, "bug.patch"), "legacy defect\n");
+      await writeFile(
+        join(repository, "fixtures", "eval-policy.json"),
+        `${JSON.stringify({
+          baseline: {
+            rawRecallMin: 0,
+            rawVerdictAgreementMin: 0,
+            debtCaseIds: ["legacy-gap"]
+          },
+          knownGapDebt: [
+            {
+              caseId: "legacy-gap",
+              reason: debtMetadata.reason,
+              owner: debtMetadata.owner,
+              followUp: debtMetadata.followUp,
+              introducedOn: debtMetadata.introducedOn,
+              groundTruthDefect: true,
+              expectedVerdicts: ["conditional"],
+              status: "active"
+            }
+          ]
+        }, null, 2)}\n`
+      );
+      await execFileAsync("git", ["init", "-q", "-b", "main"], { cwd: repository });
+      await execFileAsync("git", ["add", "."], { cwd: repository });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.email=fixture@example.invalid",
+          "-c",
+          "user.name=verifier-fixture",
+          "commit",
+          "-q",
+          "-m",
+          "legacy policy"
+        ],
+        { cwd: repository }
+      );
+      const { stdout: baseSha } = await execFileAsync("git", ["rev-parse", "HEAD"], {
+        cwd: repository
+      });
+
+      const previousPolicy = await loadPreviousFixtureEvalPolicy(
+        baseSha.trim(),
+        repository
+      );
+      await writeFile(join(caseDir, "repo", "source.ts"), "export const value = 2;\n");
+      const replacementHash = await calculateFixtureContentSha256(caseDir);
+      const replacement = metricFixture(
+        "legacy-gap",
+        true,
+        "conditional",
+        "conditional"
+      );
+      replacement.fixtureContentSha256 = replacementHash;
+      const rewrittenDebt: FixtureEvalPolicy["knownGapDebt"][number] = {
+        ...previousPolicy.knownGapDebt[0]!,
+        fixtureContentSha256: replacementHash,
+        status: "retired",
+        retiredOn: "2026-07-31"
+      };
+
+      const result = assessFixturePolicy(
+        [replacement],
+        calculateFixtureMetrics([replacement], 0),
+        policy([rewrittenDebt]),
+        previousPolicy
+      );
+
+      expect(previousPolicy.knownGapDebt[0]?.fixtureContentSha256).not.toBe(
+        replacementHash
+      );
+      expect(result.gateFailures).toContain(
+        "known-gap debt legacy-gap changed immutable metadata"
+      );
+    } finally {
+      await rm(repository, { recursive: true, force: true });
+    }
   });
 });
 

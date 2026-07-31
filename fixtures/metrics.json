@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-30T18:25:22.639Z",
+  "generatedAt": "2026-07-31T00:47:52.568Z",
   "corpusDir": "fixtures/corpus",
   "metrics": {
     "totalCases": 14,
@@ -47,6 +47,7 @@
       "id": "gp-001-pr-75-merged-success",
       "kind": "golden",
       "description": "Hermetic replay of the evidence-grade change from verifier PR #75, whose final revision passed CI and review without blockers.",
+      "fixtureContentSha256": "ded7deb01affa4ac50fe5b009fc8138670c819b39dda421f8731e6228636b96a",
       "groundTruth": {
         "defect": false
       },
@@ -65,6 +66,7 @@
       "id": "gp-002-pr-102-needed-fix",
       "kind": "golden",
       "description": "Hermetic replay of verifier PR #102 at the reviewed pre-fix revision where per-fixture timeouts were not passed to runCheck.",
+      "fixtureContentSha256": "121582972e510687a6d5f485f34d8d65c069d47aad2eb58e3884adff1c20e81c",
       "groundTruth": {
         "defect": true
       },
@@ -83,6 +85,7 @@
       "id": "sb-001-authz-missing",
       "kind": "seeded",
       "description": "POST admin update route drops its authorization check while GET keeps it.",
+      "fixtureContentSha256": "edbf5802d4167a2c99177053f4ed5bd89755d70495bec951e9b73b612cefc927",
       "groundTruth": {
         "defect": true
       },
@@ -101,6 +104,7 @@
       "id": "sb-002-pagination-off-by-one",
       "kind": "seeded",
       "description": "totalPages() uses floor instead of ceil, dropping the final partial page.",
+      "fixtureContentSha256": "4bda63218a317971eabd516dd87a8e312a1279c73f95fb70e1f60d3ed4d510b6",
       "groundTruth": {
         "defect": true
       },
@@ -119,6 +123,7 @@
       "id": "sb-003-regression-breaks-test",
       "kind": "seeded",
       "description": "formatCurrency divides by 1000 instead of 100, breaking the existing currency-formatting tests.",
+      "fixtureContentSha256": "e289aeb1cce5f966cd218718af6c8695f462cdf9f9e3ed3b19081f4963e245e8",
       "groundTruth": {
         "defect": true
       },
@@ -137,6 +142,7 @@
       "id": "sb-004-empty-array-crash",
       "kind": "seeded",
       "description": "maxValue() drops its empty-array default and throws TypeError on empty input.",
+      "fixtureContentSha256": "d61ca049fca4199ee7350744723fd8ed4c2de6840027186c7ff7d8e5d0af5fb3",
       "groundTruth": {
         "defect": true
       },
@@ -155,6 +161,7 @@
       "id": "sb-005-file-handle-leak",
       "kind": "seeded",
       "description": "Error-path file handle cleanup is removed; detecting the leak requires the Stage 4 reproduction capability tracked by #81.",
+      "fixtureContentSha256": "ce9cfe808cdc2f0e234d3ffdf5be0bad8f16684da431bea8087b6479dfde2354",
       "groundTruth": {
         "defect": true
       },
@@ -175,6 +182,7 @@
       "id": "sb-006-api-key-logging",
       "kind": "seeded",
       "description": "A diagnostic change prints the API key read from the environment.",
+      "fixtureContentSha256": "f6d533e1cf967c8517e99e80042a9e3ae299b5d95d89ec8b2b90f0d699615afb",
       "groundTruth": {
         "defect": true
       },
@@ -193,6 +201,7 @@
       "id": "sb-007-multibyte-cache-collision",
       "kind": "seeded",
       "description": "Cache keys truncate UTF-8 bytes and collide for multibyte input; reproduction requires the Stage 4 capability tracked by #81.",
+      "fixtureContentSha256": "2de3491b07294230bb06c3138e141a843d7643dd1f8b58c161654c709ca07f74",
       "groundTruth": {
         "defect": true
       },
@@ -213,6 +222,7 @@
       "id": "sb-008-clean-refactor",
       "kind": "seeded",
       "description": "Rewrites slugify() with an equivalent regex-based implementation; no behavior change.",
+      "fixtureContentSha256": "b19ef4079b1d1b23a9c70eaef74537e4a9909c6001cc0d38ff4a90e11ee218f5",
       "groundTruth": {
         "defect": false
       },
@@ -231,6 +241,7 @@
       "id": "sb-009-unexplained-clean-diff",
       "kind": "seeded",
       "description": "A behavior-preserving cleanup has no primary intent, so the diff remains conditional with low confidence.",
+      "fixtureContentSha256": "9bb5b928789585b2732b3bfb613b8c3e0ea87c7a130fce8f6ce131cdb4d78782",
       "groundTruth": {
         "defect": false
       },
@@ -250,6 +261,7 @@
       "id": "sb-010-intent-implementation-mismatch",
       "kind": "seeded",
       "description": "The issue requests feature A but the patch implements feature B; semantic intent comparison is tracked by #81.",
+      "fixtureContentSha256": "38114258e5f030c9f199026845ec17cb42e3f2ff7b8d17abf5e716c60dd3f85b",
       "groundTruth": {
         "defect": true
       },
@@ -273,6 +285,7 @@
       "id": "sb-011-pytest-failure-log",
       "kind": "seeded",
       "description": "Replays a captured pytest assertion failure, including command identity, output channel, and exit status.",
+      "fixtureContentSha256": "b45d39d3b365dd641ee74a3ca8a5b47484e7e1036c76bc399a26f19558740b01",
       "groundTruth": {
         "defect": true
       },
@@ -291,6 +304,7 @@
       "id": "sb-012-cargo-failure-log",
       "kind": "seeded",
       "description": "Replays a captured cargo test failure with separate stdout/stderr and the original exit status.",
+      "fixtureContentSha256": "e20d02b83541f6d4608f0861f721a1dfb4452e25edecfd8ede4f2400b2d183b7",
       "groundTruth": {
         "defect": true
       },

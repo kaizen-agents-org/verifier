@@ -1,5 +1,14 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import {
+  lstat,
+  mkdtemp,
+  readdir,
+  readFile,
+  readlink,
+  rm,
+  writeFile
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +23,7 @@ const execFileAsync = promisify(execFile);
 const NEUTRAL_BASE_COMMIT_MESSAGE = "base";
 const NEUTRAL_HEAD_COMMIT_MESSAGE = "apply changes";
 const FULL_GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
+const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const FIXTURE_EVAL_POLICY_REPO_PATH = "fixtures/eval-policy.json";
 const FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA =
@@ -84,7 +94,8 @@ const KnownGapDebtBaseSchema = z.object({
   followUp: z.string().min(1),
   introducedOn: IsoDateSchema,
   groundTruthDefect: z.literal(true),
-  expectedVerdicts: z.array(FinalVerdictKindSchema).min(1)
+  expectedVerdicts: z.array(FinalVerdictKindSchema).min(1),
+  fixtureContentSha256: z.string().regex(SHA256_PATTERN)
 });
 
 export const FixtureEvalPolicySchema = z.object({
@@ -170,6 +181,7 @@ const BOOTSTRAP_FIXTURE_EVAL_POLICY: FixtureEvalPolicy = {
       introducedOn: "2026-07-22",
       groundTruthDefect: true,
       expectedVerdicts: ["conditional"],
+      fixtureContentSha256: "ce9cfe808cdc2f0e234d3ffdf5be0bad8f16684da431bea8087b6479dfde2354",
       status: "active"
     },
     {
@@ -180,6 +192,7 @@ const BOOTSTRAP_FIXTURE_EVAL_POLICY: FixtureEvalPolicy = {
       introducedOn: "2026-07-22",
       groundTruthDefect: true,
       expectedVerdicts: ["conditional"],
+      fixtureContentSha256: "2de3491b07294230bb06c3138e141a843d7643dd1f8b58c161654c709ca07f74",
       status: "active"
     },
     {
@@ -190,6 +203,7 @@ const BOOTSTRAP_FIXTURE_EVAL_POLICY: FixtureEvalPolicy = {
       introducedOn: "2026-07-22",
       groundTruthDefect: true,
       expectedVerdicts: ["conditional", "not_mergeable"],
+      fixtureContentSha256: "38114258e5f030c9f199026845ec17cb42e3f2ff7b8d17abf5e716c60dd3f85b",
       status: "active"
     }
   ]
@@ -199,6 +213,7 @@ export interface FixtureCaseResult {
   id: string;
   kind: "seeded" | "golden";
   description: string;
+  fixtureContentSha256: string;
   groundTruth: { defect: boolean };
   passed: boolean;
   failures: string[];
@@ -274,7 +289,9 @@ export async function runFixtureEval(options: RunFixtureEvalOptions = {}): Promi
   for (const casePath of casePaths.sort()) {
     const fixtureCase = await loadFixtureCase(casePath);
     try {
-      results.push(await runFixtureCase(fixtureCase, dirname(casePath)));
+      const caseDir = dirname(casePath);
+      const fixtureContentSha256 = await calculateFixtureContentSha256(caseDir);
+      results.push(await runFixtureCase(fixtureCase, caseDir, fixtureContentSha256));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       harnessErrorDetails.push({ id: fixtureCase.id, message });
@@ -313,7 +330,11 @@ export async function runFixtureEval(options: RunFixtureEvalOptions = {}): Promi
   return runResult;
 }
 
-async function runFixtureCase(fixtureCase: FixtureCase, caseDir: string): Promise<FixtureCaseResult> {
+async function runFixtureCase(
+  fixtureCase: FixtureCase,
+  caseDir: string,
+  fixtureContentSha256: string
+): Promise<FixtureCaseResult> {
   const workspace = await mkdtemp(join(tmpdir(), "verifier-fixture-"));
   try {
     const { baseSha, verifyCommands } = await prepareWorkspace(fixtureCase, caseDir, workspace);
@@ -335,6 +356,7 @@ async function runFixtureCase(fixtureCase: FixtureCase, caseDir: string): Promis
       id: fixtureCase.id,
       kind: fixtureCase.kind,
       description: fixtureCase.description,
+      fixtureContentSha256,
       groundTruth: fixtureCase.groundTruth,
       passed: failures.length === 0,
       failures,
@@ -694,8 +716,29 @@ function immutableDebtMetadata(
     followUp: debt.followUp,
     introducedOn: debt.introducedOn,
     groundTruthDefect: debt.groundTruthDefect,
-    expectedVerdicts: [...debt.expectedVerdicts].sort()
+    expectedVerdicts: [...debt.expectedVerdicts].sort(),
+    fixtureContentSha256: debt.fixtureContentSha256
   });
+}
+
+function addMissingFixtureContentHashes(value: unknown): unknown {
+  if (!value || typeof value !== "object" || !("knownGapDebt" in value)) return value;
+  const policy = value as { knownGapDebt?: unknown };
+  if (!Array.isArray(policy.knownGapDebt)) return value;
+
+  return {
+    ...value,
+    knownGapDebt: policy.knownGapDebt.map((candidate) => {
+      if (
+        !candidate ||
+        typeof candidate !== "object" ||
+        "fixtureContentSha256" in candidate
+      ) {
+        return candidate;
+      }
+      return { ...candidate, fixtureContentSha256: "0".repeat(64) };
+    })
+  };
 }
 
 function validateDebtFixtureSnapshot(
@@ -713,6 +756,162 @@ function validateDebtFixtureSnapshot(
   if (JSON.stringify(fixtureVerdicts) !== JSON.stringify(debtVerdicts)) {
     gateFailures.push(`known-gap debt ${debt.caseId} changed its expected verdicts`);
   }
+  if (result.fixtureContentSha256 !== debt.fixtureContentSha256) {
+    gateFailures.push(`known-gap debt ${debt.caseId} changed its fixture contents`);
+  }
+}
+
+export async function calculateFixtureContentSha256(caseDir: string): Promise<string> {
+  const records: string[] = [];
+
+  async function walk(directory: string, relativeDirectory: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) =>
+      left.name === right.name ? 0 : left.name < right.name ? -1 : 1
+    );
+    for (const entry of entries) {
+      const relativePath = relativeDirectory
+        ? `${relativeDirectory}/${entry.name}`
+        : entry.name;
+      const absolutePath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await walk(absolutePath, relativePath);
+        continue;
+      }
+      if (entry.isFile()) {
+        const [content, stats] = await Promise.all([readFile(absolutePath), lstat(absolutePath)]);
+        records.push(fixtureFileFingerprintRecord(relativePath, (stats.mode & 0o111) !== 0, content));
+        continue;
+      }
+      if (entry.isSymbolicLink()) {
+        records.push(
+          JSON.stringify({
+            type: "symlink",
+            path: relativePath,
+            target: await readlink(absolutePath)
+          })
+        );
+        continue;
+      }
+      throw new Error(`Unsupported fixture entry type: ${relativePath}`);
+    }
+  }
+
+  await walk(resolve(caseDir), "");
+  return fixtureFingerprint(records);
+}
+
+function fixtureFileFingerprintRecord(
+  relativePath: string,
+  executable: boolean,
+  content: Buffer
+): string {
+  let fingerprintContent = content;
+  if (relativePath === "case.json") {
+    const fixtureDefinition = JSON.parse(fingerprintContent.toString("utf8")) as {
+      expected?: Record<string, unknown>;
+    };
+    if (fixtureDefinition.expected) {
+      delete fixtureDefinition.expected.knownGap;
+    }
+    fingerprintContent = Buffer.from(JSON.stringify(fixtureDefinition));
+  }
+  return JSON.stringify({
+    type: "file",
+    path: relativePath,
+    executable,
+    sha256: createHash("sha256").update(fingerprintContent).digest("hex")
+  });
+}
+
+function fixtureFingerprint(records: string[]): string {
+  return createHash("sha256").update(`${records.sort().join("\n")}\n`).digest("hex");
+}
+
+async function bindPolicyToFixtureRevision(
+  policy: FixtureEvalPolicy,
+  repositoryRoot: string,
+  comparisonSha: string
+): Promise<FixtureEvalPolicy> {
+  const knownGapDebt = await Promise.all(
+    policy.knownGapDebt.map(async (debt) => ({
+      ...debt,
+      fixtureContentSha256: await calculateFixtureContentSha256AtRevision(
+        repositoryRoot,
+        comparisonSha,
+        debt.caseId
+      )
+    }))
+  );
+  return { ...policy, knownGapDebt };
+}
+
+async function calculateFixtureContentSha256AtRevision(
+  repositoryRoot: string,
+  comparisonSha: string,
+  caseId: string
+): Promise<string> {
+  const { stdout: corpusPathsOutput } = await git(repositoryRoot, [
+    "ls-tree",
+    "-r",
+    "--name-only",
+    comparisonSha,
+    "--",
+    "fixtures/corpus"
+  ]);
+  const casePaths = corpusPathsOutput
+    .split("\n")
+    .filter((path) => path.endsWith("/case.json"));
+  let casePath: string | undefined;
+  for (const candidatePath of casePaths) {
+    const content = await gitBuffer(repositoryRoot, [
+      "show",
+      `${comparisonSha}:${candidatePath}`
+    ]);
+    const candidate = JSON.parse(content.toString("utf8")) as { id?: unknown };
+    if (candidate.id === caseId) {
+      casePath = candidatePath;
+      break;
+    }
+  }
+  if (!casePath) {
+    throw new Error(`Fixture case ${caseId} is absent at ${comparisonSha}`);
+  }
+
+  const caseRoot = dirname(casePath);
+  const { stdout: treeOutput } = await git(repositoryRoot, [
+    "ls-tree",
+    "-r",
+    comparisonSha,
+    "--",
+    caseRoot
+  ]);
+  const records: string[] = [];
+  for (const line of treeOutput.split("\n").filter(Boolean)) {
+    const match = /^(\d+) blob [0-9a-f]+\t(.+)$/.exec(line);
+    if (!match) {
+      throw new Error(`Unsupported fixture tree entry at ${comparisonSha}: ${line}`);
+    }
+    const mode = match[1]!;
+    const repositoryPath = match[2]!;
+    const relativePath = repositoryPath.slice(caseRoot.length + 1);
+    const content = await gitBuffer(repositoryRoot, [
+      "show",
+      `${comparisonSha}:${repositoryPath}`
+    ]);
+    if (mode === "120000") {
+      records.push(
+        JSON.stringify({
+          type: "symlink",
+          path: relativePath,
+          target: content.toString("utf8")
+        })
+      );
+    } else {
+      records.push(fixtureFileFingerprintRecord(relativePath, mode === "100755", content));
+    }
+  }
+  return fixtureFingerprint(records);
 }
 
 function emptyPolicyAssessment(
@@ -756,6 +955,15 @@ async function copyDirectory(source: string, destination: string): Promise<void>
 
 async function git(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync("git", args, { cwd, maxBuffer: 20 * 1024 * 1024 });
+}
+
+async function gitBuffer(cwd: string, args: string[]): Promise<Buffer> {
+  const { stdout } = await execFileAsync("git", args, {
+    cwd,
+    encoding: "buffer",
+    maxBuffer: 20 * 1024 * 1024
+  });
+  return stdout;
 }
 
 async function gitCommit(cwd: string, message: string): Promise<void> {
@@ -805,9 +1013,12 @@ async function loadFixtureEvalPolicy(
 }
 
 export async function loadPreviousFixtureEvalPolicy(
-  baseSha: string | undefined
+  baseSha: string | undefined,
+  repositoryRootOverride?: string
 ): Promise<FixtureEvalPolicy> {
-  const repositoryRoot = resolve(dirname(defaultFixtureEvalPolicyFile()), "..");
+  const repositoryRoot = resolve(
+    repositoryRootOverride ?? resolve(dirname(defaultFixtureEvalPolicyFile()), "..")
+  );
   let comparisonSha = baseSha;
   if (!comparisonSha) {
     try {
@@ -869,7 +1080,11 @@ export async function loadPreviousFixtureEvalPolicy(
         `Fixture eval policy is absent at unapproved bootstrap BASE_SHA ${comparisonSha}`
       );
     }
-    return BOOTSTRAP_FIXTURE_EVAL_POLICY;
+    return bindPolicyToFixtureRevision(
+      BOOTSTRAP_FIXTURE_EVAL_POLICY,
+      repositoryRoot,
+      comparisonSha
+    );
   }
 
   try {
@@ -877,7 +1092,14 @@ export async function loadPreviousFixtureEvalPolicy(
       "show",
       `${comparisonSha}:${FIXTURE_EVAL_POLICY_REPO_PATH}`
     ]);
-    return FixtureEvalPolicySchema.parse(JSON.parse(stdout) as unknown);
+    const previousPolicy = FixtureEvalPolicySchema.parse(
+      addMissingFixtureContentHashes(JSON.parse(stdout) as unknown)
+    );
+    return await bindPolicyToFixtureRevision(
+      previousPolicy,
+      repositoryRoot,
+      comparisonSha
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(

@@ -17,6 +17,7 @@
       "introducedOn": "2026-07-22",
       "groundTruthDefect": true,
       "expectedVerdicts": ["conditional"],
+      "fixtureContentSha256": "ce9cfe808cdc2f0e234d3ffdf5be0bad8f16684da431bea8087b6479dfde2354",
       "status": "active"
     },
     {
@@ -27,6 +28,7 @@
       "introducedOn": "2026-07-22",
       "groundTruthDefect": true,
       "expectedVerdicts": ["conditional"],
+      "fixtureContentSha256": "2de3491b07294230bb06c3138e141a843d7643dd1f8b58c161654c709ca07f74",
       "status": "active"
     },
     {
@@ -37,6 +39,7 @@
       "introducedOn": "2026-07-22",
       "groundTruthDefect": true,
       "expectedVerdicts": ["conditional", "not_mergeable"],
+      "fixtureContentSha256": "38114258e5f030c9f199026845ec17cb42e3f2ff7b8d17abf5e716c60dd3f85b",
       "status": "active"
     }
   ]
