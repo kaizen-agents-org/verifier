@@ -243,9 +243,9 @@ node packages/core/dist/cli.js check \
 ```
 
 `--fail-on conditional` (and `--fail-on mergeable`) exits `1` for
-`conditional` or `not_mergeable`; `--fail-on inconclusive` exits `1` for
-`inconclusive` or `not_mergeable`; and `--fail-on not_mergeable` exits `1` only
-for `not_mergeable`.
+`conditional`, `not_mergeable`, or `inconclusive`; `--fail-on inconclusive`
+exits `1` for `inconclusive` or `not_mergeable`; and
+`--fail-on not_mergeable` exits `1` only for `not_mergeable`.
 
 `verifier verdict` and bare options are accepted for compatibility. Unless
 `--markdown` is used, completed judgments write JSON to stdout and exit:
