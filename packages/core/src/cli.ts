@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { constants } from "node:fs";
+import { access, lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
 import { VerdictInputSchema } from "./types.js";
@@ -55,9 +57,16 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (argv.length === 0 && process.env.KAIZEN_VERIFIER_RESULT_PATH) {
-    const payload = await runKaizenLoopMode();
-    process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
-    return 0;
+    const resultWriter = await prepareKaizenResult(
+      process.env.KAIZEN_VERIFIER_RESULT_PATH
+    );
+    try {
+      const payload = await runKaizenLoopMode(resultWriter.write);
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+      return 0;
+    } finally {
+      await resultWriter.close();
+    }
   }
 
   const options = parseArgs(argv);
@@ -113,7 +122,7 @@ async function main(argv: string[]): Promise<number> {
   return 0;
 }
 
-async function runKaizenLoopMode(): Promise<{
+async function runKaizenLoopMode(writeResult: (content: string) => Promise<void>): Promise<{
   status: "open_pr" | "open_pr_with_warning" | "block_pr" | "needs_context";
   summary: string;
   notes: string;
@@ -143,10 +152,112 @@ async function runKaizenLoopMode(): Promise<{
     reason
   };
 
-  const resultPath = resolve(process.env.KAIZEN_VERIFIER_RESULT_PATH!);
-  await mkdir(dirname(resultPath), { recursive: true });
-  await writeFile(resultPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  await writeResult(`${JSON.stringify(payload, null, 2)}\n`);
   return payload;
+}
+
+async function prepareKaizenResult(configuredPath: string): Promise<{
+  write: (content: string) => Promise<void>;
+  close: () => Promise<void>;
+}> {
+  const workspace = resolve(process.env.KAIZEN_WORKSPACE_DIR ?? process.cwd());
+  const resultPath = resolve(workspace, configuredPath);
+  if (isPathOutside(workspace, resultPath)) {
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH must stay within KAIZEN_WORKSPACE_DIR.");
+  }
+
+  if (resultPath === workspace) {
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH must name a file within KAIZEN_WORKSPACE_DIR.");
+  }
+
+  let ancestor = resultPath;
+  while (!(await pathEntryExists(ancestor))) {
+    const parent = resolve(ancestor, "..");
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+  const [initialWorkspace, initialAncestor] = await Promise.all([
+    realpath(workspace),
+    realpath(ancestor)
+  ]);
+  if (isPathOutside(initialWorkspace, initialAncestor)) {
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR.");
+  }
+
+  await mkdir(dirname(resultPath), { recursive: true });
+  let resultHandle: FileHandle;
+  try {
+    resultHandle = await open(
+      resultPath,
+      constants.O_WRONLY |
+        constants.O_CREAT |
+        constants.O_NOFOLLOW |
+        constants.O_NONBLOCK,
+      0o600
+    );
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ELOOP") {
+      throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves through a symbolic link.");
+    }
+    if (code === "ENXIO") {
+      throw new Error("KAIZEN_VERIFIER_RESULT_PATH must be a regular file.");
+    }
+    throw error;
+  }
+  const initialStat = await resultHandle.stat();
+  if (!initialStat.isFile()) {
+    await resultHandle.close();
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH must be a regular file.");
+  }
+  if (initialStat.nlink !== 1) {
+    await resultHandle.close();
+    throw new Error("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely.");
+  }
+  try {
+    const realWorkspace = await realpath(workspace);
+    return {
+      write: async (content: string) => {
+        const [realResult, openedStat, pathStat] = await Promise.all([
+          realpath(resultPath),
+          resultHandle.stat(),
+          lstat(resultPath)
+        ]);
+        if (isPathOutside(realWorkspace, realResult)) {
+          throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR.");
+        }
+        if (
+          !openedStat.isFile() ||
+          openedStat.nlink !== 1 ||
+          openedStat.dev !== pathStat.dev ||
+          openedStat.ino !== pathStat.ino
+        ) {
+          throw new Error("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely.");
+        }
+        await resultHandle.truncate(0);
+        await resultHandle.writeFile(content, "utf8");
+      },
+      close: () => resultHandle.close()
+    };
+  } catch (error) {
+    await resultHandle.close();
+    throw error;
+  }
+}
+
+function isPathOutside(parent: string, child: string): boolean {
+  const relativePath = relative(parent, child);
+  return relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
+}
+
+async function pathEntryExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 function parseKaizenLoopPrompt(prompt: string) {

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { link, lstat, mkdir, mkdtemp, open, readFile, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -155,7 +156,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
       {
         env: {
           ...process.env,
-          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
           KAIZEN_WORKSPACE_DIR: dir
         }
       }
@@ -175,6 +176,203 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(result.notes).toContain("evidence_grade=reported");
     expect(output.reason).toBe("");
     expect(result.reason).toBe("");
+  });
+
+  it.each(["relative", "absolute"] as const)(
+    "rejects a %s kaizen-loop result path outside the workspace",
+    async (pathKind) => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+      const workspace = join(dir, "workspace");
+      const outsidePath = join(dir, `${pathKind}-result.json`);
+      await mkdir(workspace);
+      const resultPath = pathKind === "relative" ? `../${pathKind}-result.json` : outsidePath;
+
+      const { stderr, code } = await spawnWithInput(
+        process.execPath,
+        ["--import", "tsx", "src/cli.ts"],
+        kaizenLoopPrompt(),
+        {
+          env: {
+            ...process.env,
+            KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+            KAIZEN_WORKSPACE_DIR: workspace
+          },
+          allowFailure: true
+        }
+      );
+
+      expect(code).toBe(2);
+      expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH must stay within KAIZEN_WORKSPACE_DIR");
+      await expect(readFile(outsidePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  );
+
+  it("rejects a kaizen-loop result path that escapes through a symlink", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+    const workspace = join(dir, "workspace");
+    const outsideDir = join(dir, "outside");
+    const outsidePath = join(outsideDir, "verify-result.json");
+    await mkdir(workspace);
+    await mkdir(outsideDir);
+    await symlink(outsideDir, join(workspace, "results"));
+
+    const { stderr, code } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      kaizenLoopPrompt(),
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: "results/verify-result.json",
+          KAIZEN_WORKSPACE_DIR: workspace
+        },
+        allowFailure: true
+      }
+    );
+
+    expect(code).toBe(2);
+    expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR");
+    await expect(readFile(outsidePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("rejects a multiply-linked result file before truncating it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+    const workspace = join(dir, "workspace");
+    const outsidePath = join(dir, "outside-result.json");
+    const resultPath = join(workspace, "verify-result.json");
+    await mkdir(workspace);
+    await writeFile(outsidePath, "preserve me\n", "utf8");
+    await link(outsidePath, resultPath);
+
+    const { stderr, code } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      kaizenLoopPrompt(),
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
+          KAIZEN_WORKSPACE_DIR: workspace
+        },
+        allowFailure: true
+      }
+    );
+
+    expect(code).toBe(2);
+    expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely");
+    expect(await readFile(outsidePath, "utf8")).toBe("preserve me\n");
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects a FIFO result path without waiting for a reader",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+      const workspace = join(dir, "workspace");
+      const resultPath = join(workspace, "verify-result.json");
+      await mkdir(workspace);
+      await execFileAsync("mkfifo", [resultPath]);
+
+      const { stderr, code } = await spawnWithInput(
+        process.execPath,
+        ["--import", "tsx", "src/cli.ts"],
+        kaizenLoopPrompt(),
+        {
+          env: {
+            ...process.env,
+            KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
+            KAIZEN_WORKSPACE_DIR: workspace
+          },
+          allowFailure: true
+        }
+      );
+
+      expect(code).toBe(2);
+      expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH must be a regular file");
+    }
+  );
+
+  it.runIf(process.platform !== "win32")(
+    "rejects a reader-attached FIFO before consuming stdin",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+      const workspace = join(dir, "workspace");
+      const resultPath = join(workspace, "verify-result.json");
+      await mkdir(workspace);
+      await execFileAsync("mkfifo", [resultPath]);
+      const reader = await open(resultPath, constants.O_RDONLY | constants.O_NONBLOCK);
+
+      const child = spawn(process.execPath, ["--import", "tsx", "src/cli.ts"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
+          KAIZEN_WORKSPACE_DIR: workspace
+        },
+        stdio: ["pipe", "pipe", "pipe"]
+      });
+      let stderr = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => {
+        stderr += chunk;
+      });
+
+      let timeout: NodeJS.Timeout | undefined;
+      let code: number | null;
+      try {
+        code = await Promise.race([
+          new Promise<number | null>((resolve) => child.once("close", resolve)),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(
+              () => reject(new Error("verifier waited for stdin")),
+              10_000
+            );
+          })
+        ]);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+        if (child.exitCode === null) child.kill();
+        await reader.close();
+      }
+
+      expect(code).toBe(2);
+      expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH must be a regular file");
+    }
+  );
+
+  it("rejects a result path replaced after the file is pre-opened", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-boundary-"));
+    const workspace = join(dir, "workspace");
+    const resultPath = join(workspace, "verify-result.json");
+    const openedPath = join(workspace, "pre-opened-result.json");
+    const outsidePath = join(dir, "outside-result.json");
+    await mkdir(workspace);
+    await writeFile(outsidePath, "preserve me\n", "utf8");
+
+    const child = spawn(process.execPath, ["--import", "tsx", "src/cli.ts"], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        KAIZEN_VERIFIER_RESULT_PATH: "verify-result.json",
+        KAIZEN_WORKSPACE_DIR: workspace
+      },
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    let stderr = "";
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    await waitForPath(resultPath);
+    await rename(resultPath, openedPath);
+    await symlink(outsidePath, resultPath);
+    child.stdin.end(kaizenLoopPrompt());
+    const code = await new Promise<number | null>((resolve) => child.once("close", resolve));
+
+    expect(code).toBe(2);
+    expect(stderr).toContain("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR");
+    expect(await readFile(outsidePath, "utf8")).toBe("preserve me\n");
+    expect(await readFile(openedPath, "utf8")).toBe("");
   });
 
   it("needs context for kaizen-loop prompts with only a changed-file inventory", async () => {
@@ -213,7 +411,8 @@ Return a verdict.
       {
         env: {
           ...process.env,
-          KAIZEN_VERIFIER_RESULT_PATH: resultPath
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_WORKSPACE_DIR: dir
         }
       }
     );
@@ -267,7 +466,8 @@ Return a verdict.
       {
         env: {
           ...process.env,
-          KAIZEN_VERIFIER_RESULT_PATH: resultPath
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_WORKSPACE_DIR: dir
         }
       }
     );
@@ -903,6 +1103,34 @@ Return "block_pr" when the builder must revise the change before a PR is created
   });
 });
 
+function kaizenLoopPrompt(): string {
+  return `# Issue
+
+Keep verifier artifacts inside the workspace.
+
+# Builder result
+
+Added a result path check.
+
+# Mechanical verification
+
+- [x] pnpm test
+
+# Changed files
+
+- packages/core/src/cli.ts
+
+# Diff
+
+diff --git a/packages/core/src/cli.ts b/packages/core/src/cli.ts
++validateResultPath()
+
+# Decision rules
+
+Return a verdict.
+`;
+}
+
 async function writePackageManifest(
   dir: string,
   manifest: { packageManager?: string; scripts: Record<string, string> }
@@ -942,6 +1170,19 @@ function spawnWithInput(
     });
     child.stdin.end(input);
   });
+}
+
+async function waitForPath(path: string): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    try {
+      await lstat(path);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Timed out waiting for ${path}`);
 }
 
 async function createChangedRepo(): Promise<string> {

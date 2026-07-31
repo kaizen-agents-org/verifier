@@ -89,7 +89,8 @@ describe("built verifier CLI", () => {
 
     const { stdout } = await spawnWithInput(process.execPath, ["dist/cli.js"], prompt, {
       ...process.env,
-      KAIZEN_VERIFIER_RESULT_PATH: resultPath
+      KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+      KAIZEN_WORKSPACE_DIR: dir
     });
     const output = JSON.parse(stdout) as { status: string };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as { status: string };

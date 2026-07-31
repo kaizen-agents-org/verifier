@@ -391,9 +391,23 @@ passes a verifier prompt on stdin, and expects a compact payload at
 `KAIZEN_VERIFIER_RESULT_PATH`.
 
 ```sh
+KAIZEN_WORKSPACE_DIR=/path/to/workspace \
 KAIZEN_VERIFIER_RESULT_PATH=.kaizen/verifier/verify-result.json \
 verifier < prompt.txt
 ```
+
+Relative result paths are resolved from `KAIZEN_WORKSPACE_DIR`, or from the
+current working directory when it is unset. The resolved result path must stay
+inside that workspace; paths that escape it directly or through symbolic links
+are rejected before the result is written.
+
+The launcher is responsible for choosing the workspace and result path before
+starting any untrusted agent work. `verifier` pre-opens the result file before
+reading stdin, does not pass that descriptor to child processes, and after
+evaluation revalidates the path, inode, and link count before truncating and
+writing through the same descriptor. Races by an independent same-privilege
+process before or during `verifier` execution are outside this boundary; the
+launcher must isolate the workspace from such processes while verification runs.
 
 The integration payload is:
 
