@@ -581,6 +581,8 @@ describe("fixture known-gap debt policy", () => {
           "user.email=fixture@example.invalid",
           "-c",
           "user.name=verifier-fixture",
+          "-c",
+          "commit.gpgsign=false",
           "commit",
           "-q",
           "-m",
@@ -666,6 +668,8 @@ describe("fixture known-gap debt policy", () => {
           "user.email=fixture@example.invalid",
           "-c",
           "user.name=verifier-fixture",
+          "-c",
+          "commit.gpgsign=false",
           "commit",
           "-q",
           "-m",
@@ -681,6 +685,12 @@ describe("fixture known-gap debt policy", () => {
         ["update-ref", "refs/remotes/origin/main", baseSha.trim()],
         { cwd: repository }
       );
+
+      const baseContentHash = await calculateFixtureContentSha256(caseDir);
+      const untrackedPath = join(caseDir, "repo", "local-only.tmp");
+      await writeFile(untrackedPath, "not part of the committed fixture\n");
+      expect(await calculateFixtureContentSha256(caseDir)).toBe(baseContentHash);
+      await rm(untrackedPath);
 
       await writeFile(join(caseDir, "repo", "source.ts"), "export const value = 2;\n");
       const replacementHash = await calculateFixtureContentSha256(caseDir);
@@ -712,6 +722,8 @@ describe("fixture known-gap debt policy", () => {
           "user.email=fixture@example.invalid",
           "-c",
           "user.name=verifier-fixture",
+          "-c",
+          "commit.gpgsign=false",
           "commit",
           "-q",
           "-m",
@@ -729,9 +741,11 @@ describe("fixture known-gap debt policy", () => {
         previousPolicy
       );
 
-      expect(previousPolicy.knownGapDebt[0]?.fixtureContentSha256).not.toBe(
-        replacementHash
-      );
+      expect(previousPolicy.knownGapDebt).toHaveLength(1);
+      const previousHash = previousPolicy.knownGapDebt[0]?.fixtureContentSha256;
+      expect(previousHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(previousHash).toBe(baseContentHash);
+      expect(previousHash).not.toBe(replacementHash);
       expect(result.gateFailures).toContain(
         "known-gap debt legacy-gap changed immutable metadata"
       );
@@ -805,7 +819,22 @@ describe("golden fixture replay", () => {
       await writeFile(join(sourceDir, "value.txt"), "before\n", "utf8");
       await execFileAsync("git", ["init", "-q", "-b", "main"], { cwd: sourceDir });
       await execFileAsync("git", ["add", "value.txt"], { cwd: sourceDir });
-      await execFileAsync("git", ["-c", "user.name=Verifier", "-c", "user.email=verifier@example.com", "commit", "-q", "-m", "base"], { cwd: sourceDir });
+      await execFileAsync(
+        "git",
+        [
+          "-c",
+          "user.name=Verifier",
+          "-c",
+          "user.email=verifier@example.com",
+          "-c",
+          "commit.gpgsign=false",
+          "commit",
+          "-q",
+          "-m",
+          "base"
+        ],
+        { cwd: sourceDir }
+      );
       const { stdout: sha } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: sourceDir });
       await mkdir(caseDir, { recursive: true });
       await writeFile(

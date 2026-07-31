@@ -6,11 +6,12 @@ import {
   readdir,
   readFile,
   readlink,
+  realpath,
   rm,
   writeFile
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -763,6 +764,15 @@ function validateDebtFixtureSnapshot(
 
 export async function calculateFixtureContentSha256(caseDir: string): Promise<string> {
   const records: string[] = [];
+  const resolvedCaseDir = await realpath(resolve(caseDir));
+  const trackedPaths = await trackedFixturePaths(resolvedCaseDir);
+
+  if (trackedPaths) {
+    for (const relativePath of trackedPaths) {
+      await addWorktreeFixtureRecord(resolvedCaseDir, relativePath, records);
+    }
+    return fixtureFingerprint(records);
+  }
 
   async function walk(directory: string, relativeDirectory: string): Promise<void> {
     const entries = await readdir(directory, { withFileTypes: true });
@@ -778,27 +788,71 @@ export async function calculateFixtureContentSha256(caseDir: string): Promise<st
         await walk(absolutePath, relativePath);
         continue;
       }
-      if (entry.isFile()) {
-        const [content, stats] = await Promise.all([readFile(absolutePath), lstat(absolutePath)]);
-        records.push(fixtureFileFingerprintRecord(relativePath, (stats.mode & 0o111) !== 0, content));
-        continue;
-      }
-      if (entry.isSymbolicLink()) {
-        records.push(
-          JSON.stringify({
-            type: "symlink",
-            path: relativePath,
-            target: await readlink(absolutePath)
-          })
-        );
-        continue;
-      }
-      throw new Error(`Unsupported fixture entry type: ${relativePath}`);
+      await addWorktreeFixtureRecord(resolvedCaseDir, relativePath, records);
     }
   }
 
-  await walk(resolve(caseDir), "");
+  await walk(resolvedCaseDir, "");
   return fixtureFingerprint(records);
+}
+
+async function trackedFixturePaths(caseDir: string): Promise<string[] | undefined> {
+  try {
+    const { stdout: rootOutput } = await git(caseDir, ["rev-parse", "--show-toplevel"]);
+    const repositoryRoot = resolve(rootOutput.trim());
+    const repositoryRelativeCaseDir = relative(repositoryRoot, caseDir).replaceAll("\\", "/");
+    if (
+      repositoryRelativeCaseDir === ".." ||
+      repositoryRelativeCaseDir.startsWith("../")
+    ) {
+      return undefined;
+    }
+    const { stdout } = await git(repositoryRoot, [
+      "ls-files",
+      "--cached",
+      "--",
+      repositoryRelativeCaseDir
+    ]);
+    const prefix = repositoryRelativeCaseDir ? `${repositoryRelativeCaseDir}/` : "";
+    const paths = stdout
+      .split("\n")
+      .filter(Boolean)
+      .map((path) => path.slice(prefix.length))
+      .sort();
+    return paths.length > 0 ? paths : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function addWorktreeFixtureRecord(
+  caseDir: string,
+  relativePath: string,
+  records: string[]
+): Promise<void> {
+  const absolutePath = join(caseDir, relativePath);
+  const stats = await lstat(absolutePath);
+  if (stats.isFile()) {
+    records.push(
+      fixtureFileFingerprintRecord(
+        relativePath,
+        (stats.mode & 0o111) !== 0,
+        await readFile(absolutePath)
+      )
+    );
+    return;
+  }
+  if (stats.isSymbolicLink()) {
+    records.push(
+      JSON.stringify({
+        type: "symlink",
+        path: relativePath,
+        target: await readlink(absolutePath)
+      })
+    );
+    return;
+  }
+  throw new Error(`Unsupported fixture entry type: ${relativePath}`);
 }
 
 function fixtureFileFingerprintRecord(
@@ -833,24 +887,28 @@ async function bindPolicyToFixtureRevision(
   repositoryRoot: string,
   comparisonSha: string
 ): Promise<FixtureEvalPolicy> {
+  const casePathsById = await fixtureCasePathIndexAtRevision(
+    repositoryRoot,
+    comparisonSha
+  );
   const knownGapDebt = await Promise.all(
     policy.knownGapDebt.map(async (debt) => ({
       ...debt,
       fixtureContentSha256: await calculateFixtureContentSha256AtRevision(
         repositoryRoot,
         comparisonSha,
-        debt.caseId
+        debt.caseId,
+        casePathsById
       )
     }))
   );
   return { ...policy, knownGapDebt };
 }
 
-async function calculateFixtureContentSha256AtRevision(
+async function fixtureCasePathIndexAtRevision(
   repositoryRoot: string,
-  comparisonSha: string,
-  caseId: string
-): Promise<string> {
+  comparisonSha: string
+): Promise<Map<string, string>> {
   const { stdout: corpusPathsOutput } = await git(repositoryRoot, [
     "ls-tree",
     "-r",
@@ -862,18 +920,30 @@ async function calculateFixtureContentSha256AtRevision(
   const casePaths = corpusPathsOutput
     .split("\n")
     .filter((path) => path.endsWith("/case.json"));
-  let casePath: string | undefined;
+  const casePathsById = new Map<string, string>();
   for (const candidatePath of casePaths) {
     const content = await gitBuffer(repositoryRoot, [
       "show",
       `${comparisonSha}:${candidatePath}`
     ]);
     const candidate = JSON.parse(content.toString("utf8")) as { id?: unknown };
-    if (candidate.id === caseId) {
-      casePath = candidatePath;
-      break;
+    if (typeof candidate.id === "string") {
+      if (casePathsById.has(candidate.id)) {
+        throw new Error(`Duplicate fixture case ${candidate.id} at ${comparisonSha}`);
+      }
+      casePathsById.set(candidate.id, candidatePath);
     }
   }
+  return casePathsById;
+}
+
+async function calculateFixtureContentSha256AtRevision(
+  repositoryRoot: string,
+  comparisonSha: string,
+  caseId: string,
+  casePathsById: ReadonlyMap<string, string>
+): Promise<string> {
+  const casePath = casePathsById.get(caseId);
   if (!casePath) {
     throw new Error(`Fixture case ${caseId} is absent at ${comparisonSha}`);
   }
@@ -969,7 +1039,18 @@ async function gitBuffer(cwd: string, args: string[]): Promise<Buffer> {
 async function gitCommit(cwd: string, message: string): Promise<void> {
   await execFileAsync(
     "git",
-    ["-c", "user.email=fixture@example.invalid", "-c", "user.name=verifier-fixture", "commit", "-q", "-m", message],
+    [
+      "-c",
+      "user.email=fixture@example.invalid",
+      "-c",
+      "user.name=verifier-fixture",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "-q",
+      "-m",
+      message
+    ],
     { cwd, maxBuffer: 20 * 1024 * 1024 }
   );
 }
