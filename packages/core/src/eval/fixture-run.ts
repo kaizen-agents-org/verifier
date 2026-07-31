@@ -15,6 +15,7 @@ const NEUTRAL_BASE_COMMIT_MESSAGE = "base";
 const NEUTRAL_HEAD_COMMIT_MESSAGE = "apply changes";
 const FULL_GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const FIXTURE_EVAL_POLICY_REPO_PATH = "fixtures/eval-policy.json";
 const FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA =
   "04bea41333cdf444b2cb4a3f19ea6c532a3fc45f";
 
@@ -65,17 +66,28 @@ const FixtureCaseSchema = z.object({
   timeoutMinutes: z.number().positive().default(15)
 });
 
+const IsoDateSchema = z
+  .string()
+  .regex(ISO_DATE_PATTERN)
+  .refine(
+    (value) => {
+      const parsed = new Date(`${value}T00:00:00Z`);
+      return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    },
+    { message: "must be a valid calendar date (YYYY-MM-DD)" }
+  );
+
 const KnownGapDebtBaseSchema = z.object({
   caseId: z.string().min(1),
   reason: z.string().min(1),
   owner: z.string().min(1),
   followUp: z.string().min(1),
-  introducedOn: z.string().regex(ISO_DATE_PATTERN),
+  introducedOn: IsoDateSchema,
   groundTruthDefect: z.literal(true),
   expectedVerdicts: z.array(FinalVerdictKindSchema).min(1)
 });
 
-const FixtureEvalPolicySchema = z.object({
+export const FixtureEvalPolicySchema = z.object({
   baseline: z.object({
     rawRecallMin: z.number().min(0).max(1),
     rawVerdictAgreementMin: z.number().min(0).max(1),
@@ -86,7 +98,7 @@ const FixtureEvalPolicySchema = z.object({
       KnownGapDebtBaseSchema.extend({ status: z.literal("active") }).strict(),
       KnownGapDebtBaseSchema.extend({
         status: z.literal("retired"),
-        retiredOn: z.string().regex(ISO_DATE_PATTERN)
+        retiredOn: IsoDateSchema
       }).strict()
     ])
   )
@@ -102,7 +114,16 @@ const FixtureEvalPolicySchema = z.object({
     }
     registeredDebtIds.add(caseId);
   });
+  const knownGapDebtIds = new Set<string>();
   policy.knownGapDebt.forEach((debt, index) => {
+    if (knownGapDebtIds.has(debt.caseId)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "knownGapDebt caseId must be unique",
+        path: ["knownGapDebt", index, "caseId"]
+      });
+    }
+    knownGapDebtIds.add(debt.caseId);
     if (new Set(debt.expectedVerdicts).size !== debt.expectedVerdicts.length) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -263,8 +284,12 @@ export async function runFixtureEval(options: RunFixtureEvalOptions = {}): Promi
   const metrics = calculateFixtureMetrics(results, harnessErrorDetails.length);
   const customCorpus = options.corpusDir !== undefined;
   const policy = await loadFixtureEvalPolicy(options.policyFile, customCorpus);
+  const usesDefaultPolicyFile =
+    options.policyFile !== false &&
+    resolve(options.policyFile ?? defaultFixtureEvalPolicyFile()) ===
+      defaultFixtureEvalPolicyFile();
   const previousPolicy =
-    policy && options.policyFile === undefined && !customCorpus
+    policy && usesDefaultPolicyFile && !customCorpus
       ? await loadPreviousFixtureEvalPolicy(process.env.BASE_SHA)
       : undefined;
   const policyAssessment = policy
@@ -586,11 +611,12 @@ export function assessFixturePolicy(
   const verdictMatches = results.filter(
     (result) => compareFixtureVerdict(result.expected, result.actual).length === 0
   ).length;
+  const defectCases = results.filter((result) => result.groundTruth.defect).length;
 
   return {
     adjustedMetrics: {
-      recall: ratio(detectedDefects + activeFalseNegatives, metrics.defectCases),
-      verdictAgreement: ratio(verdictMatches + activeDisagreements, metrics.totalCases)
+      recall: ratio(detectedDefects + activeFalseNegatives, defectCases),
+      verdictAgreement: ratio(verdictMatches + activeDisagreements, results.length)
     },
     acceptedDebt: {
       activeCount: activeDebts.length,
@@ -800,9 +826,9 @@ async function loadPreviousFixtureEvalPolicy(
       "--name-only",
       baseSha,
       "--",
-      "fixtures/eval-policy.json"
+      FIXTURE_EVAL_POLICY_REPO_PATH
     ]);
-    policyPathExists = stdout.trim() === "fixtures/eval-policy.json";
+    policyPathExists = stdout.trim() === FIXTURE_EVAL_POLICY_REPO_PATH;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to inspect fixture eval policy at BASE_SHA ${baseSha}: ${message}`);
@@ -821,7 +847,7 @@ async function loadPreviousFixtureEvalPolicy(
         "--format=%H",
         `${FIXTURE_EVAL_POLICY_BOOTSTRAP_BASE_SHA}..${baseSha}`,
         "--",
-        "fixtures/eval-policy.json"
+        FIXTURE_EVAL_POLICY_REPO_PATH
       ]);
       isUnmodifiedBootstrapDescendant = stdout.trim().length === 0;
     } catch {
@@ -838,7 +864,7 @@ async function loadPreviousFixtureEvalPolicy(
   try {
     const { stdout } = await git(repositoryRoot, [
       "show",
-      `${baseSha}:fixtures/eval-policy.json`
+      `${baseSha}:${FIXTURE_EVAL_POLICY_REPO_PATH}`
     ]);
     return FixtureEvalPolicySchema.parse(JSON.parse(stdout) as unknown);
   } catch (error) {
@@ -860,7 +886,10 @@ function defaultFixtureCorpusDir(): string {
 }
 
 function defaultFixtureEvalPolicyFile(): string {
-  return resolve(dirname(fileURLToPath(import.meta.url)), "../../../../fixtures/eval-policy.json");
+  return resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    `../../../../${FIXTURE_EVAL_POLICY_REPO_PATH}`
+  );
 }
 
 function parseArgs(argv: string[]): RunFixtureEvalOptions {

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   assessFixturePolicy,
   calculateFixtureMetrics,
+  FixtureEvalPolicySchema,
   fixtureRunExitCode,
   runFixtureEval
 } from "../src/eval/fixture-run.js";
@@ -181,6 +182,99 @@ describe("fixture known-gap debt policy", () => {
     groundTruthDefect: true as const,
     expectedVerdicts: ["conditional"] as const
   };
+
+  it("rejects impossible calendar dates and duplicate debt records", () => {
+    const duplicateDebt = {
+      caseId: "duplicate-gap",
+      ...debtMetadata,
+      status: "active" as const
+    };
+    const invalid = FixtureEvalPolicySchema.safeParse({
+      baseline: {
+        rawRecallMin: 0,
+        rawVerdictAgreementMin: 0,
+        debtCaseIds: ["duplicate-gap"]
+      },
+      knownGapDebt: [
+        { ...duplicateDebt, introducedOn: "2026-02-31" },
+        duplicateDebt
+      ]
+    });
+
+    expect(invalid.success).toBe(false);
+    if (!invalid.success) {
+      expect(invalid.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: ["knownGapDebt", 0, "introducedOn"],
+            message: "must be a valid calendar date (YYYY-MM-DD)"
+          }),
+          expect.objectContaining({
+            path: ["knownGapDebt", 1, "caseId"],
+            message: "knownGapDebt caseId must be unique"
+          })
+        ])
+      );
+    }
+  });
+
+  it("reports baseline/ledger mismatches and duplicate assessment records", () => {
+    const debt = {
+      caseId: "unregistered-gap",
+      ...debtMetadata,
+      status: "active" as const
+    };
+    const duplicateFixture = metricFixture(
+      "duplicate-fixture",
+      true,
+      "mergeable",
+      "conditional"
+    );
+    const result = assessFixturePolicy(
+      [duplicateFixture, duplicateFixture],
+      calculateFixtureMetrics([duplicateFixture, duplicateFixture], 0),
+      {
+        baseline: {
+          rawRecallMin: 0,
+          rawVerdictAgreementMin: 0,
+          debtCaseIds: ["missing-record"]
+        },
+        knownGapDebt: [debt, debt]
+      }
+    );
+
+    expect(result.gateFailures).toEqual(
+      expect.arrayContaining([
+        "duplicate fixture case id: duplicate-fixture",
+        "duplicate known-gap debt record: unregistered-gap",
+        "registered known-gap debt missing-record has no debt record",
+        "known-gap debt unregistered-gap is not registered in baseline debtCaseIds"
+      ])
+    );
+  });
+
+  it("derives adjusted metric denominators from the assessed results", () => {
+    const falseNegative = metricFixture(
+      "approved-gap",
+      true,
+      "mergeable",
+      "conditional"
+    );
+    falseNegative.expected.knownGap = true;
+    const mismatchedMetrics = {
+      ...calculateFixtureMetrics([falseNegative], 0),
+      totalCases: 0,
+      defectCases: 0
+    };
+
+    const result = assessFixturePolicy(
+      [falseNegative],
+      mismatchedMetrics,
+      policy([{ caseId: "approved-gap", ...debtMetadata, status: "active" }])
+    );
+
+    expect(result.adjustedMetrics).toEqual({ recall: 1, verdictAgreement: 1 });
+  });
 
   it("rejects unauthorized known-gap growth", () => {
     const falseNegative = metricFixture("new-gap", true, "mergeable", "conditional");
