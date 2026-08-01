@@ -106,7 +106,7 @@ describe("CLI probe driver", () => {
         crash: { file: process.execPath, args: ["-e", "process.kill(process.pid, 'SIGTERM')"] },
         pass: { file: process.execPath, args: ["-e", "process.exit(0)"] }
       }
-    }).launch(context(workdir, {}));
+    }).launch(context(workdir, {}, 5_000));
     await session.interact({
       ...scenario("fail"),
       steps: [
