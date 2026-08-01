@@ -94,6 +94,44 @@ describe("eval harness", () => {
     expect(metrics.verdictAgreement).toBe(0);
   });
 
+  it("does not count verdict agreement below the minimum confidence", () => {
+    const expected = {
+      verdict: "open_pr" as const,
+      confidenceMin: 80
+    };
+    const verdict: MinimalVerdict = {
+      schemaVersion: 1,
+      verdict: "open_pr",
+      must_fix: [],
+      should_fix: [],
+      confidence: 70,
+      risk: "low",
+      summary: "Open PR."
+    };
+    const failures = compareVerdict(expected, verdict);
+    const metrics = calculateEvalMetrics([
+      {
+        id: "confidence-min-regression",
+        kind: "golden",
+        description: "Correct verdict with confidence below the expected minimum.",
+        passed: failures.length === 0,
+        failures,
+        actual: {
+          verdict: verdict.verdict,
+          risk: verdict.risk,
+          confidence: verdict.confidence,
+          mustFixCount: verdict.must_fix.length,
+          shouldFixCount: verdict.should_fix.length
+        },
+        expected
+      }
+    ]);
+
+    expect(failures).toEqual(["expected confidence >= 80, got 70"]);
+    expect(metrics.failedCases).toBe(1);
+    expect(metrics.verdictAgreement).toBe(0);
+  });
+
   it("calculates false-positive rate from surplus findings", () => {
     const metrics = calculateEvalMetrics([
       {
