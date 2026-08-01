@@ -630,9 +630,10 @@ Return "block_pr" when the builder must revise the change before a PR is created
   it("redacts credentials before noisy verification output is truncated", async () => {
     const dir = await createChangedRepo();
     const credential = "boundary-secret-value";
-    const noisyCommand = nodeEvalCommand(
-      `process.stdout.write('x'.repeat(98298) + 'token=${credential}' + 'z'.repeat(32768))`
-    );
+    const noisyCommand = nodeEvalCommand([
+      "process.stdout.write('x'.repeat(98298) + 'token=')",
+      "setTimeout(() => process.stdout.write(['boundary', 'secret', 'value'].join('-') + 'z'.repeat(32768)), 10)"
+    ].join(";"));
 
     const { stdout } = await spawnWithInput(
       process.execPath,
@@ -657,6 +658,37 @@ Return "block_pr" when the builder must revise the change before a PR is created
 
     expect(logsArtifact).toContain("token=[REDACTED]");
     expect(logsArtifact).not.toContain(credential);
+  });
+
+  it("keeps multibyte characters intact at bounded capture edges", async () => {
+    const dir = await createChangedRepo();
+    const noisyCommand = nodeEvalCommand(
+      "process.stdout.write('a'.repeat(32767) + '🙂' + 'm'.repeat(32768) + '🙂' + 'z'.repeat(32767))"
+    );
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        noisyCommand
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as { run: { artifacts_dir: string } };
+    const logsArtifact = await readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8");
+
+    expect(logsArtifact).toContain("stdout truncated:");
+    expect(logsArtifact).not.toContain("�");
   });
 
   it("infers package.json verification scripts when commands are omitted", async () => {

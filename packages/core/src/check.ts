@@ -3,9 +3,9 @@ import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { StringDecoder } from "node:string_decoder";
-import { promisify } from "node:util";
+import { promisify, TextDecoder } from "node:util";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
-import { redactSensitiveText } from "./redaction.js";
+import { createSensitiveTextRedactor, redactSensitiveText } from "./redaction.js";
 import type { FinalVerdictKind, MinimalVerdict, VerdictInput } from "./types.js";
 
 const execFileAsync = promisify(execFile);
@@ -261,6 +261,7 @@ function createBoundedOutputCapture(maxBytes: number): {
   const headLimit = Math.floor(maxBytes / 2);
   const tailLimit = maxBytes - headLimit;
   const decoder = new StringDecoder("utf8");
+  const redactor = createSensitiveTextRedactor();
   let head = Buffer.alloc(0);
   let tail = Buffer.alloc(0);
   let totalBytes = 0;
@@ -287,11 +288,14 @@ function createBoundedOutputCapture(maxBytes: number): {
   return {
     append(chunk) {
       totalBytes += chunk.byteLength;
-      appendCaptured(Buffer.from(redactSensitiveText(decoder.write(chunk)), "utf8"));
+      for (let offset = 0; offset < chunk.byteLength; offset += 4096) {
+        const decoded = decoder.write(chunk.subarray(offset, offset + 4096));
+        appendCaptured(Buffer.from(redactor.write(decoded), "utf8"));
+      }
     },
     render(streamName) {
       if (!decoderEnded) {
-        appendCaptured(Buffer.from(redactSensitiveText(decoder.end()), "utf8"));
+        appendCaptured(Buffer.from(redactor.write(decoder.end()) + redactor.end(), "utf8"));
         decoderEnded = true;
       }
       if (totalBytes <= maxBytes) {
@@ -299,12 +303,26 @@ function createBoundedOutputCapture(maxBytes: number): {
       }
       const omittedBytes = totalBytes - maxBytes;
       return [
-        head.toString("utf8"),
+        decodeCompleteUtf8(head, "head"),
         `[${streamName} truncated: omitted ${omittedBytes} bytes; showing first ${headLimit} and last ${tailLimit} bytes]`,
-        tail.toString("utf8")
+        decodeCompleteUtf8(tail, "tail")
       ].join("\n");
     }
   };
+}
+
+function decodeCompleteUtf8(buffer: Buffer, boundary: "head" | "tail"): string {
+  for (let adjustment = 0; adjustment <= 3; adjustment += 1) {
+    const candidate = boundary === "head"
+      ? buffer.subarray(0, buffer.byteLength - adjustment)
+      : buffer.subarray(adjustment);
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(candidate);
+    } catch {
+      // At most three bytes can straddle a UTF-8 boundary.
+    }
+  }
+  throw new Error(`Unable to decode bounded ${boundary} output as UTF-8.`);
 }
 
 function terminateProcessGroup(pid: number | undefined, signal: NodeJS.Signals = "SIGTERM"): void {
