@@ -660,6 +660,38 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(logsArtifact).not.toContain(credential);
   });
 
+  it("measures truncation after verification output is redacted", async () => {
+    const dir = await createChangedRepo();
+    const noisyCommand = nodeEvalCommand(
+      "process.stdout.write('token=' + 's'.repeat(102400) + '\\nvisible-output')"
+    );
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        noisyCommand
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as { run: { artifacts_dir: string } };
+    const logsArtifact = await readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8");
+
+    expect(logsArtifact).toContain("token=[REDACTED]");
+    expect(logsArtifact).toContain("visible-output");
+    expect(logsArtifact).not.toContain("stdout truncated:");
+  });
+
   it("keeps multibyte characters intact at bounded capture edges", async () => {
     const dir = await createChangedRepo();
     const noisyCommand = nodeEvalCommand(

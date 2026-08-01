@@ -264,10 +264,11 @@ function createBoundedOutputCapture(maxBytes: number): {
   const redactor = createSensitiveTextRedactor();
   let head = Buffer.alloc(0);
   let tail = Buffer.alloc(0);
-  let totalBytes = 0;
+  let capturedBytes = 0;
   let decoderEnded = false;
 
   const appendCaptured = (chunk: Buffer): void => {
+    capturedBytes += chunk.byteLength;
     const headRemaining = headLimit - head.byteLength;
     const headBytes = Math.min(headRemaining, chunk.byteLength);
     if (headBytes > 0) {
@@ -287,7 +288,6 @@ function createBoundedOutputCapture(maxBytes: number): {
 
   return {
     append(chunk) {
-      totalBytes += chunk.byteLength;
       for (let offset = 0; offset < chunk.byteLength; offset += 4096) {
         const decoded = decoder.write(chunk.subarray(offset, offset + 4096));
         appendCaptured(Buffer.from(redactor.write(decoded), "utf8"));
@@ -298,10 +298,10 @@ function createBoundedOutputCapture(maxBytes: number): {
         appendCaptured(Buffer.from(redactor.write(decoder.end()) + redactor.end(), "utf8"));
         decoderEnded = true;
       }
-      if (totalBytes <= maxBytes) {
+      if (capturedBytes <= maxBytes) {
         return Buffer.concat([head, tail]).toString("utf8");
       }
-      const omittedBytes = totalBytes - maxBytes;
+      const omittedBytes = capturedBytes - maxBytes;
       return [
         decodeCompleteUtf8(head, "head"),
         `[${streamName} truncated: omitted ${omittedBytes} bytes; showing first ${headLimit} and last ${tailLimit} bytes]`,
