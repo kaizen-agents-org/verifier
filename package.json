@@ -6,7 +6,7 @@
   "packageManager": "pnpm@10.26.0",
   "scripts": {
     "build": "pnpm -r build",
-    "eval": "pnpm --filter @verifier/core eval",
+    "eval": "pnpm --filter @verifier/core eval && pnpm eval:fixtures",
     "eval:fixtures": "pnpm --filter @verifier/core eval:fixtures",
     "eval:semantic": "pnpm --filter @verifier/agents eval",
     "eval:semantic:ci": "node scripts/run-semantic-eval-ci.mjs",
