@@ -618,9 +618,45 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(logsArtifact).toContain("-stdout-tail");
     expect(logsArtifact).toContain("stderr-head-");
     expect(logsArtifact).toContain("-stderr-tail");
-    expect(logsArtifact).toContain("stdout truncated: omitted 65560 bytes");
-    expect(logsArtifact).toContain("stderr truncated: omitted 65560 bytes");
+    expect(logsArtifact).toContain(
+      "stdout truncated: omitted 65560 bytes; showing first 32768 and last 32768 bytes"
+    );
+    expect(logsArtifact).toContain(
+      "stderr truncated: omitted 65560 bytes; showing first 32768 and last 32768 bytes"
+    );
     expect(Buffer.byteLength(logsArtifact)).toBeLessThan(132 * 1024);
+  });
+
+  it("redacts credentials before noisy verification output is truncated", async () => {
+    const dir = await createChangedRepo();
+    const credential = "boundary-secret-value";
+    const noisyCommand = nodeEvalCommand(
+      `process.stdout.write('x'.repeat(98298) + 'token=${credential}' + 'z'.repeat(32768))`
+    );
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        noisyCommand
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as { run: { artifacts_dir: string } };
+    const logsArtifact = await readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8");
+
+    expect(logsArtifact).toContain("token=[REDACTED]");
+    expect(logsArtifact).not.toContain(credential);
   });
 
   it("infers package.json verification scripts when commands are omitted", async () => {
@@ -897,7 +933,10 @@ Return "block_pr" when the builder must revise the change before a PR is created
         "--task",
         "Update greeting text.",
         "--verify-command",
-        nodeEvalCommand("setTimeout(() => {}, 5_000)"),
+        nodeEvalCommand([
+          "process.on('SIGTERM', () => { process.stderr.write('late-stderr-'.repeat(4000)); process.exit(1) })",
+          "setTimeout(() => {}, 5_000)"
+        ].join(";")),
         "--verify-timeout-ms",
         "50"
       ],
@@ -908,12 +947,18 @@ Return "block_pr" when the builder must revise the change before a PR is created
     const output = JSON.parse(stdout) as {
       final_verdict: string;
       must_fix: Array<{ evidence?: string }>;
-      run: { verify_commands: Array<{ timed_out?: boolean; timeout_ms?: number }> };
+      run: {
+        artifacts_dir: string;
+        verify_commands: Array<{ timed_out?: boolean; timeout_ms?: number }>;
+      };
     };
 
     expect(output.final_verdict).toBe("not_mergeable");
     expect(output.must_fix.some((item) => item.evidence?.includes("timed out after 50ms"))).toBe(true);
     expect(output.run.verify_commands[0]).toMatchObject({ timed_out: true, timeout_ms: 50 });
+    const logsArtifact = await readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8");
+    expect(logsArtifact).toContain("late-stderr-");
+    expect(logsArtifact).toContain("verification command timed out after 50ms");
   });
 
   it("prints markdown reports for check", async () => {

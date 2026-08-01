@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { promisify } from "node:util";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
 import { redactSensitiveText } from "./redaction.js";
@@ -221,7 +222,6 @@ function runShellCommand(
     let killTimer: NodeJS.Timeout | undefined;
     const timeout = setTimeout(() => {
       timedOut = true;
-      stderr.append(Buffer.from(`\nverification command timed out after ${timeoutMs}ms\n`));
       terminateProcessGroup(child.pid);
       killTimer = setTimeout(() => terminateProcessGroup(child.pid, "SIGKILL"), 1000);
     }, timeoutMs);
@@ -236,12 +236,16 @@ function runShellCommand(
     child.on("close", (code, signal) => {
       clearTimeout(timeout);
       if (killTimer) clearTimeout(killTimer);
+      const renderedStderr = stderr.render("stderr");
+      const timeoutDiagnostic = timedOut
+        ? `verification command timed out after ${timeoutMs}ms`
+        : "";
       resolve({
         command,
         code,
         signal,
         stdout: stdout.render("stdout"),
-        stderr: stderr.render("stderr"),
+        stderr: [renderedStderr, timeoutDiagnostic].filter(Boolean).join("\n"),
         durationMs: Date.now() - startedAt,
         timedOut,
         timeoutMs
@@ -256,30 +260,40 @@ function createBoundedOutputCapture(maxBytes: number): {
 } {
   const headLimit = Math.floor(maxBytes / 2);
   const tailLimit = maxBytes - headLimit;
+  const decoder = new StringDecoder("utf8");
   let head = Buffer.alloc(0);
   let tail = Buffer.alloc(0);
   let totalBytes = 0;
+  let decoderEnded = false;
+
+  const appendCaptured = (chunk: Buffer): void => {
+    const headRemaining = headLimit - head.byteLength;
+    const headBytes = Math.min(headRemaining, chunk.byteLength);
+    if (headBytes > 0) {
+      head = Buffer.concat([head, Buffer.from(chunk.subarray(0, headBytes))]);
+    }
+
+    const remaining = chunk.subarray(headBytes);
+    if (remaining.byteLength >= tailLimit) {
+      tail = Buffer.from(remaining.subarray(remaining.byteLength - tailLimit));
+    } else if (remaining.byteLength > 0) {
+      const combined = Buffer.concat([tail, remaining]);
+      tail = combined.byteLength > tailLimit
+        ? Buffer.from(combined.subarray(combined.byteLength - tailLimit))
+        : combined;
+    }
+  };
 
   return {
     append(chunk) {
       totalBytes += chunk.byteLength;
-      const headRemaining = headLimit - head.byteLength;
-      const headBytes = Math.min(headRemaining, chunk.byteLength);
-      if (headBytes > 0) {
-        head = Buffer.concat([head, Buffer.from(chunk.subarray(0, headBytes))]);
-      }
-
-      const remaining = chunk.subarray(headBytes);
-      if (remaining.byteLength >= tailLimit) {
-        tail = Buffer.from(remaining.subarray(remaining.byteLength - tailLimit));
-      } else if (remaining.byteLength > 0) {
-        const combined = Buffer.concat([tail, remaining]);
-        tail = combined.byteLength > tailLimit
-          ? Buffer.from(combined.subarray(combined.byteLength - tailLimit))
-          : combined;
-      }
+      appendCaptured(Buffer.from(redactSensitiveText(decoder.write(chunk)), "utf8"));
     },
     render(streamName) {
+      if (!decoderEnded) {
+        appendCaptured(Buffer.from(redactSensitiveText(decoder.end()), "utf8"));
+        decoderEnded = true;
+      }
       if (totalBytes <= maxBytes) {
         return Buffer.concat([head, tail]).toString("utf8");
       }
