@@ -83,7 +83,18 @@ describe("sensitive value redaction", () => {
   });
 
   it.each([
+    "ghp_token=private-value",
+    '{"ghp_token":"private-value"}'
+  ])("reprocesses rejected token candidates in %s", (source) => {
+    expect(redactSensitiveText(source)).not.toContain("private-value");
+    expect(redactSensitiveText(source)).toContain("token");
+    expect(redactSensitiveText(source)).toContain("[REDACTED]");
+  });
+
+  it.each([
     'prefix token = "split-secret" suffix',
+    "ghp_token=private-value",
+    '{"ghp_token":"private-value"}',
     "authorization: Bearer header.payload.signature\nvisible",
     "Bearer abcdefghijklmnop visible",
     `ghp_${"a".repeat(24)} visible`,

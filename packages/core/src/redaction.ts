@@ -236,10 +236,14 @@ export function createSensitiveTextRedactor(): SensitiveTextRedactor {
             mode = "suppress";
           }
         } else {
-          emit(tokenCandidate);
+          const rejectedCandidate = tokenCandidate;
           tokenCandidate = "";
           mode = "normal";
-          processNormalCharacter(character);
+          emit(rejectedCandidate[0] ?? "");
+          for (const rejectedCharacter of rejectedCandidate.slice(1)) {
+            processCharacter(rejectedCharacter);
+          }
+          processCharacter(character);
         }
         return;
       }

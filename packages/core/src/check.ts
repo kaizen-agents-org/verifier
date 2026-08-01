@@ -260,9 +260,11 @@ function createBoundedOutputCapture(maxBytes: number): {
 } {
   const headLimit = Math.floor(maxBytes / 2);
   const tailLimit = maxBytes - headLimit;
+  const utf8BoundaryBytes = 3;
   const decoder = new StringDecoder("utf8");
   const redactor = createSensitiveTextRedactor();
   let head = Buffer.alloc(0);
+  let headContext = Buffer.alloc(0);
   let tail = Buffer.alloc(0);
   let capturedBytes = 0;
   let decoderEnded = false;
@@ -276,12 +278,20 @@ function createBoundedOutputCapture(maxBytes: number): {
     }
 
     const remaining = chunk.subarray(headBytes);
-    if (remaining.byteLength >= tailLimit) {
-      tail = Buffer.from(remaining.subarray(remaining.byteLength - tailLimit));
+    const contextRemaining = utf8BoundaryBytes - headContext.byteLength;
+    if (contextRemaining > 0 && remaining.byteLength > 0) {
+      headContext = Buffer.concat([
+        headContext,
+        Buffer.from(remaining.subarray(0, contextRemaining))
+      ]);
+    }
+    const tailStorageLimit = tailLimit + utf8BoundaryBytes;
+    if (remaining.byteLength >= tailStorageLimit) {
+      tail = Buffer.from(remaining.subarray(remaining.byteLength - tailStorageLimit));
     } else if (remaining.byteLength > 0) {
       const combined = Buffer.concat([tail, remaining]);
-      tail = combined.byteLength > tailLimit
-        ? Buffer.from(combined.subarray(combined.byteLength - tailLimit))
+      tail = combined.byteLength > tailStorageLimit
+        ? Buffer.from(combined.subarray(combined.byteLength - tailStorageLimit))
         : combined;
     }
   };
@@ -301,23 +311,42 @@ function createBoundedOutputCapture(maxBytes: number): {
       if (capturedBytes <= maxBytes) {
         return Buffer.concat([head, tail]).toString("utf8");
       }
-      const omittedBytes = capturedBytes - maxBytes;
+      const renderedHead = completeUtf8Boundary(
+        Buffer.concat([head, headContext]),
+        "head",
+        headLimit
+      );
+      const renderedTail = completeUtf8Boundary(tail, "tail", tailLimit);
+      const omittedBytes = capturedBytes - renderedHead.byteLength - renderedTail.byteLength;
+      if (omittedBytes <= 0) {
+        return Buffer.concat([
+          renderedHead,
+          renderedTail.subarray(Math.max(0, -omittedBytes))
+        ]).toString("utf8");
+      }
       return [
-        decodeCompleteUtf8(head, "head"),
-        `[${streamName} truncated: omitted ${omittedBytes} bytes; showing first ${headLimit} and last ${tailLimit} bytes]`,
-        decodeCompleteUtf8(tail, "tail")
+        renderedHead.toString("utf8"),
+        `[${streamName} truncated: omitted ${omittedBytes} bytes; showing first ${renderedHead.byteLength} and last ${renderedTail.byteLength} bytes]`,
+        renderedTail.toString("utf8")
       ].join("\n");
     }
   };
 }
 
-function decodeCompleteUtf8(buffer: Buffer, boundary: "head" | "tail"): string {
+function completeUtf8Boundary(
+  buffer: Buffer,
+  boundary: "head" | "tail",
+  minimumBytes: number
+): Buffer {
   for (let adjustment = 0; adjustment <= 3; adjustment += 1) {
+    const retainedBytes = minimumBytes + adjustment;
+    if (retainedBytes > buffer.byteLength) continue;
     const candidate = boundary === "head"
-      ? buffer.subarray(0, buffer.byteLength - adjustment)
-      : buffer.subarray(adjustment);
+      ? buffer.subarray(0, retainedBytes)
+      : buffer.subarray(buffer.byteLength - retainedBytes);
     try {
-      return new TextDecoder("utf-8", { fatal: true }).decode(candidate);
+      new TextDecoder("utf-8", { fatal: true }).decode(candidate);
+      return candidate;
     } catch {
       // At most three bytes can straddle a UTF-8 boundary.
     }

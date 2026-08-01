@@ -695,7 +695,8 @@ Return "block_pr" when the builder must revise the change before a PR is created
   it("keeps multibyte characters intact at bounded capture edges", async () => {
     const dir = await createChangedRepo();
     const noisyCommand = nodeEvalCommand(
-      "process.stdout.write('a'.repeat(32767) + '🙂' + 'm'.repeat(32768) + '🙂' + 'z'.repeat(32767))"
+      "const smile = String.fromCodePoint(0x1f642); "
+      + "process.stdout.write('a'.repeat(32767) + smile + 'm'.repeat(32768) + smile + 'z'.repeat(32767))"
     );
 
     const { stdout } = await spawnWithInput(
@@ -719,7 +720,10 @@ Return "block_pr" when the builder must revise the change before a PR is created
     const output = JSON.parse(stdout) as { run: { artifacts_dir: string } };
     const logsArtifact = await readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8");
 
-    expect(logsArtifact).toContain("stdout truncated:");
+    expect(logsArtifact).toContain(
+      "stdout truncated: omitted 32768 bytes; showing first 32771 and last 32771 bytes"
+    );
+    expect(logsArtifact.match(/🙂/gu)).toHaveLength(2);
     expect(logsArtifact).not.toContain("�");
   });
 
