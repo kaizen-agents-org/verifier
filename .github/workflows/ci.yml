@@ -29,6 +29,8 @@ jobs:
       - run: pnpm test:built-cli
       - run: pnpm schema:check
       - run: pnpm eval
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
       - run: pnpm eval:semantic:ci
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}

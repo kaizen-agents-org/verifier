@@ -1,0 +1,9 @@
+fixtures/corpus/** -text
+fixtures/corpus/**/*.js text eol=lf
+fixtures/corpus/**/*.json text eol=lf
+fixtures/corpus/**/*.patch text eol=lf
+fixtures/corpus/**/*.py text eol=lf
+fixtures/corpus/**/*.rs text eol=lf
+fixtures/corpus/**/*.toml text eol=lf
+fixtures/corpus/**/*.ts text eol=lf
+fixtures/corpus/**/*.txt text eol=lf
