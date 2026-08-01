@@ -6,7 +6,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
 import { VerdictInputSchema } from "./types.js";
-import type { FinalVerdictKind } from "./types.js";
+import type { FinalVerdictKind, KaizenVerifierResult } from "./types.js";
 import { readVersionInfo } from "./version.js";
 
 interface CliOptions {
@@ -122,12 +122,9 @@ async function main(argv: string[]): Promise<number> {
   return 0;
 }
 
-async function runKaizenLoopMode(writeResult: (content: string) => Promise<void>): Promise<{
-  status: "open_pr" | "open_pr_with_warning" | "block_pr" | "needs_context";
-  summary: string;
-  notes: string;
-  reason: string;
-}> {
+async function runKaizenLoopMode(
+  writeResult: (content: string) => Promise<void>
+): Promise<KaizenVerifierResult> {
   const prompt = await readStdin();
   const input = VerdictInputSchema.parse(parseKaizenLoopPrompt(prompt));
   const verdict = evaluateMinimalVerdict(input);
@@ -149,7 +146,9 @@ async function runKaizenLoopMode(writeResult: (content: string) => Promise<void>
     ]
       .filter(Boolean)
       .join("\n"),
-    reason
+    reason,
+    must_fix: verdict.must_fix,
+    should_fix: verdict.should_fix
   };
 
   await writeResult(`${JSON.stringify(payload, null, 2)}\n`);

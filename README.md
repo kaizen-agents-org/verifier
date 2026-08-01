@@ -416,12 +416,16 @@ The integration payload is:
   "status": "open_pr",
   "summary": "Open PR with 0 should_fix item(s); risk is low.",
   "notes": "evidence_grade=reported\nrisk=low\nconfidence=82",
-  "reason": ""
+  "reason": "",
+  "must_fix": [],
+  "should_fix": []
 }
 ```
 
 `status` is one of `open_pr`, `open_pr_with_warning`, `block_pr`, or
-`needs_context`.
+`needs_context`. `must_fix` and `should_fix` preserve the structured finding
+objects from the full verdict contract. The existing `notes` and `reason`
+strings remain available for compatibility with current consumers.
 
 `verifier` does not edit project source files, create branches, commit changes,
 create pull requests, or grant merge approval. Workspace checks do write their

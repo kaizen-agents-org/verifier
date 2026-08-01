@@ -162,12 +162,20 @@ Return "block_pr" when the builder must revise the change before a PR is created
       }
     );
 
-    const output = JSON.parse(stdout) as { status: string; summary: string; reason: string };
+    const output = JSON.parse(stdout) as {
+      status: string;
+      summary: string;
+      reason: string;
+      must_fix: unknown[];
+      should_fix: unknown[];
+    };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
       summary: string;
       notes: string;
       reason: string;
+      must_fix: unknown[];
+      should_fix: unknown[];
     };
 
     expect(output.status).toBe("open_pr");
@@ -176,6 +184,10 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(result.notes).toContain("evidence_grade=reported");
     expect(output.reason).toBe("");
     expect(result.reason).toBe("");
+    expect(output.must_fix).toEqual([]);
+    expect(output.should_fix).toEqual([]);
+    expect(result.must_fix).toEqual([]);
+    expect(result.should_fix).toEqual([]);
   });
 
   it.each(["relative", "absolute"] as const)(
@@ -417,16 +429,33 @@ Return a verdict.
       }
     );
 
-    const output = JSON.parse(stdout) as { status: string; reason: string };
+    const output = JSON.parse(stdout) as {
+      status: string;
+      reason: string;
+      must_fix: unknown[];
+      should_fix: Array<{ source: string; message: string; evidence?: string }>;
+    };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
       reason: string;
+      must_fix: unknown[];
+      should_fix: Array<{ source: string; message: string; evidence?: string }>;
     };
 
     expect(output.status).toBe("needs_context");
     expect(result.status).toBe("needs_context");
     expect(output.reason).toContain("Diff is missing");
     expect(result.reason).toContain("Diff is missing");
+    expect(output.must_fix).toEqual([]);
+    expect(output.should_fix).toEqual(result.should_fix);
+    expect(output.should_fix).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "diff",
+          message: expect.stringContaining("Diff is missing")
+        })
+      ])
+    );
   });
 
   it("ignores a Diff heading embedded before the generated changed-files section", async () => {
@@ -523,11 +552,18 @@ Return "block_pr" when the builder must revise the change before a PR is created
       }
     );
 
-    const output = JSON.parse(stdout) as { status: string; reason: string };
+    const output = JSON.parse(stdout) as {
+      status: string;
+      reason: string;
+      must_fix: Array<{ source: string; message: string; evidence?: string }>;
+      should_fix: unknown[];
+    };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
       notes: string;
       reason: string;
+      must_fix: Array<{ source: string; message: string; evidence?: string }>;
+      should_fix: unknown[];
     };
 
     expect(output.status).toBe("block_pr");
@@ -535,6 +571,83 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.reason).toContain("focused verification");
     expect(result.reason).toContain("focused verification");
     expect(result.notes).toContain("Diff touches high-risk billing/payments code");
+    expect(output.must_fix).toEqual(result.must_fix);
+    expect(output.must_fix).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "diff",
+          message: expect.stringContaining("focused verification"),
+          evidence: expect.stringContaining("billing/payments")
+        })
+      ])
+    );
+    expect(output.should_fix).toEqual([]);
+  });
+
+  it("preserves structured warnings for kaizen-loop prompts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-"));
+    const resultPath = join(dir, "verify-result.json");
+    const prompt = `# Issue #3: Preserve billing token handling
+
+Keep payment token handling covered by focused verification.
+
+# Builder result
+
+Changed billing token extraction and added billing coverage.
+
+# Mechanical verification
+
+- [x] pnpm test -- billing
+
+# Changed files
+
+- src/billing.ts
+
+# Diff
+
+diff --git a/src/billing.ts b/src/billing.ts
++const token = req.body.token
+
+# Decision rules
+
+Return a verdict.
+`;
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      prompt,
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_WORKSPACE_DIR: dir
+        }
+      }
+    );
+
+    const output = JSON.parse(stdout) as {
+      status: string;
+      must_fix: unknown[];
+      should_fix: Array<{ source: string; message: string; evidence?: string }>;
+    };
+    const result = JSON.parse(await readFile(resultPath, "utf8")) as {
+      must_fix: unknown[];
+      should_fix: Array<{ source: string; message: string; evidence?: string }>;
+    };
+
+    expect(output.status).toBe("open_pr_with_warning");
+    expect(output.must_fix).toEqual([]);
+    expect(output.should_fix).toEqual(result.should_fix);
+    expect(output.should_fix).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "diff",
+          message: expect.stringContaining("high-risk billing/payments code"),
+          evidence: expect.stringContaining("src/billing.ts")
+        })
+      ])
+    );
   });
 
   it("checks a workspace by collecting git diff and running verification commands", async () => {

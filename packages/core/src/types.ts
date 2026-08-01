@@ -103,5 +103,14 @@ export const MinimalVerdictSchema = z.object({
 });
 export type MinimalVerdict = z.infer<typeof MinimalVerdictSchema>;
 
+export interface KaizenVerifierResult {
+  status: VerdictDecision;
+  summary: string;
+  notes: string;
+  reason: string;
+  must_fix: MinimalFinding[];
+  should_fix: MinimalFinding[];
+}
+
 export const VerdictSchema = MinimalVerdictSchema;
 export type Verdict = MinimalVerdict;
