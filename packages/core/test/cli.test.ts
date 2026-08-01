@@ -580,6 +580,49 @@ Return "block_pr" when the builder must revise the change before a PR is created
     await expect(readFile(join(output.run.artifacts_dir, "report.md"), "utf8")).resolves.toContain("Evidence grade: executed");
   });
 
+  it("bounds noisy verification command stdout and stderr while preserving head and tail", async () => {
+    const dir = await createChangedRepo();
+    const noisyCommand = nodeEvalCommand([
+      "process.stdout.write('stdout-head-' + 'o'.repeat(131072) + '-stdout-tail')",
+      "process.stderr.write('stderr-head-' + 'e'.repeat(131072) + '-stderr-tail')"
+    ].join(";"));
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        noisyCommand
+      ],
+      "",
+      { env: process.env }
+    );
+
+    const output = JSON.parse(stdout) as {
+      run: {
+        artifacts_dir: string;
+        verify_commands: Array<{ exit_code: number | null; timed_out?: boolean }>;
+      };
+    };
+    const logsArtifact = await readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8");
+
+    expect(output.run.verify_commands[0]).toMatchObject({ exit_code: 0, timed_out: false });
+    expect(logsArtifact).toContain("stdout-head-");
+    expect(logsArtifact).toContain("-stdout-tail");
+    expect(logsArtifact).toContain("stderr-head-");
+    expect(logsArtifact).toContain("-stderr-tail");
+    expect(logsArtifact).toContain("stdout truncated: omitted 65560 bytes");
+    expect(logsArtifact).toContain("stderr truncated: omitted 65560 bytes");
+    expect(Buffer.byteLength(logsArtifact)).toBeLessThan(132 * 1024);
+  });
+
   it("infers package.json verification scripts when commands are omitted", async () => {
     const dir = await createChangedRepo();
     await writePackageManifest(dir, {

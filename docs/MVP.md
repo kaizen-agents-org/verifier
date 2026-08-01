@@ -41,6 +41,10 @@ Each command defaults to a 10 minute timeout. Use `--verify-timeout-ms` or
 out, `check` terminates it, records `timed_out` / `timeout_ms` in the verdict,
 and treats the command as failed verification evidence.
 
+Command capture is limited to 64 KiB per stdout/stderr stream. If a stream
+exceeds the limit, the evidence keeps its first and last 32 KiB and includes a
+marker with the omitted byte count.
+
 ## Evidence Store
 
 Each `check` run writes artifacts to:

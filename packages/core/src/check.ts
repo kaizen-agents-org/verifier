@@ -9,6 +9,7 @@ import type { FinalVerdictKind, MinimalVerdict, VerdictInput } from "./types.js"
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_VERIFY_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_VERIFY_STREAM_OUTPUT_BYTES = 64 * 1024;
 
 export interface CheckInput {
   task: string;
@@ -214,25 +215,19 @@ function runShellCommand(
       detached: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
-    let stdout = "";
-    let stderr = "";
+    const stdout = createBoundedOutputCapture(MAX_VERIFY_STREAM_OUTPUT_BYTES);
+    const stderr = createBoundedOutputCapture(MAX_VERIFY_STREAM_OUTPUT_BYTES);
     let timedOut = false;
     let killTimer: NodeJS.Timeout | undefined;
     const timeout = setTimeout(() => {
       timedOut = true;
-      stderr += `${stderr.endsWith("\n") || stderr.length === 0 ? "" : "\n"}verification command timed out after ${timeoutMs}ms\n`;
+      stderr.append(Buffer.from(`\nverification command timed out after ${timeoutMs}ms\n`));
       terminateProcessGroup(child.pid);
       killTimer = setTimeout(() => terminateProcessGroup(child.pid, "SIGKILL"), 1000);
     }, timeoutMs);
 
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
+    child.stdout.on("data", (chunk: Buffer) => stdout.append(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.append(chunk));
     child.on("error", (error) => {
       clearTimeout(timeout);
       if (killTimer) clearTimeout(killTimer);
@@ -245,14 +240,57 @@ function runShellCommand(
         command,
         code,
         signal,
-        stdout,
-        stderr,
+        stdout: stdout.render("stdout"),
+        stderr: stderr.render("stderr"),
         durationMs: Date.now() - startedAt,
         timedOut,
         timeoutMs
       });
     });
   });
+}
+
+function createBoundedOutputCapture(maxBytes: number): {
+  append: (chunk: Buffer) => void;
+  render: (streamName: "stdout" | "stderr") => string;
+} {
+  const headLimit = Math.floor(maxBytes / 2);
+  const tailLimit = maxBytes - headLimit;
+  let head = Buffer.alloc(0);
+  let tail = Buffer.alloc(0);
+  let totalBytes = 0;
+
+  return {
+    append(chunk) {
+      totalBytes += chunk.byteLength;
+      const headRemaining = headLimit - head.byteLength;
+      const headBytes = Math.min(headRemaining, chunk.byteLength);
+      if (headBytes > 0) {
+        head = Buffer.concat([head, Buffer.from(chunk.subarray(0, headBytes))]);
+      }
+
+      const remaining = chunk.subarray(headBytes);
+      if (remaining.byteLength >= tailLimit) {
+        tail = Buffer.from(remaining.subarray(remaining.byteLength - tailLimit));
+      } else if (remaining.byteLength > 0) {
+        const combined = Buffer.concat([tail, remaining]);
+        tail = combined.byteLength > tailLimit
+          ? Buffer.from(combined.subarray(combined.byteLength - tailLimit))
+          : combined;
+      }
+    },
+    render(streamName) {
+      if (totalBytes <= maxBytes) {
+        return Buffer.concat([head, tail]).toString("utf8");
+      }
+      const omittedBytes = totalBytes - maxBytes;
+      return [
+        head.toString("utf8"),
+        `[${streamName} truncated: omitted ${omittedBytes} bytes; showing first ${headLimit} and last ${tailLimit} bytes]`,
+        tail.toString("utf8")
+      ].join("\n");
+    }
+  };
 }
 
 function terminateProcessGroup(pid: number | undefined, signal: NodeJS.Signals = "SIGTERM"): void {
