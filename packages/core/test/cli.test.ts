@@ -121,6 +121,10 @@ describe("CLI", { timeout: 20_000 }, () => {
 
 Validate email addresses.
 
+# Changed files
+
+- issue-example.md
+
 # Builder result
 
 Implemented validation and tests.

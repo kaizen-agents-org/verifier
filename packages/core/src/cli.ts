@@ -193,7 +193,7 @@ function finalVerdictForKaizen(verdict: VerdictDecision): FinalVerdictKind {
 }
 
 function changedFilesFromPrompt(prompt: string): string[] {
-  const files = section(prompt, "# Changed files", "# Diff")
+  const files = sectionAfter(prompt, "# Mechanical verification", "# Changed files", "# Diff")
     .split(/\r?\n/)
     .filter((line) => /^\s*-\s+/.test(line))
     .map((line) => line.replace(/^\s*-\s+/, "").trim())
