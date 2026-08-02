@@ -384,6 +384,10 @@ can link the final verdict back to the saved files. Workspace verdict JSON and
 saved artifact contents redact common secret-like values, including API keys,
 bearer tokens, and password/token assignments.
 
+Verification command capture keeps at most 64 KiB from each of stdout and
+stderr. For larger streams, `verify-logs.txt` preserves the first and last
+32 KiB and records the number of omitted bytes between them.
+
 ## Kaizen Loop Integration
 
 When `kaizen-loop` invokes `verifier`, it calls the command with no arguments,

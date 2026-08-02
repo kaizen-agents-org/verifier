@@ -2,13 +2,15 @@ import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { promisify } from "node:util";
+import { StringDecoder } from "node:string_decoder";
+import { promisify, TextDecoder } from "node:util";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
-import { redactSensitiveText } from "./redaction.js";
+import { createSensitiveTextRedactor, redactSensitiveText } from "./redaction.js";
 import type { FinalVerdictKind, MinimalVerdict, VerdictInput } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_VERIFY_TIMEOUT_MS = 10 * 60 * 1000;
+const MAX_VERIFY_STREAM_OUTPUT_BYTES = 64 * 1024;
 
 export interface CheckInput {
   task: string;
@@ -81,7 +83,15 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
     evidence.push(await writeEvidence(runDir, "E-1", "intent", "intent.txt", input.task, "Primary intent supplied to verifier check."));
   }
   evidence.push(await writeEvidence(runDir, "E-2", "diff", "diff.patch", diff, `Git diff against ${base}.`));
-  evidence.push(await writeEvidence(runDir, "E-3", "verify_logs", "verify-logs.txt", verifyLogs, "Verification command output."));
+  evidence.push(await writeEvidence(
+    runDir,
+    "E-3",
+    "verify_logs",
+    "verify-logs.txt",
+    verifyLogs,
+    "Verification command output.",
+    true
+  ));
   evidence.push(await writeEvidence(runDir, "E-4", "builder_report", "builder-report.md", builderReport, "Verifier check collection report."));
 
   const verdict: MinimalVerdict = {
@@ -214,25 +224,18 @@ function runShellCommand(
       detached: true,
       stdio: ["ignore", "pipe", "pipe"]
     });
-    let stdout = "";
-    let stderr = "";
+    const stdout = createBoundedOutputCapture(MAX_VERIFY_STREAM_OUTPUT_BYTES);
+    const stderr = createBoundedOutputCapture(MAX_VERIFY_STREAM_OUTPUT_BYTES);
     let timedOut = false;
     let killTimer: NodeJS.Timeout | undefined;
     const timeout = setTimeout(() => {
       timedOut = true;
-      stderr += `${stderr.endsWith("\n") || stderr.length === 0 ? "" : "\n"}verification command timed out after ${timeoutMs}ms\n`;
       terminateProcessGroup(child.pid);
       killTimer = setTimeout(() => terminateProcessGroup(child.pid, "SIGKILL"), 1000);
     }, timeoutMs);
 
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk;
-    });
+    child.stdout.on("data", (chunk: Buffer) => stdout.append(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.append(chunk));
     child.on("error", (error) => {
       clearTimeout(timeout);
       if (killTimer) clearTimeout(killTimer);
@@ -241,18 +244,122 @@ function runShellCommand(
     child.on("close", (code, signal) => {
       clearTimeout(timeout);
       if (killTimer) clearTimeout(killTimer);
+      const renderedStderr = stderr.render("stderr");
+      const timeoutDiagnostic = timedOut
+        ? `verification command timed out after ${timeoutMs}ms`
+        : "";
       resolve({
         command,
         code,
         signal,
-        stdout,
-        stderr,
+        stdout: stdout.render("stdout"),
+        stderr: [renderedStderr, timeoutDiagnostic].filter(Boolean).join("\n"),
         durationMs: Date.now() - startedAt,
         timedOut,
         timeoutMs
       });
     });
   });
+}
+
+function createBoundedOutputCapture(maxBytes: number): {
+  append: (chunk: Buffer) => void;
+  render: (streamName: "stdout" | "stderr") => string;
+} {
+  const headLimit = Math.floor(maxBytes / 2);
+  const tailLimit = maxBytes - headLimit;
+  const utf8BoundaryBytes = 3;
+  const decoder = new StringDecoder("utf8");
+  const redactor = createSensitiveTextRedactor();
+  let head = Buffer.alloc(0);
+  let headContext = Buffer.alloc(0);
+  let tail = Buffer.alloc(0);
+  let capturedBytes = 0;
+  let decoderEnded = false;
+
+  const appendCaptured = (chunk: Buffer): void => {
+    capturedBytes += chunk.byteLength;
+    const headRemaining = headLimit - head.byteLength;
+    const headBytes = Math.min(headRemaining, chunk.byteLength);
+    if (headBytes > 0) {
+      head = Buffer.concat([head, Buffer.from(chunk.subarray(0, headBytes))]);
+    }
+
+    const remaining = chunk.subarray(headBytes);
+    const contextRemaining = utf8BoundaryBytes - headContext.byteLength;
+    if (contextRemaining > 0 && remaining.byteLength > 0) {
+      headContext = Buffer.concat([
+        headContext,
+        Buffer.from(remaining.subarray(0, contextRemaining))
+      ]);
+    }
+    const tailStorageLimit = tailLimit + utf8BoundaryBytes;
+    if (remaining.byteLength >= tailStorageLimit) {
+      tail = Buffer.from(remaining.subarray(remaining.byteLength - tailStorageLimit));
+    } else if (remaining.byteLength > 0) {
+      const combined = Buffer.concat([tail, remaining]);
+      tail = combined.byteLength > tailStorageLimit
+        ? Buffer.from(combined.subarray(combined.byteLength - tailStorageLimit))
+        : combined;
+    }
+  };
+
+  return {
+    append(chunk) {
+      for (let offset = 0; offset < chunk.byteLength; offset += 4096) {
+        const decoded = decoder.write(chunk.subarray(offset, offset + 4096));
+        appendCaptured(Buffer.from(redactor.write(decoded), "utf8"));
+      }
+    },
+    render(streamName) {
+      if (!decoderEnded) {
+        appendCaptured(Buffer.from(redactor.write(decoder.end()) + redactor.end(), "utf8"));
+        decoderEnded = true;
+      }
+      if (capturedBytes <= maxBytes) {
+        return Buffer.concat([head, tail]).toString("utf8");
+      }
+      const renderedHead = completeUtf8Boundary(
+        Buffer.concat([head, headContext]),
+        "head",
+        headLimit
+      );
+      const renderedTail = completeUtf8Boundary(tail, "tail", tailLimit);
+      const omittedBytes = capturedBytes - renderedHead.byteLength - renderedTail.byteLength;
+      if (omittedBytes <= 0) {
+        return Buffer.concat([
+          renderedHead,
+          renderedTail.subarray(Math.max(0, -omittedBytes))
+        ]).toString("utf8");
+      }
+      return [
+        renderedHead.toString("utf8"),
+        `[${streamName} truncated: omitted ${omittedBytes} bytes; showing first ${renderedHead.byteLength} and last ${renderedTail.byteLength} bytes]`,
+        renderedTail.toString("utf8")
+      ].join("\n");
+    }
+  };
+}
+
+function completeUtf8Boundary(
+  buffer: Buffer,
+  boundary: "head" | "tail",
+  minimumBytes: number
+): Buffer {
+  for (let adjustment = 0; adjustment <= 3; adjustment += 1) {
+    const retainedBytes = minimumBytes + adjustment;
+    if (retainedBytes > buffer.byteLength) continue;
+    const candidate = boundary === "head"
+      ? buffer.subarray(0, retainedBytes)
+      : buffer.subarray(buffer.byteLength - retainedBytes);
+    try {
+      new TextDecoder("utf-8", { fatal: true }).decode(candidate);
+      return candidate;
+    } catch {
+      // At most three bytes can straddle a UTF-8 boundary.
+    }
+  }
+  throw new Error(`Unable to decode bounded ${boundary} output as UTF-8.`);
 }
 
 function terminateProcessGroup(pid: number | undefined, signal: NodeJS.Signals = "SIGTERM"): void {
@@ -276,7 +383,7 @@ function formatCommandResult(result: CommandRunResult): string {
       ? `verification failed: exit code ${result.code ?? "null"}${result.signal ? ` signal ${result.signal}` : ""}`
       : `exit code ${result.code}`;
   return [
-    `$ ${result.command}`,
+    `$ ${redactSensitiveText(result.command)}`,
     status,
     result.stdout.trim() ? `stdout:\n${result.stdout.trim()}` : "",
     result.stderr.trim() ? `stderr:\n${result.stderr.trim()}` : ""
@@ -401,9 +508,14 @@ async function writeEvidence(
   kind: EvidenceRecord["kind"],
   path: string,
   content: string,
-  summary: string
+  summary: string,
+  alreadyRedacted = false
 ): Promise<EvidenceRecord> {
-  await writeFile(join(runDir, path), redactSensitiveText(content), "utf8");
+  await writeFile(
+    join(runDir, path),
+    alreadyRedacted ? content : redactSensitiveText(content),
+    "utf8"
+  );
   return { id, kind, path, summary };
 }
 
