@@ -280,7 +280,12 @@ export function createSensitiveTextRedactor(): SensitiveTextRedactor {
 
 export function redactSensitiveText(text: string): string {
   const redactor = createSensitiveTextRedactor();
-  return redactor.write(text) + redactor.end();
+  const output: string[] = [];
+  for (let offset = 0; offset < text.length; offset += 4096) {
+    output.push(redactor.write(text.slice(offset, offset + 4096)));
+  }
+  output.push(redactor.end());
+  return output.join("");
 }
 
 export function redactSensitiveValue<T>(value: T): T {

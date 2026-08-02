@@ -82,6 +82,14 @@ describe("sensitive value redaction", () => {
     expect(outputs.join("")).toBe("token=[REDACTED]\nvisible");
   });
 
+  it("redacts multi-megabyte text without changing ordinary spans", () => {
+    const ordinaryText = "x".repeat(2 * 1024 * 1024);
+
+    expect(redactSensitiveText(`${ordinaryText}\ntoken=private-value\n`)).toBe(
+      `${ordinaryText}\ntoken=[REDACTED]\n`
+    );
+  });
+
   it.each([
     "ghp_token=private-value",
     '{"ghp_token":"private-value"}'
