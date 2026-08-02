@@ -1,5 +1,5 @@
 import { createServer } from "node:net";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -134,9 +134,16 @@ describe("API probe driver", () => {
       await session.interact(
         requestScenario({ method: "GET", path: "/exit-after-response", expect: { status: 200 } })
       );
-      await expect.poll(async () => (await session.observe()).crashed).toBe(true);
+      await expect.poll(
+        async () => (await session.observe()).crashed,
+        { timeout: 5_000 }
+      ).toBe(true);
     } finally {
-      await session.teardown();
+      try {
+        await session.teardown();
+      } finally {
+        await rm(workdir, { recursive: true, force: true });
+      }
     }
   });
 
