@@ -231,15 +231,21 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
   workspace: string;
   resultPath: string;
 }> {
-  const workspace = resolve(process.env.KAIZEN_WORKSPACE_DIR ?? process.cwd());
-  const resultPath = resolve(workspace, configuredPath);
-  if (isPathOutside(workspace, resultPath)) {
+  const configuredWorkspace = resolve(process.env.KAIZEN_WORKSPACE_DIR ?? process.cwd());
+  const configuredResultPath = resolve(configuredWorkspace, configuredPath);
+  if (isPathOutside(configuredWorkspace, configuredResultPath)) {
     throw new Error("KAIZEN_VERIFIER_RESULT_PATH must stay within KAIZEN_WORKSPACE_DIR.");
   }
 
-  if (resultPath === workspace) {
+  if (configuredResultPath === configuredWorkspace) {
     throw new Error("KAIZEN_VERIFIER_RESULT_PATH must name a file within KAIZEN_WORKSPACE_DIR.");
   }
+
+  const workspace = await realpath(configuredWorkspace);
+  const resultPath = resolve(
+    workspace,
+    relative(configuredWorkspace, configuredResultPath)
+  );
 
   let ancestor = resultPath;
   while (!(await pathEntryExists(ancestor))) {
@@ -247,11 +253,8 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
     if (parent === ancestor) break;
     ancestor = parent;
   }
-  const [initialWorkspace, initialAncestor] = await Promise.all([
-    realpath(workspace),
-    realpath(ancestor)
-  ]);
-  if (isPathOutside(initialWorkspace, initialAncestor)) {
+  const initialAncestor = await realpath(ancestor);
+  if (isPathOutside(workspace, initialAncestor)) {
     throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR.");
   }
 
@@ -286,9 +289,8 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
     throw new Error("KAIZEN_VERIFIER_RESULT_PATH changed before it could be written safely.");
   }
   try {
-    const realWorkspace = await realpath(workspace);
     return {
-      workspace: realWorkspace,
+      workspace,
       resultPath,
       write: async (content: string) => {
         const [realResult, openedStat, pathStat] = await Promise.all([
@@ -296,7 +298,7 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
           resultHandle.stat(),
           lstat(resultPath)
         ]);
-        if (isPathOutside(realWorkspace, realResult)) {
+        if (isPathOutside(workspace, realResult)) {
           throw new Error("KAIZEN_VERIFIER_RESULT_PATH resolves outside KAIZEN_WORKSPACE_DIR.");
         }
         if (

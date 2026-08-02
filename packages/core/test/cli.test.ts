@@ -207,7 +207,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.risk).toBe("low");
     expect(output.run).toMatchObject({
       workspace: await realpath(dir),
-      artifacts_dir: join(dir, ".kaizen", "verifier"),
+      artifacts_dir: join(await realpath(dir), ".kaizen", "verifier"),
       changed_files: ["src/登録.ts", "test/signup.test.ts"],
       verify_commands: []
     });
@@ -222,6 +222,41 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(result.must_fix).toEqual([]);
     expect(result.should_fix).toEqual([]);
   });
+
+  it.runIf(process.platform !== "win32")(
+    "reports canonical Kaizen workspace and artifact paths through a workspace symlink",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-workspace-link-"));
+      const workspace = join(dir, "workspace");
+      const linkedWorkspace = join(dir, "linked-workspace");
+      await mkdir(workspace);
+      await symlink(workspace, linkedWorkspace);
+
+      const { stdout } = await spawnWithInput(
+        process.execPath,
+        ["--import", "tsx", "src/cli.ts"],
+        kaizenLoopPrompt(),
+        {
+          env: {
+            ...process.env,
+            KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
+            KAIZEN_WORKSPACE_DIR: linkedWorkspace
+          }
+        }
+      );
+
+      const output = JSON.parse(stdout) as {
+        run: { workspace: string; artifacts_dir: string };
+      };
+      const canonicalWorkspace = await realpath(workspace);
+
+      expect(output.run.workspace).toBe(canonicalWorkspace);
+      expect(output.run.artifacts_dir).toBe(join(canonicalWorkspace, ".kaizen", "verifier"));
+      await expect(
+        readFile(join(output.run.artifacts_dir, "verify-result.json"), "utf8")
+      ).resolves.toBe(stdout);
+    }
+  );
 
   it.each(["relative", "absolute"] as const)(
     "rejects a %s kaizen-loop result path outside the workspace",
@@ -546,6 +581,7 @@ Return a verdict.
     expect(output.status).toBe("needs_context");
     expect(output.final_verdict).toBe("conditional");
     expect(output.reason).toContain("No positive mechanical verification evidence");
+    expect(JSON.parse(await readFile(resultPath, "utf8"))).toEqual(output);
   });
 
   it("ignores a Diff heading embedded before the generated changed-files section", async () => {
