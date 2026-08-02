@@ -821,8 +821,8 @@ Return a verdict.
     await expect(readFile(join(output.run.artifacts_dir, "report.md"), "utf8")).resolves.toContain("Evidence grade: executed");
   });
 
-  it("infers origin/HEAD for committed workspace changes when base is omitted", async () => {
-    const dir = await createCommittedBranchRepo();
+  it("infers the merge base of origin/HEAD for committed workspace changes", async () => {
+    const { dir, mergeBaseSha } = await createCommittedBranchRepo();
 
     const { stdout } = await spawnWithInput(
       process.execPath,
@@ -844,10 +844,11 @@ Return a verdict.
       run: { artifacts_dir: string; base_ref: string; changed_files: string[] };
     };
 
-    expect(output.run.base_ref).toBe("origin/main");
+    expect(output.run.base_ref).toBe(mergeBaseSha);
     expect(output.run.changed_files).toEqual(["greeting.txt"]);
-    await expect(readFile(join(output.run.artifacts_dir, "diff.patch"), "utf8"))
-      .resolves.toContain("+hello verifier");
+    const diff = await readFile(join(output.run.artifacts_dir, "diff.patch"), "utf8");
+    expect(diff).toContain("+hello verifier");
+    expect(diff).not.toContain("upstream.txt");
   });
 
   it("bounds noisy verification command stdout and stderr while preserving head and tail", async () => {
@@ -1649,7 +1650,7 @@ async function createChangedRepo(): Promise<string> {
   return dir;
 }
 
-async function createCommittedBranchRepo(): Promise<string> {
+async function createCommittedBranchRepo(): Promise<{ dir: string; mergeBaseSha: string }> {
   const dir = await mkdtemp(join(tmpdir(), "verifier-committed-check-"));
   await writeFile(join(dir, "greeting.txt"), "hello\n", "utf8");
   await execFileAsync("git", ["init", "-b", "main"], { cwd: dir });
@@ -1694,7 +1695,30 @@ async function createCommittedBranchRepo(): Promise<string> {
     ],
     { cwd: dir }
   );
-  return dir;
+  await execFileAsync("git", ["switch", "main"], { cwd: dir });
+  await writeFile(join(dir, "upstream.txt"), "upstream only\n", "utf8");
+  await execFileAsync("git", ["add", "upstream.txt"], { cwd: dir });
+  await execFileAsync(
+    "git",
+    [
+      "-c",
+      "user.name=Verifier",
+      "-c",
+      "user.email=verifier@example.test",
+      "commit",
+      "-m",
+      "advance main"
+    ],
+    { cwd: dir }
+  );
+  const { stdout: advancedMainSha } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: dir });
+  await execFileAsync(
+    "git",
+    ["update-ref", "refs/remotes/origin/main", advancedMainSha.trim()],
+    { cwd: dir }
+  );
+  await execFileAsync("git", ["switch", "feature"], { cwd: dir });
+  return { dir, mergeBaseSha: mainSha.trim() };
 }
 
 async function createCleanRepo(): Promise<string> {

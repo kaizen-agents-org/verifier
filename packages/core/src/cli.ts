@@ -540,10 +540,13 @@ async function inferWorkspaceBase(workspace: string): Promise<string> {
     ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
     workspace
   );
-  if (originHead && await gitCommitExists(originHead, workspace)) return originHead;
-
-  for (const candidate of ["origin/main", "origin/master", "main", "master"]) {
-    if (await gitCommitExists(candidate, workspace)) return candidate;
+  const candidates = originHead
+    ? [originHead, "origin/main", "origin/master", "main", "master"]
+    : ["origin/main", "origin/master", "main", "master"];
+  for (const candidate of candidates) {
+    if (!(await gitCommitExists(candidate, workspace))) continue;
+    const mergeBase = await readGitOutput(["merge-base", "HEAD", candidate], workspace);
+    if (mergeBase) return mergeBase;
   }
 
   const rootCommit = await readGitOutput(
