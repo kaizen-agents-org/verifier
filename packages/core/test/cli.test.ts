@@ -441,7 +441,7 @@ The implementation validates signup input.
 
 # Changed files
 
-- src/signup.ts
+src/signup.ts
 - test/signup.test.ts
 
 # Decision rules
@@ -466,9 +466,9 @@ Return a verdict.
       status: string;
       final_verdict: string;
       reason: string;
+      run: { changed_files: string[] };
       must_fix: unknown[];
       should_fix: Array<{ source: string; message: string; evidence?: string }>;
-      run: { changed_files: string[] };
     };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;

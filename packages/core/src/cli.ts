@@ -199,8 +199,9 @@ function finalVerdictForKaizen(
 function changedFilesFromPrompt(prompt: string): string[] {
   const files = lastSection(prompt, "# Changed files", ["# Diff", "# Decision rules"])
     .split(/\r?\n/)
-    .filter((line) => /^\s*-\s+/.test(line))
-    .map((line) => line.replace(/^\s*-\s+/, "").trim())
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.replace(/^[-*+]\s+/, "").trim())
     .map((path) => path.startsWith("`") && path.endsWith("`") ? path.slice(1, -1) : path)
     .filter(Boolean);
   return [...new Set(files)];
