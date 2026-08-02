@@ -464,6 +464,7 @@ Return a verdict.
 
     const output = JSON.parse(stdout) as {
       status: string;
+      final_verdict: string;
       reason: string;
       must_fix: unknown[];
       should_fix: Array<{ source: string; message: string; evidence?: string }>;
@@ -476,6 +477,7 @@ Return a verdict.
     };
 
     expect(output.status).toBe("needs_context");
+    expect(output.final_verdict).toBe("inconclusive");
     expect(result.status).toBe("needs_context");
     expect(output.reason).toContain("Diff is missing");
     expect(result.reason).toContain("Diff is missing");
@@ -489,6 +491,59 @@ Return a verdict.
         })
       ])
     );
+  });
+
+  it("keeps a kaizen-loop result conditional when verification evidence is missing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-"));
+    const resultPath = join(dir, "verify-result.json");
+    const prompt = `# Issue
+
+Add signup validation.
+
+# Builder result
+
+Implemented validation.
+
+# Mechanical verification
+
+Not configured.
+
+# Changed files
+
+- src/signup.ts
+
+# Diff
+
+diff --git a/src/signup.ts b/src/signup.ts
++validateEmail(input.email)
+
+# Decision rules
+
+Return a verdict.
+`;
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      prompt,
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_WORKSPACE_DIR: dir
+        }
+      }
+    );
+
+    const output = JSON.parse(stdout) as {
+      status: string;
+      final_verdict: string;
+      reason: string;
+    };
+
+    expect(output.status).toBe("needs_context");
+    expect(output.final_verdict).toBe("conditional");
+    expect(output.reason).toContain("No positive mechanical verification evidence");
   });
 
   it("ignores a Diff heading embedded before the generated changed-files section", async () => {

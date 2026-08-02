@@ -10,7 +10,8 @@ import { VerdictInputSchema } from "./types.js";
 import type {
   FinalVerdictKind,
   KaizenVerifierResult,
-  VerdictDecision
+  VerdictDecision,
+  VerdictInput
 } from "./types.js";
 import { readVersionInfo } from "./version.js";
 
@@ -148,7 +149,7 @@ async function runKaizenLoopMode(
   const payload: KaizenVerifierResult = {
     schemaVersion: verdict.schemaVersion,
     verdict: verdict.verdict,
-    final_verdict: finalVerdictForKaizen(verdict.verdict),
+    final_verdict: finalVerdictForKaizen(verdict.verdict, input),
     status: verdict.verdict,
     evidence_grade: verdict.evidence_grade ?? "reported",
     confidence: verdict.confidence,
@@ -185,11 +186,14 @@ async function runKaizenLoopMode(
   return redactedPayload;
 }
 
-function finalVerdictForKaizen(verdict: VerdictDecision): FinalVerdictKind {
+function finalVerdictForKaizen(
+  verdict: VerdictDecision,
+  input: VerdictInput
+): FinalVerdictKind {
   if (verdict === "open_pr") return "mergeable";
   if (verdict === "open_pr_with_warning") return "conditional";
   if (verdict === "block_pr") return "not_mergeable";
-  return "inconclusive";
+  return input.diff.trim() ? "conditional" : "inconclusive";
 }
 
 function changedFilesFromPrompt(prompt: string): string[] {
