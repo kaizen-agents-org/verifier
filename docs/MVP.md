@@ -127,6 +127,8 @@ The MVP merge-readiness field is `final_verdict`:
 
 CLI flags override config values. `--verify-command` is repeatable; when at
 least one is supplied on the CLI, it replaces `verifyCommands` from config.
+`outputDir` and `--output-dir` must be relative paths that stay within the
+checked workspace; absolute paths and paths that escape it are rejected.
 When neither CLI nor config commands are provided, workspace mode infers a
 conservative default from root `package.json` scripts: existing `typecheck`,
 `test`, and `build` scripts run in that order through the package manager named
