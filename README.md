@@ -198,6 +198,13 @@ the same verdict contract. Each verification command has a default 10 minute
 timeout. Timed-out commands are terminated, recorded as failed command evidence,
 and surfaced in `run.verify_commands[].timed_out` and `timeout_ms`.
 
+When `--base` and the `verifier.config.json` `base` are both omitted, workspace
+mode uses the remote default branch recorded by `origin/HEAD`. If that ref is not
+available, it tries existing `origin/main`, `origin/master`, `main`, and `master`
+refs in that order, then falls back to the first-parent root commit (or `HEAD` in
+a repository without a readable history). An explicit CLI or config base always
+takes precedence.
+
 When neither `--verify-command` nor `verifier.config.json` `verifyCommands` is
 provided, workspace mode infers a conservative default from root `package.json`
 scripts. It runs existing `typecheck`, `test`, and `build` scripts in that order,
