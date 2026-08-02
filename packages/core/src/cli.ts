@@ -193,13 +193,31 @@ function finalVerdictForKaizen(verdict: VerdictDecision): FinalVerdictKind {
 }
 
 function changedFilesFromPrompt(prompt: string): string[] {
-  const files = sectionAfter(prompt, "# Mechanical verification", "# Changed files", "# Diff")
+  const files = lastSection(prompt, "# Changed files", "# Diff")
     .split(/\r?\n/)
     .filter((line) => /^\s*-\s+/.test(line))
     .map((line) => line.replace(/^\s*-\s+/, "").trim())
     .map((path) => path.startsWith("`") && path.endsWith("`") ? path.slice(1, -1) : path)
     .filter(Boolean);
   return [...new Set(files)];
+}
+
+function lastSection(text: string, startMarker: string, endMarker: string): string {
+  const endMatches = [...text.matchAll(new RegExp(
+    `(?:^|\\r?\\n)${escapeRegExp(endMarker)}[\\t ]*(?:\\r?\\n|$)`,
+    "g"
+  ))];
+  const end = endMatches.at(-1);
+  if (end?.index === undefined) return "";
+
+  const beforeEnd = text.slice(0, end.index);
+  const startMatches = [...beforeEnd.matchAll(new RegExp(
+    `(?:^|\\r?\\n)${escapeRegExp(startMarker)}[\\t ]*(?:\\r?\\n|$)`,
+    "g"
+  ))];
+  const start = startMatches.at(-1);
+  if (start?.index === undefined) return "";
+  return text.slice(start.index + start[0].length, end.index).trim();
 }
 
 async function prepareKaizenResult(configuredPath: string): Promise<{
