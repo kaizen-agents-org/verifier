@@ -136,12 +136,12 @@ The implementation validates signup input.
 
 # Changed files
 
-- src/signup.ts
+- \`src/登録.ts\`
 - test/signup.test.ts
 
 # Diff
 
-diff --git a/src/signup.ts b/src/signup.ts
+diff --git "a/src/登録.ts" "b/src/登録.ts"
 +validateEmail(input.email)
 
 # Decision rules
@@ -200,7 +200,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.run).toMatchObject({
       workspace: await realpath(dir),
       artifacts_dir: join(dir, ".kaizen", "verifier"),
-      changed_files: ["src/signup.ts"],
+      changed_files: ["src/登録.ts", "test/signup.test.ts"],
       verify_commands: []
     });
     expect(result).toEqual(output);

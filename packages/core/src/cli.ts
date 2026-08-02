@@ -175,7 +175,7 @@ async function runKaizenLoopMode(
       base_ref: process.env.BASE_SHA ?? "unknown",
       head_ref: process.env.GITHUB_SHA ?? "unknown",
       artifacts_dir: context.artifactsDir,
-      changed_files: changedFilesFromDiff(input.diff),
+      changed_files: changedFilesFromPrompt(prompt),
       verify_commands: []
     }
   };
@@ -192,10 +192,13 @@ function finalVerdictForKaizen(verdict: VerdictDecision): FinalVerdictKind {
   return "inconclusive";
 }
 
-function changedFilesFromDiff(diff: string): string[] {
-  const files = [...diff.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)]
-    .map((match) => match[2])
-    .filter((path): path is string => Boolean(path));
+function changedFilesFromPrompt(prompt: string): string[] {
+  const files = section(prompt, "# Changed files", "# Diff")
+    .split(/\r?\n/)
+    .filter((line) => /^\s*-\s+/.test(line))
+    .map((line) => line.replace(/^\s*-\s+/, "").trim())
+    .map((path) => path.startsWith("`") && path.endsWith("`") ? path.slice(1, -1) : path)
+    .filter(Boolean);
   return [...new Set(files)];
 }
 
