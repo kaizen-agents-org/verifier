@@ -1,8 +1,10 @@
 #!/usr/bin/env node
+import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { access, lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { promisify } from "node:util";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
 import { redactSensitiveValue } from "./redaction.js";
@@ -52,6 +54,7 @@ interface VerifierConfig {
 type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 
 const INFERRED_SCRIPT_ORDER = ["typecheck", "test", "build"] as const;
+const execFileAsync = promisify(execFile);
 
 async function main(argv: string[]): Promise<number> {
   if (argv[0] === "--version" || argv[0] === "-v") {
@@ -96,10 +99,11 @@ async function main(argv: string[]): Promise<number> {
     const outputDir = options.outputDir ?? config.outputDir;
     const verifyTimeoutMs = options.verifyTimeoutMs ?? config.verifyTimeoutMs;
     const verifyCommands = await selectVerifyCommands(options, config);
+    const base = options.base ?? config.base ?? await inferWorkspaceBase(options.workspace);
     const result = await runCheck({
       task,
       workspace: options.workspace,
-      base: options.base ?? config.base ?? "HEAD",
+      base,
       verifyCommands,
       ...(verifyTimeoutMs ? { verifyTimeoutMs } : {}),
       ...(outputDir ? { outputDir } : {})
@@ -531,6 +535,43 @@ async function inferWorkspaceVerifyCommands(workspace: string): Promise<string[]
     .map((scriptName) => packageScriptCommand(packageManager, scriptName));
 }
 
+async function inferWorkspaceBase(workspace: string): Promise<string> {
+  const originHead = await readGitOutput(
+    ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"],
+    workspace
+  );
+  if (originHead && await gitCommitExists(originHead, workspace)) return originHead;
+
+  for (const candidate of ["origin/main", "origin/master", "main", "master"]) {
+    if (await gitCommitExists(candidate, workspace)) return candidate;
+  }
+
+  const rootCommit = await readGitOutput(
+    ["rev-list", "--first-parent", "--max-parents=0", "HEAD"],
+    workspace
+  );
+  return rootCommit || "HEAD";
+}
+
+async function gitCommitExists(ref: string, workspace: string): Promise<boolean> {
+  return Boolean(await readGitOutput(
+    ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`],
+    workspace
+  ));
+}
+
+async function readGitOutput(args: string[], workspace: string): Promise<string> {
+  try {
+    const { stdout } = await execFileAsync("git", args, {
+      cwd: workspace,
+      maxBuffer: 1024 * 1024
+    });
+    return stdout.trim();
+  } catch {
+    return "";
+  }
+}
+
 async function inferPackageManager(
   workspace: string,
   packageManagerMetadata: unknown
@@ -697,7 +738,7 @@ Options:
   --verify-logs-file <path>        File containing verification logs
   --builder-report <text>          Builder report text
   --builder-report-file <path>     File containing builder report
-  --base <ref>                     Base ref for workspace check diff (default: HEAD)
+  --base <ref>                     Base ref for workspace check diff (default: inferred)
   --workspace <path>               Repository path for workspace check (default: cwd)
   --config <path>                  JSON config file (default: verifier.config.json)
   --verify-command <cmd>           Command to run during workspace check; repeatable
