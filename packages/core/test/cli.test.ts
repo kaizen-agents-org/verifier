@@ -821,6 +821,105 @@ Return a verdict.
     await expect(readFile(join(output.run.artifacts_dir, "report.md"), "utf8")).resolves.toContain("Evidence grade: executed");
   });
 
+  it("writes workspace evidence to a custom relative output directory", async () => {
+    const dir = await createChangedRepo();
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--task",
+        "Update greeting text.",
+        "--verify-command",
+        nodeEvalCommand("console.log('all tests passed')"),
+        "--output-dir",
+        "artifacts/verifier"
+      ],
+      "",
+      { env: process.env }
+    );
+    const output = JSON.parse(stdout) as { run: { artifacts_dir: string } };
+
+    expect(output.run.artifacts_dir.startsWith(join(dir, "artifacts", "verifier"))).toBe(true);
+    await expect(readFile(join(output.run.artifacts_dir, "verdict.json"), "utf8")).resolves.toContain("mergeable");
+  });
+
+  it("rejects an absolute --output-dir", async () => {
+    const dir = await createChangedRepo();
+    const outside = await mkdtemp(join(tmpdir(), "verifier-output-"));
+
+    const { stdout, stderr, code } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--output-dir",
+        outside
+      ],
+      "",
+      { env: process.env, allowFailure: true }
+    );
+
+    expect(code).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("outputDir must be a relative path within the workspace.");
+  });
+
+  it("rejects a verifier.config.json outputDir that escapes the workspace", async () => {
+    const dir = await createChangedRepo();
+    await writeFile(
+      join(dir, "verifier.config.json"),
+      JSON.stringify({ outputDir: "../outside", verifyCommands: [] }),
+      "utf8"
+    );
+
+    const { stdout, stderr, code } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts", "check", "--workspace", dir],
+      "",
+      { env: process.env, allowFailure: true }
+    );
+
+    expect(code).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("outputDir must stay within the workspace.");
+  });
+
+  it("rejects an outputDir symlink that resolves outside the workspace", async () => {
+    const dir = await createChangedRepo();
+    const outside = await mkdtemp(join(tmpdir(), "verifier-output-"));
+    await symlink(outside, join(dir, "outside-link"));
+
+    const { stdout, stderr, code } = await spawnWithInput(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "src/cli.ts",
+        "check",
+        "--workspace",
+        dir,
+        "--output-dir",
+        "outside-link"
+      ],
+      "",
+      { env: process.env, allowFailure: true }
+    );
+
+    expect(code).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("outputDir resolves outside the workspace.");
+  });
+
   it("bounds noisy verification command stdout and stderr while preserving head and tail", async () => {
     const dir = await createChangedRepo();
     const noisyCommand = nodeEvalCommand([
