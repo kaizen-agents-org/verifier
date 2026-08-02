@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { redactSensitiveText, redactSensitiveValue } from "../src/redaction.js";
+import {
+  createSensitiveTextRedactor,
+  redactSensitiveText,
+  redactSensitiveValue
+} from "../src/redaction.js";
 
 describe("sensitive value redaction", () => {
   it("redacts quoted JSON field names without corrupting the document", () => {
@@ -57,5 +61,69 @@ describe("sensitive value redaction", () => {
       '"set-cookie":"[REDACTED]"',
       "content-type: application/json"
     ].join("\n"));
+  });
+
+  it("preserves secret state across arbitrary write boundaries", () => {
+    const redactor = createSensitiveTextRedactor();
+    const chunks = ["before tok", "en", "  =  ", "split-", "secret", " after"];
+    const output = chunks.map((chunk) => redactor.write(chunk)).join("") + redactor.end();
+
+    expect(output).toBe("before token  =  [REDACTED] after");
+  });
+
+  it("uses constant secret state for values longer than the capture limit", () => {
+    const redactor = createSensitiveTextRedactor();
+    const outputs = [redactor.write("token=")];
+    for (let index = 0; index < 128; index += 1) {
+      outputs.push(redactor.write("s".repeat(1024)));
+    }
+    outputs.push(redactor.write("\nvisible"), redactor.end());
+
+    expect(outputs.join("")).toBe("token=[REDACTED]\nvisible");
+  });
+
+  it("redacts multi-megabyte text without changing ordinary spans", () => {
+    const ordinaryText = "x".repeat(2 * 1024 * 1024);
+
+    expect(redactSensitiveText(`${ordinaryText}\ntoken=private-value\n`)).toBe(
+      `${ordinaryText}\ntoken=[REDACTED]\n`
+    );
+  });
+
+  it("does not treat identifiers beginning with Bearer as bearer tokens", () => {
+    expect(redactSensitiveText("BearerAuthenticationMiddleware")).toBe(
+      "BearerAuthenticationMiddleware"
+    );
+  });
+
+  it.each([
+    "ghp_token=private-value",
+    '{"ghp_token":"private-value"}'
+  ])("reprocesses rejected token candidates in %s", (source) => {
+    expect(redactSensitiveText(source)).not.toContain("private-value");
+    expect(redactSensitiveText(source)).toContain("token");
+    expect(redactSensitiveText(source)).toContain("[REDACTED]");
+  });
+
+  it.each([
+    'prefix token = "split-secret" suffix',
+    "ghp_token=private-value",
+    '{"ghp_token":"private-value"}',
+    "authorization: Bearer header.payload.signature\nvisible",
+    "Bearer abcdefghijklmnop visible",
+    "BearerAuthenticationMiddleware",
+    `ghp_${"a".repeat(24)} visible`,
+    `sk-${"b".repeat(24)} visible`,
+    "token=[REDACTED] visible"
+  ])("matches one-shot redaction at every chunk boundary for %s", (source) => {
+    const expected = redactSensitiveText(source);
+
+    for (let split = 0; split <= source.length; split += 1) {
+      const redactor = createSensitiveTextRedactor();
+      const actual = redactor.write(source.slice(0, split))
+        + redactor.write(source.slice(split))
+        + redactor.end();
+      expect(actual).toBe(expected);
+    }
   });
 });
