@@ -104,12 +104,19 @@ export const MinimalVerdictSchema = z.object({
 export type MinimalVerdict = z.infer<typeof MinimalVerdictSchema>;
 
 export interface KaizenVerifierResult {
+  schemaVersion: 1;
+  verdict: VerdictDecision;
+  final_verdict: FinalVerdictKind;
   status: VerdictDecision;
+  evidence_grade: EvidenceGrade;
+  confidence: number;
+  risk: RiskLevel;
   summary: string;
   notes: string;
   reason: string;
   must_fix: MinimalFinding[];
   should_fix: MinimalFinding[];
+  run: NonNullable<MinimalVerdict["run"]>;
 }
 
 export const VerdictSchema = MinimalVerdictSchema;

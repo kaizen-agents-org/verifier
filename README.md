@@ -413,19 +413,42 @@ The integration payload is:
 
 ```json
 {
+  "schemaVersion": 1,
+  "verdict": "open_pr",
+  "final_verdict": "mergeable",
   "status": "open_pr",
+  "evidence_grade": "reported",
+  "confidence": 82,
+  "risk": "low",
   "summary": "Open PR with 0 should_fix item(s); risk is low.",
   "notes": "evidence_grade=reported\nrisk=low\nconfidence=82",
   "reason": "",
   "must_fix": [],
-  "should_fix": []
+  "should_fix": [],
+  "run": {
+    "id": "kaizen-20260618084500-12345",
+    "started_at": "2026-06-18T08:45:00.000Z",
+    "completed_at": "2026-06-18T08:45:00.010Z",
+    "duration_ms": 10,
+    "workspace": "/path/to/workspace",
+    "base_ref": "unknown",
+    "head_ref": "unknown",
+    "artifacts_dir": "/path/to/workspace/.kaizen/verifier",
+    "changed_files": ["src/signup.ts"],
+    "verify_commands": []
+  }
 }
 ```
 
 `status` is one of `open_pr`, `open_pr_with_warning`, `block_pr`, or
 `needs_context`. `must_fix` and `should_fix` preserve the structured finding
-objects from the full verdict contract. The existing `notes` and `reason`
-strings remain available for compatibility with current consumers.
+objects from the full verdict contract. `verdict`, `final_verdict`,
+`evidence_grade`, `confidence`, `risk`, and `run` expose the same stable JSON
+metadata as other verifier modes. `base_ref` and `head_ref` use `BASE_SHA` and
+`GITHUB_SHA` when supplied and otherwise report `unknown`. The existing
+`status`, `notes`, and `reason` fields remain available for compatibility with
+current consumers. All string values, including finding evidence, are redacted
+before the payload is written to stdout or the result file.
 
 `verifier` does not edit project source files, create branches, commit changes,
 create pull requests, or grant merge approval. Workspace checks do write their

@@ -5,8 +5,13 @@ import type { FileHandle } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
+import { redactSensitiveValue } from "./redaction.js";
 import { VerdictInputSchema } from "./types.js";
-import type { FinalVerdictKind, KaizenVerifierResult } from "./types.js";
+import type {
+  FinalVerdictKind,
+  KaizenVerifierResult,
+  VerdictDecision
+} from "./types.js";
 import { readVersionInfo } from "./version.js";
 
 interface CliOptions {
@@ -61,7 +66,10 @@ async function main(argv: string[]): Promise<number> {
       process.env.KAIZEN_VERIFIER_RESULT_PATH
     );
     try {
-      const payload = await runKaizenLoopMode(resultWriter.write);
+      const payload = await runKaizenLoopMode(resultWriter.write, {
+        workspace: resultWriter.workspace,
+        artifactsDir: dirname(resultWriter.resultPath)
+      });
       process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
       return 0;
     } finally {
@@ -123,8 +131,10 @@ async function main(argv: string[]): Promise<number> {
 }
 
 async function runKaizenLoopMode(
-  writeResult: (content: string) => Promise<void>
+  writeResult: (content: string) => Promise<void>,
+  context: { workspace: string; artifactsDir: string }
 ): Promise<KaizenVerifierResult> {
+  const startedAt = new Date();
   const prompt = await readStdin();
   const input = VerdictInputSchema.parse(parseKaizenLoopPrompt(prompt));
   const verdict = evaluateMinimalVerdict(input);
@@ -134,8 +144,15 @@ async function runKaizenLoopMode(
       : verdict.verdict === "needs_context"
         ? verdict.should_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary
         : "";
-  const payload = {
+  const completedAt = new Date();
+  const payload: KaizenVerifierResult = {
+    schemaVersion: verdict.schemaVersion,
+    verdict: verdict.verdict,
+    final_verdict: finalVerdictForKaizen(verdict.verdict),
     status: verdict.verdict,
+    evidence_grade: verdict.evidence_grade ?? "reported",
+    confidence: verdict.confidence,
+    risk: verdict.risk,
     summary: verdict.summary,
     notes: [
       verdict.evidence_grade ? `evidence_grade=${verdict.evidence_grade}` : "",
@@ -148,16 +165,45 @@ async function runKaizenLoopMode(
       .join("\n"),
     reason,
     must_fix: verdict.must_fix,
-    should_fix: verdict.should_fix
+    should_fix: verdict.should_fix,
+    run: {
+      id: `kaizen-${startedAt.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}-${process.pid}`,
+      started_at: startedAt.toISOString(),
+      completed_at: completedAt.toISOString(),
+      duration_ms: completedAt.getTime() - startedAt.getTime(),
+      workspace: context.workspace,
+      base_ref: process.env.BASE_SHA ?? "unknown",
+      head_ref: process.env.GITHUB_SHA ?? "unknown",
+      artifacts_dir: context.artifactsDir,
+      changed_files: changedFilesFromDiff(input.diff),
+      verify_commands: []
+    }
   };
+  const redactedPayload = redactSensitiveValue(payload);
 
-  await writeResult(`${JSON.stringify(payload, null, 2)}\n`);
-  return payload;
+  await writeResult(`${JSON.stringify(redactedPayload, null, 2)}\n`);
+  return redactedPayload;
+}
+
+function finalVerdictForKaizen(verdict: VerdictDecision): FinalVerdictKind {
+  if (verdict === "open_pr") return "mergeable";
+  if (verdict === "open_pr_with_warning") return "conditional";
+  if (verdict === "block_pr") return "not_mergeable";
+  return "inconclusive";
+}
+
+function changedFilesFromDiff(diff: string): string[] {
+  const files = [...diff.matchAll(/^diff --git a\/(.+?) b\/(.+)$/gm)]
+    .map((match) => match[2])
+    .filter((path): path is string => Boolean(path));
+  return [...new Set(files)];
 }
 
 async function prepareKaizenResult(configuredPath: string): Promise<{
   write: (content: string) => Promise<void>;
   close: () => Promise<void>;
+  workspace: string;
+  resultPath: string;
 }> {
   const workspace = resolve(process.env.KAIZEN_WORKSPACE_DIR ?? process.cwd());
   const resultPath = resolve(workspace, configuredPath);
@@ -216,6 +262,8 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
   try {
     const realWorkspace = await realpath(workspace);
     return {
+      workspace: realWorkspace,
+      resultPath,
       write: async (content: string) => {
         const [realResult, openedStat, pathStat] = await Promise.all([
           realpath(resultPath),

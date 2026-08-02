@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { link, lstat, mkdir, mkdtemp, open, readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { link, lstat, mkdir, mkdtemp, open, readFile, realpath, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -163,11 +163,23 @@ Return "block_pr" when the builder must revise the change before a PR is created
     );
 
     const output = JSON.parse(stdout) as {
+      schemaVersion: number;
+      verdict: string;
+      final_verdict: string;
       status: string;
+      evidence_grade: string;
+      confidence: number;
+      risk: string;
       summary: string;
       reason: string;
       must_fix: unknown[];
       should_fix: unknown[];
+      run: {
+        workspace: string;
+        artifacts_dir: string;
+        changed_files: string[];
+        verify_commands: unknown[];
+      };
     };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
@@ -179,6 +191,19 @@ Return "block_pr" when the builder must revise the change before a PR is created
     };
 
     expect(output.status).toBe("open_pr");
+    expect(output.schemaVersion).toBe(1);
+    expect(output.verdict).toBe("open_pr");
+    expect(output.final_verdict).toBe("mergeable");
+    expect(output.evidence_grade).toBe("reported");
+    expect(output.confidence).toEqual(expect.any(Number));
+    expect(output.risk).toBe("low");
+    expect(output.run).toMatchObject({
+      workspace: await realpath(dir),
+      artifacts_dir: join(dir, ".kaizen", "verifier"),
+      changed_files: ["src/signup.ts"],
+      verify_commands: []
+    });
+    expect(result).toEqual(output);
     expect(result.status).toBe("open_pr");
     expect(result.summary).toContain("Open PR");
     expect(result.notes).toContain("evidence_grade=reported");
@@ -606,7 +631,7 @@ Changed billing token extraction and added billing coverage.
 # Diff
 
 diff --git a/src/billing.ts b/src/billing.ts
-+const token = req.body.token
++const token = "ghp_12345678901234567890"
 
 # Decision rules
 
@@ -637,6 +662,8 @@ Return a verdict.
     };
 
     expect(output.status).toBe("open_pr_with_warning");
+    expect(stdout).not.toContain("ghp_12345678901234567890");
+    expect(await readFile(resultPath, "utf8")).not.toContain("ghp_12345678901234567890");
     expect(output.must_fix).toEqual([]);
     expect(output.should_fix).toEqual(result.should_fix);
     expect(output.should_fix).toEqual(
@@ -644,7 +671,7 @@ Return a verdict.
         expect.objectContaining({
           source: "diff",
           message: expect.stringContaining("high-risk billing/payments code"),
-          evidence: expect.stringContaining("src/billing.ts")
+          evidence: expect.stringMatching(/src\/billing\.ts[\s\S]*\[REDACTED\]/)
         })
       ])
     );
