@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { link, lstat, mkdir, mkdtemp, open, readFile, rename, symlink, writeFile } from "node:fs/promises";
+import { link, lstat, mkdir, mkdtemp, open, readFile, realpath, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -121,6 +121,14 @@ describe("CLI", { timeout: 20_000 }, () => {
 
 Validate email addresses.
 
+# Mechanical verification
+
+- [x] issue-example-check
+
+# Changed files
+
+- issue-example.md
+
 # Builder result
 
 Implemented validation and tests.
@@ -136,12 +144,12 @@ The implementation validates signup input.
 
 # Changed files
 
-- src/signup.ts
+- \`src/登録.ts\`
 - test/signup.test.ts
 
 # Diff
 
-diff --git a/src/signup.ts b/src/signup.ts
+diff --git "a/src/登録.ts" "b/src/登録.ts"
 +validateEmail(input.email)
 
 # Decision rules
@@ -162,21 +170,93 @@ Return "block_pr" when the builder must revise the change before a PR is created
       }
     );
 
-    const output = JSON.parse(stdout) as { status: string; summary: string; reason: string };
+    const output = JSON.parse(stdout) as {
+      schemaVersion: number;
+      verdict: string;
+      final_verdict: string;
+      status: string;
+      evidence_grade: string;
+      confidence: number;
+      risk: string;
+      summary: string;
+      reason: string;
+      must_fix: unknown[];
+      should_fix: unknown[];
+      run: {
+        workspace: string;
+        artifacts_dir: string;
+        changed_files: string[];
+        verify_commands: unknown[];
+      };
+    };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
       summary: string;
       notes: string;
       reason: string;
+      must_fix: unknown[];
+      should_fix: unknown[];
     };
 
     expect(output.status).toBe("open_pr");
+    expect(output.schemaVersion).toBe(1);
+    expect(output.verdict).toBe("open_pr");
+    expect(output.final_verdict).toBe("mergeable");
+    expect(output.evidence_grade).toBe("reported");
+    expect(output.confidence).toEqual(expect.any(Number));
+    expect(output.risk).toBe("low");
+    expect(output.run).toMatchObject({
+      workspace: await realpath(dir),
+      artifacts_dir: join(await realpath(dir), ".kaizen", "verifier"),
+      changed_files: ["src/登録.ts", "test/signup.test.ts"],
+      verify_commands: []
+    });
+    expect(result).toEqual(output);
     expect(result.status).toBe("open_pr");
     expect(result.summary).toContain("Open PR");
     expect(result.notes).toContain("evidence_grade=reported");
     expect(output.reason).toBe("");
     expect(result.reason).toBe("");
+    expect(output.must_fix).toEqual([]);
+    expect(output.should_fix).toEqual([]);
+    expect(result.must_fix).toEqual([]);
+    expect(result.should_fix).toEqual([]);
   });
+
+  it.runIf(process.platform !== "win32")(
+    "reports canonical Kaizen workspace and artifact paths through a workspace symlink",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-workspace-link-"));
+      const workspace = join(dir, "workspace");
+      const linkedWorkspace = join(dir, "linked-workspace");
+      await mkdir(workspace);
+      await symlink(workspace, linkedWorkspace);
+
+      const { stdout } = await spawnWithInput(
+        process.execPath,
+        ["--import", "tsx", "src/cli.ts"],
+        kaizenLoopPrompt(),
+        {
+          env: {
+            ...process.env,
+            KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
+            KAIZEN_WORKSPACE_DIR: linkedWorkspace
+          }
+        }
+      );
+
+      const output = JSON.parse(stdout) as {
+        run: { workspace: string; artifacts_dir: string };
+      };
+      const canonicalWorkspace = await realpath(workspace);
+
+      expect(output.run.workspace).toBe(canonicalWorkspace);
+      expect(output.run.artifacts_dir).toBe(join(canonicalWorkspace, ".kaizen", "verifier"));
+      await expect(
+        readFile(join(output.run.artifacts_dir, "verify-result.json"), "utf8")
+      ).resolves.toBe(stdout);
+    }
+  );
 
   it.each(["relative", "absolute"] as const)(
     "rejects a %s kaizen-loop result path outside the workspace",
@@ -396,7 +476,7 @@ The implementation validates signup input.
 
 # Changed files
 
-- src/signup.ts
+src/signup.ts
 - test/signup.test.ts
 
 # Decision rules
@@ -417,16 +497,91 @@ Return a verdict.
       }
     );
 
-    const output = JSON.parse(stdout) as { status: string; reason: string };
+    const output = JSON.parse(stdout) as {
+      status: string;
+      final_verdict: string;
+      reason: string;
+      run: { changed_files: string[] };
+      must_fix: unknown[];
+      should_fix: Array<{ source: string; message: string; evidence?: string }>;
+    };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
+      reason: string;
+      must_fix: unknown[];
+      should_fix: Array<{ source: string; message: string; evidence?: string }>;
+    };
+
+    expect(output.status).toBe("needs_context");
+    expect(output.final_verdict).toBe("inconclusive");
+    expect(output.run.changed_files).toEqual(["src/signup.ts", "test/signup.test.ts"]);
+    expect(result.status).toBe("needs_context");
+    expect(output.reason).toContain("Diff is missing");
+    expect(result.reason).toContain("Diff is missing");
+    expect(output.must_fix).toEqual([]);
+    expect(output.should_fix).toEqual(result.should_fix);
+    expect(output.should_fix).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "diff",
+          message: expect.stringContaining("Diff is missing")
+        })
+      ])
+    );
+  });
+
+  it("keeps a kaizen-loop result conditional when verification evidence is missing", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-"));
+    const resultPath = join(dir, "verify-result.json");
+    const prompt = `# Issue
+
+Add signup validation.
+
+# Builder result
+
+Implemented validation.
+
+# Mechanical verification
+
+Not configured.
+
+# Changed files
+
+- src/signup.ts
+
+# Diff
+
+diff --git a/src/signup.ts b/src/signup.ts
++validateEmail(input.email)
+
+# Decision rules
+
+Return a verdict.
+`;
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      prompt,
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_WORKSPACE_DIR: dir
+        }
+      }
+    );
+
+    const output = JSON.parse(stdout) as {
+      status: string;
+      final_verdict: string;
       reason: string;
     };
 
     expect(output.status).toBe("needs_context");
-    expect(result.status).toBe("needs_context");
-    expect(output.reason).toContain("Diff is missing");
-    expect(result.reason).toContain("Diff is missing");
+    expect(output.final_verdict).toBe("conditional");
+    expect(output.reason).toContain("No positive mechanical verification evidence");
+    expect(JSON.parse(await readFile(resultPath, "utf8"))).toEqual(output);
   });
 
   it("ignores a Diff heading embedded before the generated changed-files section", async () => {
@@ -523,11 +678,18 @@ Return "block_pr" when the builder must revise the change before a PR is created
       }
     );
 
-    const output = JSON.parse(stdout) as { status: string; reason: string };
+    const output = JSON.parse(stdout) as {
+      status: string;
+      reason: string;
+      must_fix: Array<{ source: string; message: string; evidence?: string }>;
+      should_fix: unknown[];
+    };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
       notes: string;
       reason: string;
+      must_fix: Array<{ source: string; message: string; evidence?: string }>;
+      should_fix: unknown[];
     };
 
     expect(output.status).toBe("block_pr");
@@ -535,6 +697,85 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.reason).toContain("focused verification");
     expect(result.reason).toContain("focused verification");
     expect(result.notes).toContain("Diff touches high-risk billing/payments code");
+    expect(output.must_fix).toEqual(result.must_fix);
+    expect(output.must_fix).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "diff",
+          message: expect.stringContaining("focused verification"),
+          evidence: expect.stringContaining("billing/payments")
+        })
+      ])
+    );
+    expect(output.should_fix).toEqual([]);
+  });
+
+  it("preserves structured warnings for kaizen-loop prompts", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-"));
+    const resultPath = join(dir, "verify-result.json");
+    const prompt = `# Issue #3: Preserve billing token handling
+
+Keep payment token handling covered by focused verification.
+
+# Builder result
+
+Changed billing token extraction and added billing coverage.
+
+# Mechanical verification
+
+- [x] pnpm test -- billing
+
+# Changed files
+
+- src/billing.ts
+
+# Diff
+
+diff --git a/src/billing.ts b/src/billing.ts
++const token = "ghp_12345678901234567890"
+
+# Decision rules
+
+Return a verdict.
+`;
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      prompt,
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: resultPath,
+          KAIZEN_WORKSPACE_DIR: dir
+        }
+      }
+    );
+
+    const output = JSON.parse(stdout) as {
+      status: string;
+      must_fix: unknown[];
+      should_fix: Array<{ source: string; message: string; evidence?: string }>;
+    };
+    const result = JSON.parse(await readFile(resultPath, "utf8")) as {
+      must_fix: unknown[];
+      should_fix: Array<{ source: string; message: string; evidence?: string }>;
+    };
+
+    expect(output.status).toBe("open_pr_with_warning");
+    expect(stdout).not.toContain("ghp_12345678901234567890");
+    expect(await readFile(resultPath, "utf8")).not.toContain("ghp_12345678901234567890");
+    expect(output.must_fix).toEqual([]);
+    expect(output.should_fix).toEqual(result.should_fix);
+    expect(output.should_fix).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source: "diff",
+          message: expect.stringContaining("high-risk billing/payments code"),
+          evidence: expect.stringMatching(/src\/billing\.ts[\s\S]*\[REDACTED\]/)
+        })
+      ])
+    );
   });
 
   it("checks a workspace by collecting git diff and running verification commands", async () => {
