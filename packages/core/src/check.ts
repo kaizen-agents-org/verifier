@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { lstat, mkdir, realpath, writeFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { promisify, TextDecoder } from "node:util";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
@@ -49,9 +49,7 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
   const workspace = resolve(input.workspace);
   const base = input.base;
   const runId = createRunId(startedAt);
-  const outputRoot = input.outputDir
-    ? resolve(workspace, input.outputDir)
-    : join(workspace, ".verifier", "runs");
+  const { outputRoot, canonicalWorkspace } = await resolveOutputRoot(workspace, input.outputDir);
   const runDir = resolve(outputRoot, runId);
 
   const [diff, changedFiles, headRef] = await Promise.all([
@@ -77,6 +75,9 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
   const completedAt = new Date();
 
   await mkdir(runDir, { recursive: true });
+  if (isPathOutside(canonicalWorkspace, await realpath(runDir))) {
+    throw new Error("outputDir resolves outside the workspace.");
+  }
 
   const evidence: EvidenceRecord[] = [];
   if (input.task.trim()) {
@@ -147,6 +148,50 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
     verdict: outputVerdict,
     markdown
   };
+}
+
+async function resolveOutputRoot(
+  workspace: string,
+  outputDir: string | undefined
+): Promise<{ outputRoot: string; canonicalWorkspace: string }> {
+  if (outputDir && isAbsolute(outputDir)) {
+    throw new Error("outputDir must be a relative path within the workspace.");
+  }
+
+  const outputRoot = outputDir
+    ? resolve(workspace, outputDir)
+    : join(workspace, ".verifier", "runs");
+  if (isPathOutside(workspace, outputRoot)) {
+    throw new Error("outputDir must stay within the workspace.");
+  }
+
+  const canonicalWorkspace = await realpath(workspace);
+  let ancestor = outputRoot;
+  while (!(await pathEntryExists(ancestor))) {
+    const parent = resolve(ancestor, "..");
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
+  if (isPathOutside(canonicalWorkspace, await realpath(ancestor))) {
+    throw new Error("outputDir resolves outside the workspace.");
+  }
+
+  return { outputRoot, canonicalWorkspace };
+}
+
+function isPathOutside(parent: string, child: string): boolean {
+  const relativePath = relative(parent, child);
+  return relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath);
+}
+
+async function pathEntryExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 export function shouldFailForVerdict(
