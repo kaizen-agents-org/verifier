@@ -83,7 +83,15 @@ export async function runCheck(input: CheckInput): Promise<CheckResult> {
     evidence.push(await writeEvidence(runDir, "E-1", "intent", "intent.txt", input.task, "Primary intent supplied to verifier check."));
   }
   evidence.push(await writeEvidence(runDir, "E-2", "diff", "diff.patch", diff, `Git diff against ${base}.`));
-  evidence.push(await writeEvidence(runDir, "E-3", "verify_logs", "verify-logs.txt", verifyLogs, "Verification command output."));
+  evidence.push(await writeEvidence(
+    runDir,
+    "E-3",
+    "verify_logs",
+    "verify-logs.txt",
+    verifyLogs,
+    "Verification command output.",
+    true
+  ));
   evidence.push(await writeEvidence(runDir, "E-4", "builder_report", "builder-report.md", builderReport, "Verifier check collection report."));
 
   const verdict: MinimalVerdict = {
@@ -375,7 +383,7 @@ function formatCommandResult(result: CommandRunResult): string {
       ? `verification failed: exit code ${result.code ?? "null"}${result.signal ? ` signal ${result.signal}` : ""}`
       : `exit code ${result.code}`;
   return [
-    `$ ${result.command}`,
+    `$ ${redactSensitiveText(result.command)}`,
     status,
     result.stdout.trim() ? `stdout:\n${result.stdout.trim()}` : "",
     result.stderr.trim() ? `stderr:\n${result.stderr.trim()}` : ""
@@ -500,9 +508,14 @@ async function writeEvidence(
   kind: EvidenceRecord["kind"],
   path: string,
   content: string,
-  summary: string
+  summary: string,
+  alreadyRedacted = false
 ): Promise<EvidenceRecord> {
-  await writeFile(join(runDir, path), redactSensitiveText(content), "utf8");
+  await writeFile(
+    join(runDir, path),
+    alreadyRedacted ? content : redactSensitiveText(content),
+    "utf8"
+  );
   return { id, kind, path, summary };
 }
 

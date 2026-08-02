@@ -98,7 +98,8 @@ describe("sensitive value redaction", () => {
     "authorization: Bearer header.payload.signature\nvisible",
     "Bearer abcdefghijklmnop visible",
     `ghp_${"a".repeat(24)} visible`,
-    `sk-${"b".repeat(24)} visible`
+    `sk-${"b".repeat(24)} visible`,
+    "token=[REDACTED] visible"
   ])("matches one-shot redaction at every chunk boundary for %s", (source) => {
     const expected = redactSensitiveText(source);
 
