@@ -468,6 +468,7 @@ Return a verdict.
       reason: string;
       must_fix: unknown[];
       should_fix: Array<{ source: string; message: string; evidence?: string }>;
+      run: { changed_files: string[] };
     };
     const result = JSON.parse(await readFile(resultPath, "utf8")) as {
       status: string;
@@ -478,6 +479,7 @@ Return a verdict.
 
     expect(output.status).toBe("needs_context");
     expect(output.final_verdict).toBe("inconclusive");
+    expect(output.run.changed_files).toEqual(["src/signup.ts", "test/signup.test.ts"]);
     expect(result.status).toBe("needs_context");
     expect(output.reason).toContain("Diff is missing");
     expect(result.reason).toContain("Diff is missing");

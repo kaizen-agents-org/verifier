@@ -197,7 +197,7 @@ function finalVerdictForKaizen(
 }
 
 function changedFilesFromPrompt(prompt: string): string[] {
-  const files = lastSection(prompt, "# Changed files", "# Diff")
+  const files = lastSection(prompt, "# Changed files", ["# Diff", "# Decision rules"])
     .split(/\r?\n/)
     .filter((line) => /^\s*-\s+/.test(line))
     .map((line) => line.replace(/^\s*-\s+/, "").trim())
@@ -206,22 +206,22 @@ function changedFilesFromPrompt(prompt: string): string[] {
   return [...new Set(files)];
 }
 
-function lastSection(text: string, startMarker: string, endMarker: string): string {
-  const endMatches = [...text.matchAll(new RegExp(
-    `(?:^|\\r?\\n)${escapeRegExp(endMarker)}[\\t ]*(?:\\r?\\n|$)`,
-    "g"
-  ))];
-  const end = endMatches.at(-1);
-  if (end?.index === undefined) return "";
-
-  const beforeEnd = text.slice(0, end.index);
-  const startMatches = [...beforeEnd.matchAll(new RegExp(
+function lastSection(text: string, startMarker: string, endMarkers: string[]): string {
+  const startMatches = [...text.matchAll(new RegExp(
     `(?:^|\\r?\\n)${escapeRegExp(startMarker)}[\\t ]*(?:\\r?\\n|$)`,
     "g"
   ))];
   const start = startMatches.at(-1);
   if (start?.index === undefined) return "";
-  return text.slice(start.index + start[0].length, end.index).trim();
+
+  const body = text.slice(start.index + start[0].length);
+  const endIndexes = endMarkers
+    .map((endMarker) => new RegExp(
+      `(?:^|\\r?\\n)${escapeRegExp(endMarker)}[\\t ]*(?:\\r?\\n|$)`
+    ).exec(body)?.index)
+    .filter((index): index is number => index !== undefined);
+  if (endIndexes.length === 0) return "";
+  return body.slice(0, Math.min(...endIndexes)).trim();
 }
 
 async function prepareKaizenResult(configuredPath: string): Promise<{
