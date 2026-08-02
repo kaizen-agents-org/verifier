@@ -90,6 +90,12 @@ describe("sensitive value redaction", () => {
     );
   });
 
+  it("does not treat identifiers beginning with Bearer as bearer tokens", () => {
+    expect(redactSensitiveText("BearerAuthenticationMiddleware")).toBe(
+      "BearerAuthenticationMiddleware"
+    );
+  });
+
   it.each([
     "ghp_token=private-value",
     '{"ghp_token":"private-value"}'
@@ -105,6 +111,7 @@ describe("sensitive value redaction", () => {
     '{"ghp_token":"private-value"}',
     "authorization: Bearer header.payload.signature\nvisible",
     "Bearer abcdefghijklmnop visible",
+    "BearerAuthenticationMiddleware",
     `ghp_${"a".repeat(24)} visible`,
     `sk-${"b".repeat(24)} visible`,
     "token=[REDACTED] visible"

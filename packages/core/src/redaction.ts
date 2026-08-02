@@ -65,6 +65,7 @@ export function createSensitiveTextRedactor(): SensitiveTextRedactor {
   let valueKind: ValueKind = "assignment-narrow";
   let tokenCandidate = "";
   let tokenMinimumLength = 0;
+  let bearerHasWhitespace = false;
   let placeholderCandidate = "";
   let lastEmittedCharacter = "";
   let ended = false;
@@ -86,6 +87,7 @@ export function createSensitiveTextRedactor(): SensitiveTextRedactor {
       }
       if (starter.kind === "bearer") {
         emit(matchedText);
+        bearerHasWhitespace = false;
         mode = "bearer-space";
         return;
       }
@@ -215,7 +217,8 @@ export function createSensitiveTextRedactor(): SensitiveTextRedactor {
       if (mode === "bearer-space") {
         if (/\s/.test(character)) {
           emit(character);
-        } else if (VALUE_ALLOWED.bearer(character)) {
+          bearerHasWhitespace = true;
+        } else if (bearerHasWhitespace && VALUE_ALLOWED.bearer(character)) {
           valueKind = "bearer";
           tokenCandidate = character;
           tokenMinimumLength = 12;
