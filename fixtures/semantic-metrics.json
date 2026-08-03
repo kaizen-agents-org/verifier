@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-19T04:46:02.104Z",
+  "generatedAt": "2026-08-03T06:05:31.147Z",
   "mode": "full",
   "gateMode": "on",
   "baseline": {
@@ -33,6 +33,12 @@
     "fpRate": 0.1,
     "verdictAgreement": 0.9
   },
+  "refutationOffThresholdFailures": [
+    "fpRate 0.3333 exceeds maximum 0.1000"
+  ],
+  "cleanCasesRequiringRefutation": [
+    "sb-008-clean-refactor"
+  ],
   "thresholdFailures": [],
   "cases": [
     {

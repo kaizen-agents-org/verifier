@@ -56,6 +56,8 @@ export interface SemanticEvalResult {
   refutationOn: SemanticMetrics;
   recallImprovement: number;
   thresholds: z.infer<typeof ThresholdsSchema>;
+  refutationOffThresholdFailures: string[];
+  cleanCasesRequiringRefutation: string[];
   thresholdFailures: string[];
   cases: Array<{
     id: string;
@@ -108,6 +110,10 @@ export async function runSemanticEval(
   });
   const refutationOff = calculateSemanticMetrics(cases, "findingsOff");
   const refutationOn = calculateSemanticMetrics(cases, "findingsOn");
+  const refutationOffThresholdFailures = compareSemanticThresholds(refutationOff, thresholds);
+  const cleanCasesRequiringRefutation = cases
+    .filter((item) => !item.defect && item.findingsOff > 0 && item.findingsOn === 0)
+    .map((item) => item.id);
   const thresholdFailures = compareSemanticThresholds(
     gateMode === "on" ? refutationOn : refutationOff,
     thresholds
@@ -129,6 +135,8 @@ export async function runSemanticEval(
     refutationOn,
     recallImprovement: roundRate(refutationOn.recall - baseline.metrics.recall),
     thresholds,
+    refutationOffThresholdFailures,
+    cleanCasesRequiringRefutation,
     thresholdFailures,
     cases
   };

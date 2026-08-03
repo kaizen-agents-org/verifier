@@ -13,6 +13,10 @@ describe("semantic refutation eval", () => {
     expect(result.refutationOff).toMatchObject({ recall: 1, fpRate: 0.3333 });
     expect(result.refutationOn).toMatchObject({ recall: 1, fpRate: 0, verdictAgreement: 1 });
     expect(result.recallImprovement).toBeGreaterThan(0);
+    expect(result.refutationOffThresholdFailures).toEqual([
+      "fpRate 0.3333 exceeds maximum 0.1000"
+    ]);
+    expect(result.cleanCasesRequiringRefutation).toEqual(["sb-008-clean-refactor"]);
     expect(result.thresholdFailures).toEqual([]);
     expect(result.cases).toHaveLength(14);
   });
@@ -24,6 +28,7 @@ describe("semantic refutation eval", () => {
       "sb-003-regression-breaks-test",
       "sb-008-clean-refactor"
     ]);
+    expect(result.cleanCasesRequiringRefutation).toEqual(["sb-008-clean-refactor"]);
   });
 
   it("fails the release gate when a threshold is missed", () => {

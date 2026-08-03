@@ -112,6 +112,10 @@ The semantic eval replays committed lens/refuter outputs for all 14 repository
 fixtures, so CI needs no API key or billable network call. Its comparison is
 stored in `fixtures/semantic-metrics.json`. Normal changes run the smoke subset;
 agent, judge, refutation, prompt, and threshold changes run the full gate.
+The selected `gateMode` controls `thresholdFailures` and the process exit status.
+Every run also reports `refutationOffThresholdFailures` and
+`cleanCasesRequiringRefutation` so CI exposes clean cases that pass only after
+refutation without making those diagnostics a second release gate.
 Batch submission is available through the injected `submitSemanticEvalBatch`
 boundary and is never called by CI.
 
