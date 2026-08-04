@@ -53,6 +53,8 @@ commands:
     - "pnpm typecheck"
     - "pnpm test"
     - "pnpm schema:check"
+    - "pnpm eval"
+    - "SEMANTIC_EVAL_WRITE_METRICS=false pnpm eval:semantic:ci"
     - "test -f skills/gh-link-issue-pr/SKILL.md && test -f skills/kaizen-bug-router/SKILL.md && test -f skills/pr-guardian/SKILL.md"
   verifyTimeoutMinutes: 15
 
@@ -69,9 +71,6 @@ verifier:
   command: "verifier"
   resultPath: ".kaizen/verifier/verify-result.json"
   timeoutMinutes: 15
-  update:
-    mode: canonical-main
-    timeoutMinutes: 15
 
 guardian:
   enabled: true
