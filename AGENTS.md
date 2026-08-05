@@ -18,6 +18,8 @@ pnpm typecheck
 pnpm test:package-entry
 pnpm test
 pnpm schema:check
+pnpm eval
+SEMANTIC_EVAL_WRITE_METRICS=false pnpm eval:semantic:ci
 ```
 
 ## Local Kaizen Runtime
