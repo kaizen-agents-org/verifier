@@ -357,8 +357,10 @@ Cargo, pytest, Go test, and eslint. The JSON output includes per-case results
 plus aggregate `verdictAgreement` and `falsePositiveRate` metrics so reports can
 cite reproducible verifier quality signals.
 
-Corpus files live under `packages/core/eval/corpus/seeded` and
-`packages/core/eval/corpus/golden`. Each JSON case records verifier input,
+The compact verdict corpus lives under `packages/core/eval/corpus/seeded` and
+`packages/core/eval/corpus/golden`. The repository-fixture corpus run by the
+same root command lives under `fixtures/corpus/seeded` and
+`fixtures/corpus/golden`. Each compact JSON case records verifier input,
 expected verdict constraints, and any false-positive allowance. The command
 prints JSON with:
 
