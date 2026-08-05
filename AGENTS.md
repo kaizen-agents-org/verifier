@@ -15,6 +15,7 @@ Run these before opening a PR:
 
 ```sh
 pnpm typecheck
+pnpm test:package-entry
 pnpm test
 pnpm schema:check
 ```
