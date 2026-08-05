@@ -51,6 +51,7 @@ commands:
   setup: "pnpm install --frozen-lockfile"
   verify:
     - "pnpm typecheck"
+    - "pnpm test:package-entry"
     - "pnpm test"
     - "pnpm schema:check"
     - "pnpm eval"
