@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "pretest:package-entry": "pnpm build",
     "test": "vitest run",
     "test:package-entry": "node --test test/package-entry.test.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
