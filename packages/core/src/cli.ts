@@ -7,7 +7,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
-import { redactSensitiveValue } from "./redaction.js";
+import { redactSensitiveText, redactSensitiveValue } from "./redaction.js";
 import { VerdictInputSchema } from "./types.js";
 import type {
   FinalVerdictKind,
@@ -186,8 +186,96 @@ async function runKaizenLoopMode(
   };
   const redactedPayload = redactSensitiveValue(payload);
 
+  await persistKaizenArtifacts(context.artifactsDir, input, redactedPayload);
   await writeResult(`${JSON.stringify(redactedPayload, null, 2)}\n`);
   return redactedPayload;
+}
+
+async function persistKaizenArtifacts(
+  artifactsDir: string,
+  input: VerdictInput,
+  payload: KaizenVerifierResult
+): Promise<void> {
+  const redactedInput = redactSensitiveValue(input);
+  const artifacts = [
+    ["intent.txt", redactedInput.task],
+    ["diff.patch", redactedInput.diff],
+    ["verify-logs.txt", redactedInput.verifyLogs],
+    ["builder-report.md", redactedInput.builderReport],
+    ["report.md", renderKaizenReport(payload)],
+    ["verdict.json", `${JSON.stringify(payload, null, 2)}\n`]
+  ] as const;
+
+  for (const [filename, content] of artifacts) {
+    await writeKaizenArtifact(artifactsDir, filename, content);
+  }
+}
+
+function renderKaizenReport(payload: KaizenVerifierResult): string {
+  const mustFix = payload.must_fix.length
+    ? payload.must_fix
+        .map((item) => `- ${item.message}${item.evidence ? ` Evidence: ${item.evidence}` : ""}`)
+        .join("\n")
+    : "- None";
+  const shouldFix = payload.should_fix.length
+    ? payload.should_fix
+        .map((item) => `- ${item.message}${item.evidence ? ` Evidence: ${item.evidence}` : ""}`)
+        .join("\n")
+    : "- None";
+
+  return [
+    `# Verifier Verdict: ${payload.final_verdict}`,
+    "",
+    `Summary: ${payload.summary}`,
+    "",
+    `Compatibility verdict: ${payload.verdict}`,
+    `Evidence grade: ${payload.evidence_grade}`,
+    `Confidence: ${payload.confidence}`,
+    `Risk: ${payload.risk}`,
+    `Artifacts: ${payload.run.artifacts_dir}`,
+    "",
+    "## Must Fix",
+    mustFix,
+    "",
+    "## Should Fix",
+    shouldFix,
+    ""
+  ].join("\n");
+}
+
+async function writeKaizenArtifact(
+  artifactsDir: string,
+  filename: string,
+  content: string
+): Promise<void> {
+  const artifactPath = join(artifactsDir, filename);
+  let handle: FileHandle;
+  try {
+    handle = await open(
+      artifactPath,
+      constants.O_WRONLY |
+        constants.O_CREAT |
+        constants.O_NOFOLLOW |
+        constants.O_NONBLOCK,
+      0o600
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") {
+      throw new Error(`Kaizen artifact ${filename} resolves through a symbolic link.`);
+    }
+    throw error;
+  }
+
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1) {
+      throw new Error(`Kaizen artifact ${filename} must be a regular, single-link file.`);
+    }
+    await handle.truncate(0);
+    await handle.writeFile(redactSensitiveText(content), "utf8");
+  } finally {
+    await handle.close();
+  }
 }
 
 function finalVerdictForKaizen(

@@ -467,6 +467,13 @@ metadata as other verifier modes. `base_ref` and `head_ref` use `BASE_SHA` and
 current consumers. All string values, including finding evidence, are redacted
 before the payload is written to stdout or the result file.
 
+The directory reported by `run.artifacts_dir` also contains redacted copies of
+the prompt-derived `intent.txt`, `diff.patch`, `verify-logs.txt`, and
+`builder-report.md`, plus a human-readable `report.md` and machine-readable
+`verdict.json`. These use the same filenames as workspace evidence so the
+orchestrator and reviewers can inspect the inputs and compact decision after a
+run without exposing common secret-like values.
+
 `verifier` does not edit project source files, create branches, commit changes,
 create pull requests, or grant merge approval. Workspace checks do write their
 evidence artifacts under `.verifier/runs/` (or the configured output directory)
