@@ -11,7 +11,7 @@
     "eval:semantic": "pnpm --filter @verifier/agents eval",
     "eval:semantic:ci": "node scripts/run-semantic-eval-ci.mjs",
     "test": "pnpm -r test",
-    "test:package-entry": "pnpm --filter @verifier/probe-driver-api test:package-entry",
+    "test:package-entry": "pnpm --filter @verifier/probe-driver-api --filter @verifier/probe-driver-cli test:package-entry",
     "test:built-cli": "pnpm --filter @verifier/core test:built-cli",
     "pretypecheck": "pnpm --filter @verifier/probe-sdk build",
     "typecheck": "pnpm -r typecheck",
