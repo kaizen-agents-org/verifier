@@ -316,6 +316,33 @@ Return a verifier decision.
     }
   );
 
+  it("rejects a multiply-linked Kaizen artifact before truncating it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-kaizen-artifact-link-"));
+    const artifactsDir = join(dir, ".kaizen", "verifier");
+    const outsidePath = join(dir, "outside.txt");
+    await mkdir(artifactsDir, { recursive: true });
+    await writeFile(outsidePath, "preserve me\n", "utf8");
+    await link(outsidePath, join(artifactsDir, "intent.txt"));
+
+    const { stderr, code } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      kaizenLoopPrompt(),
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
+          KAIZEN_WORKSPACE_DIR: dir
+        },
+        allowFailure: true
+      }
+    );
+
+    expect(code).toBe(2);
+    expect(stderr).toContain("Kaizen artifact intent.txt must be a regular, single-link file");
+    await expect(readFile(outsidePath, "utf8")).resolves.toBe("preserve me\n");
+  });
+
   it.runIf(process.platform !== "win32")(
     "reports canonical Kaizen workspace and artifact paths through a workspace symlink",
     async () => {
