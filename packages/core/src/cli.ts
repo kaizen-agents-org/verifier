@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { access, lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
@@ -54,6 +54,14 @@ interface VerifierConfig {
 type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 
 const INFERRED_SCRIPT_ORDER = ["typecheck", "test", "build"] as const;
+const KAIZEN_ARTIFACT_FILENAMES = new Set([
+  "intent.txt",
+  "diff.patch",
+  "verify-logs.txt",
+  "builder-report.md",
+  "report.md",
+  "verdict.json"
+]);
 const execFileAsync = promisify(execFile);
 
 async function main(argv: string[]): Promise<number> {
@@ -249,6 +257,14 @@ async function writeKaizenArtifact(
   content: string
 ): Promise<void> {
   const artifactPath = join(artifactsDir, filename);
+  try {
+    const pathStat = await lstat(artifactPath);
+    if (pathStat.isSymbolicLink()) {
+      throw new Error(`Kaizen artifact ${filename} resolves through a symbolic link.`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   let handle: FileHandle;
   try {
     handle = await open(
@@ -267,8 +283,14 @@ async function writeKaizenArtifact(
   }
 
   try {
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.nlink !== 1) {
+    const [stat, pathStat] = await Promise.all([handle.stat(), lstat(artifactPath)]);
+    if (
+      pathStat.isSymbolicLink() ||
+      !stat.isFile() ||
+      stat.nlink !== 1 ||
+      stat.dev !== pathStat.dev ||
+      stat.ino !== pathStat.ino
+    ) {
       throw new Error(`Kaizen artifact ${filename} must be a regular, single-link file.`);
     }
     await handle.truncate(0);
@@ -338,6 +360,11 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
     workspace,
     relative(configuredWorkspace, configuredResultPath)
   );
+  if (KAIZEN_ARTIFACT_FILENAMES.has(basename(resultPath))) {
+    throw new Error(
+      "KAIZEN_VERIFIER_RESULT_PATH must not use a reserved Kaizen artifact filename."
+    );
+  }
 
   let ancestor = resultPath;
   while (!(await pathEntryExists(ancestor))) {

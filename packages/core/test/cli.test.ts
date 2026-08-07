@@ -310,6 +310,31 @@ Return a verifier decision.
     expect(intent.length).toBeLessThan(4096);
   });
 
+  it.each(["intent.txt", "report.md", "verdict.json"])(
+    "rejects result path collision with reserved artifact %s",
+    async (filename) => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-kaizen-result-collision-"));
+      const { stderr, code } = await spawnWithInput(
+        process.execPath,
+        ["--import", "tsx", "src/cli.ts"],
+        kaizenLoopPrompt(),
+        {
+          env: {
+            ...process.env,
+            KAIZEN_VERIFIER_RESULT_PATH: `.kaizen/verifier/${filename}`,
+            KAIZEN_WORKSPACE_DIR: dir
+          },
+          allowFailure: true
+        }
+      );
+
+      expect(code).toBe(2);
+      expect(stderr).toContain(
+        "KAIZEN_VERIFIER_RESULT_PATH must not use a reserved Kaizen artifact filename"
+      );
+    }
+  );
+
   it.runIf(process.platform !== "win32")(
     "does not follow symbolic links when writing kaizen-loop evidence",
     async () => {
