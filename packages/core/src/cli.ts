@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { access, lstat, mkdir, open, readFile, realpath } from "node:fs/promises";
+import { access, lstat, mkdir, mkdtemp, open, readFile, realpath, rm } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
@@ -54,14 +54,6 @@ interface VerifierConfig {
 type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
 
 const INFERRED_SCRIPT_ORDER = ["typecheck", "test", "build"] as const;
-const KAIZEN_ARTIFACT_FILENAMES = new Set([
-  "intent.txt",
-  "diff.patch",
-  "verify-logs.txt",
-  "builder-report.md",
-  "report.md",
-  "verdict.json"
-]);
 const execFileAsync = promisify(execFile);
 
 async function main(argv: string[]): Promise<number> {
@@ -78,9 +70,15 @@ async function main(argv: string[]): Promise<number> {
       process.env.KAIZEN_VERIFIER_RESULT_PATH
     );
     try {
+      const artifacts = await prepareKaizenArtifacts(
+        resultWriter.workspace,
+        resultWriter.resultPath
+      );
       const payload = await runKaizenLoopMode(resultWriter.write, {
         workspace: resultWriter.workspace,
-        artifactsDir: dirname(resultWriter.resultPath)
+        artifactsDir: artifacts.path,
+        artifactsDirDev: artifacts.dev,
+        artifactsDirIno: artifacts.ino
       });
       process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
       return 0;
@@ -145,7 +143,12 @@ async function main(argv: string[]): Promise<number> {
 
 async function runKaizenLoopMode(
   writeResult: (content: string) => Promise<void>,
-  context: { workspace: string; artifactsDir: string }
+  context: {
+    workspace: string;
+    artifactsDir: string;
+    artifactsDirDev: number | bigint;
+    artifactsDirIno: number | bigint;
+  }
 ): Promise<KaizenVerifierResult> {
   const startedAt = new Date();
   const prompt = await readStdin();
@@ -194,13 +197,18 @@ async function runKaizenLoopMode(
   };
   const redactedPayload = redactSensitiveValue(payload);
 
-  await persistKaizenArtifacts(context.artifactsDir, input, redactedPayload);
+  await persistKaizenArtifacts(context, input, redactedPayload);
   await writeResult(`${JSON.stringify(redactedPayload, null, 2)}\n`);
   return redactedPayload;
 }
 
 async function persistKaizenArtifacts(
-  artifactsDir: string,
+  context: {
+    workspace: string;
+    artifactsDir: string;
+    artifactsDirDev: number | bigint;
+    artifactsDirIno: number | bigint;
+  },
   input: VerdictInput,
   payload: KaizenVerifierResult
 ): Promise<void> {
@@ -215,7 +223,7 @@ async function persistKaizenArtifacts(
   ] as const;
 
   for (const [filename, content] of artifacts) {
-    await writeKaizenArtifact(artifactsDir, filename, content);
+    await writeKaizenArtifact(context, filename, content);
   }
 }
 
@@ -252,25 +260,24 @@ function renderKaizenReport(payload: KaizenVerifierResult): string {
 }
 
 async function writeKaizenArtifact(
-  artifactsDir: string,
+  context: {
+    workspace: string;
+    artifactsDir: string;
+    artifactsDirDev: number | bigint;
+    artifactsDirIno: number | bigint;
+  },
   filename: string,
   content: string
 ): Promise<void> {
-  const artifactPath = join(artifactsDir, filename);
-  try {
-    const pathStat = await lstat(artifactPath);
-    if (pathStat.isSymbolicLink()) {
-      throw new Error(`Kaizen artifact ${filename} resolves through a symbolic link.`);
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
+  await assertKaizenArtifactDirectory(context);
+  const artifactPath = join(context.artifactsDir, filename);
   let handle: FileHandle;
   try {
     handle = await open(
       artifactPath,
       constants.O_WRONLY |
         constants.O_CREAT |
+        constants.O_EXCL |
         constants.O_NOFOLLOW |
         constants.O_NONBLOCK,
       0o600
@@ -283,6 +290,7 @@ async function writeKaizenArtifact(
   }
 
   try {
+    await assertKaizenArtifactDirectory(context);
     const [stat, pathStat] = await Promise.all([handle.stat(), lstat(artifactPath)]);
     if (
       pathStat.isSymbolicLink() ||
@@ -293,10 +301,36 @@ async function writeKaizenArtifact(
     ) {
       throw new Error(`Kaizen artifact ${filename} must be a regular, single-link file.`);
     }
-    await handle.truncate(0);
     await handle.writeFile(redactSensitiveText(content), "utf8");
   } finally {
     await handle.close();
+  }
+}
+
+async function assertKaizenArtifactDirectory(context: {
+  workspace: string;
+  artifactsDir: string;
+  artifactsDirDev: number | bigint;
+  artifactsDirIno: number | bigint;
+}): Promise<void> {
+  let pathStat: Awaited<ReturnType<typeof lstat>>;
+  let canonicalPath: string;
+  try {
+    [pathStat, canonicalPath] = await Promise.all([
+      lstat(context.artifactsDir),
+      realpath(context.artifactsDir)
+    ]);
+  } catch {
+    throw new Error("Kaizen artifact directory changed before it could be written safely.");
+  }
+  if (
+    pathStat.isSymbolicLink() ||
+    !pathStat.isDirectory() ||
+    pathStat.dev !== context.artifactsDirDev ||
+    pathStat.ino !== context.artifactsDirIno ||
+    isPathOutside(context.workspace, canonicalPath)
+  ) {
+    throw new Error("Kaizen artifact directory changed before it could be written safely.");
   }
 }
 
@@ -360,12 +394,6 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
     workspace,
     relative(configuredWorkspace, configuredResultPath)
   );
-  if (KAIZEN_ARTIFACT_FILENAMES.has(basename(resultPath))) {
-    throw new Error(
-      "KAIZEN_VERIFIER_RESULT_PATH must not use a reserved Kaizen artifact filename."
-    );
-  }
-
   let ancestor = resultPath;
   while (!(await pathEntryExists(ancestor))) {
     const parent = resolve(ancestor, "..");
@@ -435,6 +463,40 @@ async function prepareKaizenResult(configuredPath: string): Promise<{
     };
   } catch (error) {
     await resultHandle.close();
+    throw error;
+  }
+}
+
+async function prepareKaizenArtifacts(workspace: string, resultPath: string): Promise<{
+  path: string;
+  dev: number | bigint;
+  ino: number | bigint;
+}> {
+  const resultDir = dirname(resultPath);
+  const verifiedResultDir = await realpath(resultDir);
+  if (isPathOutside(workspace, verifiedResultDir)) {
+    throw new Error("Kaizen artifact directory resolves outside KAIZEN_WORKSPACE_DIR.");
+  }
+
+  const artifactsDir = await mkdtemp(join(resultDir, ".verifier-artifacts-"));
+  try {
+    const [canonicalArtifactsDir, artifactsStat] = await Promise.all([
+      realpath(artifactsDir),
+      lstat(artifactsDir)
+    ]);
+    if (
+      isPathOutside(workspace, canonicalArtifactsDir) ||
+      dirname(canonicalArtifactsDir) !== verifiedResultDir
+    ) {
+      throw new Error("Kaizen artifact directory changed before it could be written safely.");
+    }
+    return {
+      path: canonicalArtifactsDir,
+      dev: artifactsStat.dev,
+      ino: artifactsStat.ino
+    };
+  } catch (error) {
+    await rm(artifactsDir, { recursive: true, force: true }).catch(() => undefined);
     throw error;
   }
 }

@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
-import { link, lstat, mkdir, mkdtemp, open, readFile, realpath, rename, symlink, writeFile } from "node:fs/promises";
+import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -207,10 +207,12 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(output.risk).toBe("low");
     expect(output.run).toMatchObject({
       workspace: await realpath(dir),
-      artifacts_dir: join(await realpath(dir), ".kaizen", "verifier"),
       changed_files: ["src/登録.ts", "test/signup.test.ts"],
       verify_commands: []
     });
+    expect(dirname(output.run.artifacts_dir)).toBe(
+      join(await realpath(dir), ".kaizen", "verifier")
+    );
     expect(result).toEqual(output);
     expect(result.status).toBe("open_pr");
     expect(result.summary).toContain("Open PR");
@@ -286,13 +288,13 @@ Return a verifier decision.
     expect(artifactContents.slice(0, 4).every((content) => content.includes("[REDACTED]"))).toBe(true);
   });
 
-  it("replaces an existing regular artifact without leaving stale bytes", async () => {
+  it("does not replace project files that share artifact names", async () => {
     const dir = await mkdtemp(join(tmpdir(), "verifier-kaizen-artifact-replace-"));
     const artifactsDir = join(dir, ".kaizen", "verifier");
     await mkdir(artifactsDir, { recursive: true });
     await writeFile(join(artifactsDir, "intent.txt"), `stale-content-${"x".repeat(4096)}`, "utf8");
 
-    await spawnWithInput(
+    const { stdout } = await spawnWithInput(
       process.execPath,
       ["--import", "tsx", "src/cli.ts"],
       kaizenLoopPrompt(),
@@ -305,16 +307,20 @@ Return a verifier decision.
       }
     );
 
-    const intent = await readFile(join(artifactsDir, "intent.txt"), "utf8");
-    expect(intent).not.toContain("stale-content");
-    expect(intent.length).toBeLessThan(4096);
+    const output = JSON.parse(stdout) as { run: { artifacts_dir: string } };
+    await expect(readFile(join(artifactsDir, "intent.txt"), "utf8")).resolves.toContain(
+      "stale-content"
+    );
+    await expect(readFile(join(output.run.artifacts_dir, "intent.txt"), "utf8")).resolves.not.toContain(
+      "stale-content"
+    );
   });
 
-  it.each(["intent.txt", "report.md", "verdict.json"])(
-    "rejects result path collision with reserved artifact %s",
+  it.each(["intent.txt", "report.md", "REPORT.MD", "verdict.json"])(
+    "isolates artifacts from result path basename %s",
     async (filename) => {
       const dir = await mkdtemp(join(tmpdir(), "verifier-kaizen-result-collision-"));
-      const { stderr, code } = await spawnWithInput(
+      const { stdout } = await spawnWithInput(
         process.execPath,
         ["--import", "tsx", "src/cli.ts"],
         kaizenLoopPrompt(),
@@ -323,15 +329,17 @@ Return a verifier decision.
             ...process.env,
             KAIZEN_VERIFIER_RESULT_PATH: `.kaizen/verifier/${filename}`,
             KAIZEN_WORKSPACE_DIR: dir
-          },
-          allowFailure: true
+          }
         }
       );
 
-      expect(code).toBe(2);
-      expect(stderr).toContain(
-        "KAIZEN_VERIFIER_RESULT_PATH must not use a reserved Kaizen artifact filename"
-      );
+      const output = JSON.parse(stdout) as { run: { artifacts_dir: string } };
+      await expect(
+        readFile(join(dir, ".kaizen", "verifier", filename), "utf8")
+      ).resolves.toBe(stdout);
+      await expect(
+        readFile(join(output.run.artifacts_dir, "report.md"), "utf8")
+      ).resolves.toContain("# Verifier Verdict:");
     }
   );
 
@@ -345,7 +353,7 @@ Return a verifier decision.
       await writeFile(outsidePath, "unchanged", "utf8");
       await symlink(outsidePath, join(artifactsDir, "intent.txt"));
 
-      const { stderr, code } = await spawnWithInput(
+      const { stdout } = await spawnWithInput(
         process.execPath,
         ["--import", "tsx", "src/cli.ts"],
         kaizenLoopPrompt(),
@@ -354,14 +362,13 @@ Return a verifier decision.
             ...process.env,
             KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
             KAIZEN_WORKSPACE_DIR: dir
-          },
-          allowFailure: true
+          }
         }
       );
 
-      expect(code).toBe(2);
-      expect(stderr).toContain("Kaizen artifact intent.txt resolves through a symbolic link");
+      const output = JSON.parse(stdout) as { run: { artifacts_dir: string } };
       await expect(readFile(outsidePath, "utf8")).resolves.toBe("unchanged");
+      await expect(readFile(join(output.run.artifacts_dir, "intent.txt"), "utf8")).resolves.toBeTruthy();
     }
   );
 
@@ -373,7 +380,7 @@ Return a verifier decision.
     await writeFile(outsidePath, "preserve me\n", "utf8");
     await link(outsidePath, join(artifactsDir, "intent.txt"));
 
-    const { stderr, code } = await spawnWithInput(
+    const { stdout } = await spawnWithInput(
       process.execPath,
       ["--import", "tsx", "src/cli.ts"],
       kaizenLoopPrompt(),
@@ -382,14 +389,13 @@ Return a verifier decision.
           ...process.env,
           KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
           KAIZEN_WORKSPACE_DIR: dir
-        },
-        allowFailure: true
+        }
       }
     );
 
-    expect(code).toBe(2);
-    expect(stderr).toContain("Kaizen artifact intent.txt must be a regular, single-link file");
+    const output = JSON.parse(stdout) as { run: { artifacts_dir: string } };
     await expect(readFile(outsidePath, "utf8")).resolves.toBe("preserve me\n");
+    await expect(readFile(join(output.run.artifacts_dir, "intent.txt"), "utf8")).resolves.toBeTruthy();
   });
 
   it.runIf(process.platform !== "win32")(
@@ -420,9 +426,9 @@ Return a verifier decision.
       const canonicalWorkspace = await realpath(workspace);
 
       expect(output.run.workspace).toBe(canonicalWorkspace);
-      expect(output.run.artifacts_dir).toBe(join(canonicalWorkspace, ".kaizen", "verifier"));
+      expect(dirname(output.run.artifacts_dir)).toBe(join(canonicalWorkspace, ".kaizen", "verifier"));
       await expect(
-        readFile(join(output.run.artifacts_dir, "verify-result.json"), "utf8")
+        readFile(join(canonicalWorkspace, ".kaizen", "verifier", "verify-result.json"), "utf8")
       ).resolves.toBe(stdout);
     }
   );
@@ -623,6 +629,50 @@ Return a verifier decision.
     expect(await readFile(outsidePath, "utf8")).toBe("preserve me\n");
     expect(await readFile(openedPath, "utf8")).toBe("");
   });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects an artifact directory replaced before evidence is written",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "verifier-artifact-directory-race-"));
+      const workspace = join(dir, "workspace");
+      const resultDir = join(workspace, ".kaizen", "verifier");
+      const movedResultDir = join(workspace, ".kaizen", "verifier-original");
+      const outsideDir = join(dir, "outside");
+      const resultPath = join(resultDir, "verify-result.json");
+      await mkdir(workspace);
+      await mkdir(outsideDir);
+
+      const child = spawn(process.execPath, ["--import", "tsx", "src/cli.ts"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
+          KAIZEN_WORKSPACE_DIR: workspace
+        },
+        stdio: ["pipe", "pipe", "pipe"]
+      });
+      let stderr = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => {
+        stderr += chunk;
+      });
+
+      await waitForPath(resultPath);
+      while (!(await readdir(resultDir)).some((name) => name.startsWith(".verifier-artifacts-"))) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      await rename(resultDir, movedResultDir);
+      await symlink(outsideDir, resultDir);
+      child.stdin.end(kaizenLoopPrompt());
+      const code = await new Promise<number | null>((resolve) => child.once("close", resolve));
+
+      expect(code).toBe(2);
+      expect(stderr).toContain("Kaizen artifact directory changed before it could be written safely");
+      await expect(readFile(join(outsideDir, "intent.txt"), "utf8")).rejects.toMatchObject({
+        code: "ENOENT"
+      });
+    }
+  );
 
   it("needs context for kaizen-loop prompts with only a changed-file inventory", async () => {
     const dir = await mkdtemp(join(tmpdir(), "verifier-"));
