@@ -286,6 +286,30 @@ Return a verifier decision.
     expect(artifactContents.slice(0, 4).every((content) => content.includes("[REDACTED]"))).toBe(true);
   });
 
+  it("replaces an existing regular artifact without leaving stale bytes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-kaizen-artifact-replace-"));
+    const artifactsDir = join(dir, ".kaizen", "verifier");
+    await mkdir(artifactsDir, { recursive: true });
+    await writeFile(join(artifactsDir, "intent.txt"), `stale-content-${"x".repeat(4096)}`, "utf8");
+
+    await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      kaizenLoopPrompt(),
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
+          KAIZEN_WORKSPACE_DIR: dir
+        }
+      }
+    );
+
+    const intent = await readFile(join(artifactsDir, "intent.txt"), "utf8");
+    expect(intent).not.toContain("stale-content");
+    expect(intent.length).toBeLessThan(4096);
+  });
+
   it.runIf(process.platform !== "win32")(
     "does not follow symbolic links when writing kaizen-loop evidence",
     async () => {
