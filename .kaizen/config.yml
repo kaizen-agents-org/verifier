@@ -51,8 +51,11 @@ commands:
   setup: "pnpm install --frozen-lockfile"
   verify:
     - "pnpm typecheck"
+    - "pnpm test:package-entry"
     - "pnpm test"
     - "pnpm schema:check"
+    - "pnpm eval"
+    - "SEMANTIC_EVAL_WRITE_METRICS=false pnpm eval:semantic:ci"
     - "test -f skills/gh-link-issue-pr/SKILL.md && test -f skills/kaizen-bug-router/SKILL.md && test -f skills/pr-guardian/SKILL.md"
   verifyTimeoutMinutes: 15
 
