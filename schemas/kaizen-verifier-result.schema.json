@@ -1,0 +1,211 @@
+{
+  "$id": "https://github.com/kaizen-agents-org/verifier/schemas/kaizen-verifier-result.schema.json",
+  "$ref": "#/definitions/KaizenVerifierResult",
+  "definitions": {
+    "KaizenVerifierResult": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "open_pr",
+            "open_pr_with_warning",
+            "block_pr",
+            "needs_context"
+          ]
+        },
+        "final_verdict": {
+          "type": "string",
+          "enum": [
+            "mergeable",
+            "conditional",
+            "not_mergeable",
+            "inconclusive"
+          ]
+        },
+        "status": {
+          "$ref": "#/definitions/KaizenVerifierResult/properties/verdict"
+        },
+        "evidence_grade": {
+          "type": "string",
+          "enum": [
+            "reported",
+            "executed"
+          ]
+        },
+        "confidence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "risk": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "must_fix": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "enum": [
+                  "task",
+                  "diff",
+                  "verify_logs",
+                  "builder_report",
+                  "system"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "source",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "should_fix": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/KaizenVerifierResult/properties/must_fix/items"
+          }
+        },
+        "run": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "started_at": {
+              "type": "string"
+            },
+            "completed_at": {
+              "type": "string"
+            },
+            "duration_ms": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "workspace": {
+              "type": "string"
+            },
+            "base_ref": {
+              "type": "string"
+            },
+            "head_ref": {
+              "type": "string"
+            },
+            "artifacts_dir": {
+              "type": "string"
+            },
+            "changed_files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "verify_commands": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string"
+                  },
+                  "exit_code": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "signal": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "duration_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "timed_out": {
+                    "type": "boolean"
+                  },
+                  "timeout_ms": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "command",
+                  "exit_code",
+                  "signal",
+                  "duration_ms"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "id",
+            "started_at",
+            "completed_at",
+            "duration_ms",
+            "workspace",
+            "base_ref",
+            "head_ref",
+            "artifacts_dir",
+            "changed_files",
+            "verify_commands"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "verdict",
+        "final_verdict",
+        "status",
+        "evidence_grade",
+        "confidence",
+        "risk",
+        "summary",
+        "notes",
+        "reason",
+        "must_fix",
+        "should_fix",
+        "run"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -2,19 +2,24 @@ import { writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { VerdictSchema } from "../packages/core/src/types.js";
+import type { ZodTypeAny } from "zod";
+import { KaizenVerifierResultSchema, VerdictSchema } from "../packages/core/src/types.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const outPath = resolve(repoRoot, "schemas/verdict.schema.json");
 
-const schema = zodToJsonSchema(VerdictSchema, {
-  name: "Verdict",
-  target: "jsonSchema7"
-});
+async function writeGeneratedSchema(schema: ZodTypeAny, name: string, filename: string) {
+  const generated = zodToJsonSchema(schema, {
+    name,
+    target: "jsonSchema7"
+  });
+  const withMetadata = {
+    $id: `https://github.com/kaizen-agents-org/verifier/schemas/${filename}`,
+    ...generated
+  };
+  await writeFile(resolve(repoRoot, "schemas", filename), `${JSON.stringify(withMetadata, null, 2)}\n`);
+}
 
-const withMetadata = {
-  $id: "https://github.com/kaizen-agents-org/verifier/schemas/verdict.schema.json",
-  ...schema
-};
-
-await writeFile(outPath, `${JSON.stringify(withMetadata, null, 2)}\n`);
+await Promise.all([
+  writeGeneratedSchema(VerdictSchema, "Verdict", "verdict.schema.json"),
+  writeGeneratedSchema(KaizenVerifierResultSchema, "KaizenVerifierResult", "kaizen-verifier-result.schema.json")
+]);

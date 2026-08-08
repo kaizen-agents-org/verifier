@@ -66,6 +66,9 @@ importers:
         specifier: ^3.24.0
         version: 3.25.2(zod@3.25.76)
     devDependencies:
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       tsx:
         specifier: ^4.20.0
         version: 4.22.4
