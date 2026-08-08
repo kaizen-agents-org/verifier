@@ -234,7 +234,7 @@ function preserveHistoricalEntries<T extends { id: string }>(
   for (const item of previous) {
     const next = currentById.get(item.id);
     if (!next) errors.push(`${label} ${item.id} was deleted`);
-    else if (JSON.stringify(next) !== JSON.stringify(item)) {
+    else if (!isDeepStrictEqual(next, item)) {
       errors.push(`${label} ${item.id} is immutable; add a new declaration instead of editing it`);
     }
   }
@@ -285,20 +285,38 @@ async function run(): Promise<void> {
   if (errors.length > 0) process.exitCode = 1;
 }
 
-async function resolveBase(repoRoot: string): Promise<string> {
-  const configured = process.env.BASE_SHA?.trim();
-  if (process.env.GITHUB_ACTIONS === "true" && (!configured || /^0+$/.test(configured))) {
+export async function resolveBase(repoRoot: string, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const configured = env.BASE_SHA?.trim();
+  if (env.GITHUB_ACTIONS === "true" && (!configured || /^0+$/.test(configured))) {
     throw new Error("BASE_SHA must identify the trusted pull-request base in GitHub Actions");
   }
   const base = configured && !/^0+$/.test(configured)
     ? configured
-    : await git(repoRoot, ["merge-base", "HEAD", "origin/main"]);
+    : await resolveLocalBase(repoRoot);
   await git(repoRoot, ["cat-file", "-e", `${base}^{commit}`]);
-  if (process.env.GITHUB_ACTIONS === "true") {
+  if (env.GITHUB_ACTIONS === "true") {
     const mergeBase = await git(repoRoot, ["merge-base", "HEAD", base]);
     if (mergeBase !== base) throw new Error(`BASE_SHA ${base} is not an ancestor of HEAD`);
   }
   return base;
+}
+
+async function resolveLocalBase(repoRoot: string): Promise<string> {
+  const head = await git(repoRoot, ["rev-parse", "HEAD"]);
+  for (const candidate of ["origin/HEAD", "origin/main", "origin/master", "main", "master"]) {
+    try {
+      await git(repoRoot, ["rev-parse", "--verify", `${candidate}^{commit}`]);
+      const base = await git(repoRoot, ["merge-base", "HEAD", candidate]);
+      if (base !== head) return base;
+    } catch {
+      // Try the next conventional base reference.
+    }
+  }
+  try {
+    return await git(repoRoot, ["rev-parse", "HEAD^"]);
+  } catch {
+    throw new Error("Failed to resolve a prior commit for detector relaxation policy; set BASE_SHA explicitly");
+  }
 }
 
 async function loadBasePolicy(repoRoot: string, base: string): Promise<DetectorRelaxationPolicy | undefined> {

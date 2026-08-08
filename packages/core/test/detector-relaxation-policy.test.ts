@@ -1,7 +1,12 @@
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   checkDetectorPolicy,
   detectorSourceChanged,
+  resolveBase,
   type DetectorCorpusCase,
   type DetectorRelaxationPolicy
 } from "../../../scripts/detector-relaxation-policy.js";
@@ -80,6 +85,20 @@ describe("detector relaxation policy", () => {
     expect(detectorSourceChanged(previous, reformatted)).toBe(false);
   });
 
+  it("falls back to the previous commit when no conventional base ref exists", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "verifier-relaxation-base-"));
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+    try {
+      git("init", "-b", "topic");
+      git("-c", "user.name=Verifier Test", "-c", "user.email=verifier@example.invalid", "commit", "--allow-empty", "-m", "base");
+      const base = git("rev-parse", "HEAD");
+      git("-c", "user.name=Verifier Test", "-c", "user.email=verifier@example.invalid", "commit", "--allow-empty", "-m", "head");
+      await expect(resolveBase(repo, {})).resolves.toBe(base);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
   it("allows an audited structural exemption without requiring a new fixture", () => {
     expect(checkDetectorPolicy({
       changedDetectorIds: [detector.id],
@@ -118,6 +137,24 @@ describe("detector relaxation policy", () => {
       previousPolicy: { ...previousPolicy, pairs: [pair] },
       cases: [falsePositive, mustBlock]
     })).toContain("pair failure-prose-boundary was deleted");
+  });
+
+  it("compares historical declarations independently of property order", () => {
+    const reorderedPair = {
+      rationale: pair.rationale,
+      sharedTrigger: pair.sharedTrigger,
+      mustBlockCaseId: pair.mustBlockCaseId,
+      falsePositiveCaseId: pair.falsePositiveCaseId,
+      detectorId: pair.detectorId,
+      id: pair.id
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: { ...previousPolicy, pairs: [reorderedPair] },
+      previousPolicy: { ...previousPolicy, pairs: [pair] },
+      cases: [falsePositive, mustBlock],
+      previousCases: [falsePositive, mustBlock]
+    })).toEqual([]);
   });
 
   it("keeps historical paired corpus inputs and expectations immutable", () => {
