@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { promisify } from "node:util";
+import { isDeepStrictEqual, promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { z } from "zod";
@@ -166,12 +166,21 @@ function validatePair(
     );
   }
   const trigger = pair.sharedTrigger.toLowerCase();
-  if (falsePositive && !JSON.stringify(falsePositive.input).toLowerCase().includes(trigger)) {
+  if (falsePositive && !inputValuesContain(falsePositive.input, trigger)) {
     errors.push(`pair ${pair.id} false-positive case does not contain shared trigger ${pair.sharedTrigger}`);
   }
-  if (mustBlock && !JSON.stringify(mustBlock.input).toLowerCase().includes(trigger)) {
+  if (mustBlock && !inputValuesContain(mustBlock.input, trigger)) {
     errors.push(`pair ${pair.id} must-block case does not contain shared trigger ${pair.sharedTrigger}`);
   }
+}
+
+function inputValuesContain(value: unknown, trigger: string): boolean {
+  if (typeof value === "string") return value.toLowerCase().includes(trigger);
+  if (Array.isArray(value)) return value.some((item) => inputValuesContain(item, trigger));
+  if (value && typeof value === "object") {
+    return Object.values(value).some((item) => inputValuesContain(item, trigger));
+  }
+  return false;
 }
 
 function isFalsePositiveControl(testCase: DetectorCorpusCase): boolean {
@@ -247,8 +256,8 @@ function preserveHistoricalPairControls(
         errors.push(`historical pair ${pair.id} corpus case ${caseId} was deleted`);
       } else if (
         current.kind !== previous.kind ||
-        JSON.stringify(current.input) !== JSON.stringify(previous.input) ||
-        JSON.stringify(current.expected) !== JSON.stringify(previous.expected)
+        !isDeepStrictEqual(current.input, previous.input) ||
+        !isDeepStrictEqual(current.expected, previous.expected)
       ) {
         errors.push(`historical pair ${pair.id} corpus case ${caseId} input and expectations are immutable`);
       }

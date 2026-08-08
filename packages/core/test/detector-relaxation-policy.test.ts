@@ -55,6 +55,19 @@ describe("detector relaxation policy", () => {
     })).toEqual([]);
   });
 
+  it("does not treat input property names as shared triggers", () => {
+    const keyOnlyPair = { ...pair, sharedTrigger: "verifyLogs" };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [detector.id],
+      currentPolicy: { ...previousPolicy, pairs: [keyOnlyPair] },
+      previousPolicy,
+      cases: [falsePositive, mustBlock]
+    })).toEqual(expect.arrayContaining([
+      "pair failure-prose-boundary false-positive case does not contain shared trigger verifyLogs",
+      "pair failure-prose-boundary must-block case does not contain shared trigger verifyLogs"
+    ]));
+  });
+
   it("detects additions-only control-flow relaxations", () => {
     const previous = "export function blocks(value: string) { return /failed/.test(value); }";
     const relaxed = "export function blocks(value: string) { if (value.includes('allowed')) return false; return /failed/.test(value); }";
@@ -136,6 +149,22 @@ describe("detector relaxation policy", () => {
     })).toContain(
       "historical pair failure-prose-boundary corpus case sb-real-failure input and expectations are immutable"
     );
+
+    const reorderedFalsePositive = {
+      ...falsePositive,
+      input: { nested: { second: "two", first: "one" }, verifyLogs: falsePositive.input.verifyLogs }
+    };
+    const originalFalsePositive = {
+      ...falsePositive,
+      input: { verifyLogs: falsePositive.input.verifyLogs, nested: { first: "one", second: "two" } }
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: historicalPolicy,
+      previousPolicy: historicalPolicy,
+      cases: [reorderedFalsePositive, mustBlock],
+      previousCases: [originalFalsePositive, mustBlock]
+    })).toEqual([]);
   });
 
   it("rejects duplicate corpus IDs that could mask a control", () => {
