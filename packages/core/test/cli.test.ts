@@ -5,6 +5,7 @@ import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename,
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import Ajv from "ajv";
 import { describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -197,6 +198,10 @@ Return "block_pr" when the builder must revise the change before a PR is created
       must_fix: unknown[];
       should_fix: unknown[];
     };
+    const integrationSchema = JSON.parse(
+      await readFile(join(process.cwd(), "../../schemas/kaizen-verifier-result.schema.json"), "utf8")
+    );
+    const validateIntegrationResult = new Ajv().compile(integrationSchema);
 
     expect(output.status).toBe("open_pr");
     expect(output.schemaVersion).toBe(1);
@@ -214,6 +219,7 @@ Return "block_pr" when the builder must revise the change before a PR is created
       join(await realpath(dir), ".kaizen", "verifier")
     );
     expect(result).toEqual(output);
+    expect(validateIntegrationResult(result), JSON.stringify(validateIntegrationResult.errors)).toBe(true);
     expect(result.status).toBe("open_pr");
     expect(result.summary).toContain("Open PR");
     expect(result.notes).toContain("evidence_grade=reported");
