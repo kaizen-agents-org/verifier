@@ -67,7 +67,24 @@ query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
       and ($threads.nodes | type == "array")
       and ($threads.pageInfo | type == "object")
       and ($threads.pageInfo.hasNextPage | type == "boolean")
-      and (($threads.pageInfo.endCursor == null) or ($threads.pageInfo.endCursor | type == "string")))
+      and (($threads.pageInfo.endCursor == null) or ($threads.pageInfo.endCursor | type == "string"))
+      and all($threads.nodes[];
+        (.id | type == "string")
+        and (.isResolved | type == "boolean")
+        and (.isOutdated | type == "boolean")
+        and (.path | type == "string")
+        and (.comments | type == "object")
+        and (.comments.nodes | type == "array")
+        and all(.comments.nodes[];
+          ((.fullDatabaseId | type) == "string" or (.fullDatabaseId | type) == "number")
+          and (.url | type == "string")
+          and ((.author == null) or ((.author | type == "object") and (.author.login | type == "string")))
+          and (.body | type == "string")
+          and (.createdAt | type == "string")
+          and (.outdated | type == "boolean"))
+        and (.comments.pageInfo | type == "object")
+        and (.comments.pageInfo.hasNextPage | type == "boolean")
+        and ((.comments.pageInfo.endCursor == null) or (.comments.pageInfo.endCursor | type == "string"))))
   ' >/dev/null <<<"${page}"; then
     echo 'reviewThreads returned an incomplete response' >&2
     exit 1
@@ -117,6 +134,13 @@ query($threadId:ID!, $cursor:String) {
     and (.data.node.comments as $comments
     | ($comments | type == "object")
       and ($comments.nodes | type == "array")
+      and all($comments.nodes[];
+        ((.fullDatabaseId | type) == "string" or (.fullDatabaseId | type) == "number")
+        and (.url | type == "string")
+        and ((.author == null) or ((.author | type == "object") and (.author.login | type == "string")))
+        and (.body | type == "string")
+        and (.createdAt | type == "string")
+        and (.outdated | type == "boolean"))
       and ($comments.pageInfo | type == "object")
       and ($comments.pageInfo.hasNextPage | type == "boolean")
       and (($comments.pageInfo.endCursor == null) or ($comments.pageInfo.endCursor | type == "string")))
