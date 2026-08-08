@@ -143,6 +143,32 @@ gateが継続確認する。さらに actual verdict が記録済みの元の期
 defectを検出している必要があり、期待値や ground truth の弱体化は返済にならない。
 したがって active debt count は減る一方、返済の証跡は失われない。
 
+### 2.1.2 detector relaxation pairing
+
+`eval/detector-relaxations.json` の `detectors` は、偽陽性修正によって安全境界を
+緩和し得る決定的detector surfaceを列挙する。現在はcompact corpusが直接実行する
+`packages/core/src/minimal-verdict.ts` を対象とする。追加のdetector surfaceは、両側を
+実行できるcorpusと一緒にmanifestへ追加する。
+
+`pnpm eval:relaxations` はPR baseと現在のファイルを正規化済みTypeScript出力で比較する。
+コメントとformatだけの変更は無視するが、追加だけのearly return、条件順序の変更、
+pattern置換、検出ロジックの移動を含むsemantic changeは保守的にすべて発火する。
+
+通常のdetector変更には同じPRで新しいimmutable pair recordを追加する。recordは対象
+detector、偽陽性を再現するgolden case、安全境界を残すseeded must-block case、両caseに
+共通するtrigger、判断理由を指定する。golden caseはnon-blocking verdict、
+`mustFixMax: 0`、`maxFalsePositives: 0`を要求し、must-block caseは`block_pr`、
+`mustFixMin >= 1`を要求する。must-block caseを`knownGap`にしたり期待値を弱めたりすると
+gateは失敗する。既存caseが境界を忠実に再現しない場合はcompact corpus caseも追加する。
+
+純粋な構造refactorだけは、新fixtureの代わりに理由付き`structuralExemptions` recordを
+追加できる。これは自動的な安全証明ではなくreviewerが確認する監査宣言である。pair、
+exemption、detector manifestの既存recordは削除・書き換えず、新しい変更ごとに追加する。
+
+この仕組みは協調的なcontributorによる見落としをCIで防ぐ品質ゲートであり、PR branchが
+workflowやgate自体を書き換える悪意ある変更から独立したsecurity boundaryではない。
+その種の脅威にはbranch protectionと必須reviewを併用する。
+
 ### 2.2 1ケースの実行手順（packages/core/src/eval/fixture-run.ts）
 
 seededケースは `repo/` がgitリポジトリではないため、ハーネスが毎回構成する:
