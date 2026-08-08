@@ -60,6 +60,7 @@ export interface DetectorPolicyCheckInput {
   currentPolicy: DetectorRelaxationPolicy;
   previousPolicy?: DetectorRelaxationPolicy;
   cases: DetectorCorpusCase[];
+  previousCases?: DetectorCorpusCase[];
 }
 
 export function checkDetectorPolicy(input: DetectorPolicyCheckInput): string[] {
@@ -83,6 +84,12 @@ export function checkDetectorPolicy(input: DetectorPolicyCheckInput): string[] {
 
   uniqueValues(input.cases.map(({ id }) => id), "corpus case id", errors);
   const cases = new Map(input.cases.map((testCase) => [testCase.id, testCase]));
+  preserveHistoricalPairControls(
+    input.previousPolicy?.pairs ?? [],
+    new Map((input.previousCases ?? []).map((testCase) => [testCase.id, testCase])),
+    cases,
+    errors
+  );
   for (const pair of input.currentPolicy.pairs) validatePair(pair, detectorIds, cases, errors);
   for (const exemption of input.currentPolicy.structuralExemptions) {
     if (!detectorIds.has(exemption.detectorId)) {
@@ -224,6 +231,31 @@ function preserveHistoricalEntries<T extends { id: string }>(
   }
 }
 
+function preserveHistoricalPairControls(
+  pairs: DetectorRelaxationPolicy["pairs"],
+  previousCases: Map<string, DetectorCorpusCase>,
+  currentCases: Map<string, DetectorCorpusCase>,
+  errors: string[]
+): void {
+  for (const pair of pairs) {
+    for (const caseId of [pair.falsePositiveCaseId, pair.mustBlockCaseId]) {
+      const previous = previousCases.get(caseId);
+      const current = currentCases.get(caseId);
+      if (!previous) {
+        errors.push(`historical pair ${pair.id} is missing base corpus case ${caseId}`);
+      } else if (!current) {
+        errors.push(`historical pair ${pair.id} corpus case ${caseId} was deleted`);
+      } else if (
+        current.kind !== previous.kind ||
+        JSON.stringify(current.input) !== JSON.stringify(previous.input) ||
+        JSON.stringify(current.expected) !== JSON.stringify(previous.expected)
+      ) {
+        errors.push(`historical pair ${pair.id} corpus case ${caseId} input and expectations are immutable`);
+      }
+    }
+  }
+}
+
 async function run(): Promise<void> {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const currentPolicy = PolicySchema.parse(
@@ -231,6 +263,7 @@ async function run(): Promise<void> {
   );
   const base = await resolveBase(repoRoot);
   const previousPolicy = await loadBasePolicy(repoRoot, base);
+  const previousCases = await loadBaseCorpusCases(repoRoot, base);
   const changedDetectorIds: string[] = [];
   for (const detector of currentPolicy.detectors) {
     const current = await readFile(resolve(repoRoot, detector.path), "utf8");
@@ -238,7 +271,7 @@ async function run(): Promise<void> {
     if (detectorSourceChanged(previous, current, detector.path)) changedDetectorIds.push(detector.id);
   }
   const cases = await loadCorpusCases(resolve(repoRoot, "packages/core/eval/corpus"));
-  const errors = checkDetectorPolicy({ changedDetectorIds, currentPolicy, previousPolicy, cases });
+  const errors = checkDetectorPolicy({ changedDetectorIds, currentPolicy, previousPolicy, cases, previousCases });
   process.stdout.write(`${JSON.stringify({ base, changedDetectorIds, errors }, null, 2)}\n`);
   if (errors.length > 0) process.exitCode = 1;
 }
@@ -267,6 +300,16 @@ async function loadBasePolicy(repoRoot: string, base: string): Promise<DetectorR
 async function loadCorpusCases(dir: string): Promise<DetectorCorpusCase[]> {
   const paths = await findJsonFiles(dir);
   return Promise.all(paths.map(async (path) => CorpusCaseSchema.parse(JSON.parse(await readFile(path, "utf8")))));
+}
+
+async function loadBaseCorpusCases(repoRoot: string, base: string): Promise<DetectorCorpusCase[]> {
+  const listing = await git(repoRoot, [
+    "ls-tree", "-r", "--name-only", base, "--", "packages/core/eval/corpus"
+  ]);
+  const paths = listing.split("\n").filter((path) => path.endsWith(".json"));
+  return Promise.all(paths.map(async (path) => (
+    CorpusCaseSchema.parse(JSON.parse(await gitShow(repoRoot, base, path)))
+  )));
 }
 
 async function findJsonFiles(dir: string): Promise<string[]> {
