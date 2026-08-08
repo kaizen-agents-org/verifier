@@ -107,6 +107,37 @@ describe("detector relaxation policy", () => {
     })).toContain("pair failure-prose-boundary was deleted");
   });
 
+  it("keeps historical paired corpus inputs and expectations immutable", () => {
+    const historicalPolicy = { ...previousPolicy, pairs: [pair] };
+    const rewrittenFalsePositive = {
+      ...falsePositive,
+      input: { verifyLogs: "An easier failure-path control passed." }
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: historicalPolicy,
+      previousPolicy: historicalPolicy,
+      cases: [rewrittenFalsePositive, mustBlock],
+      previousCases: [falsePositive, mustBlock]
+    })).toContain(
+      "historical pair failure-prose-boundary corpus case gp-clean-failure-prose input and expectations are immutable"
+    );
+
+    const weakenedExpectation = {
+      ...mustBlock,
+      expected: { ...mustBlock.expected, mustFixMin: 2 }
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: historicalPolicy,
+      previousPolicy: historicalPolicy,
+      cases: [falsePositive, weakenedExpectation],
+      previousCases: [falsePositive, mustBlock]
+    })).toContain(
+      "historical pair failure-prose-boundary corpus case sb-real-failure input and expectations are immutable"
+    );
+  });
+
   it("rejects duplicate corpus IDs that could mask a control", () => {
     expect(checkDetectorPolicy({
       changedDetectorIds: [],
