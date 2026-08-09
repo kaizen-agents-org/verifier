@@ -938,8 +938,9 @@ function hasTargetedCoverage(
 }
 
 function extractSecretTargets(content: string): string[] {
+  const executableContent = scanDelimiterCode(content).content;
   return SECRET_TARGET_PATTERNS
-    .filter(({ pattern }) => pattern.test(content))
+    .filter(({ pattern }) => pattern.test(executableContent))
     .map(({ name }) => name);
 }
 

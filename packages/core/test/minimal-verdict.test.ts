@@ -1227,6 +1227,21 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
   });
 
+  it("ignores secret target words inside removed literals", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify password logging",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        "-redact(password, \"[SECRET]\")\n" +
+        "+logger.info(password)",
+      verifyLogs: "password logging tests passed",
+      builderReport: "Verified password logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
   it("accepts verification for the removed password guard", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify password logging",
