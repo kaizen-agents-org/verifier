@@ -344,7 +344,7 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string; 
       label: signal.label,
       evidence: matches.slice(0, 3).map(formatDiffEvidence).join("\n"),
       coverageTargets: signal.label === "secrets/credentials"
-        ? extractSecretTargets(matches.map((match) => match.content).join("\n"))
+        ? extractSecretTargets(matches)
         : []
     }];
   });
@@ -356,8 +356,9 @@ function findMultilineRemovedMatches(lines: DiffRiskLine[], pattern: RegExp): Di
   const flush = () => {
     const first = group[0];
     if (first && group.length > 1) {
-      const content = group.map((line) => line.content.trim()).join(" ");
-      if (pattern.test(content)) matches.push({ ...first, content });
+      const content = group.map((line) => line.content.trim()).join("\n");
+      const matchContent = group.map((line) => line.content.trim()).join(" ");
+      if (pattern.test(matchContent)) matches.push({ ...first, content });
     }
     group = [];
   };
@@ -365,9 +366,16 @@ function findMultilineRemovedMatches(lines: DiffRiskLine[], pattern: RegExp): Di
   for (const line of lines) {
     const previous = group.at(-1);
     if (previous && removedExpressionIsComplete(group)) flush();
+    const activeGroup = group.at(-1);
+    const continuesIncompleteGroup = Boolean(
+      activeGroup &&
+      line.kind === "removed" &&
+      activeGroup.path === line.path &&
+      activeGroup.hunk === line.hunk
+    );
     if (
       line.kind !== "removed" ||
-      !isRuntimeRiskLine(line) ||
+      (!isRuntimeRiskLine(line) && !continuesIncompleteGroup) ||
       (previous && (previous.path !== line.path || previous.hunk !== line.hunk))
     ) {
       flush();
@@ -381,16 +389,22 @@ function findMultilineRemovedMatches(lines: DiffRiskLine[], pattern: RegExp): Di
 
 function removedExpressionIsComplete(group: DiffRiskLine[]): boolean {
   const content = group.map((line) => line.content.trim()).join("\n");
-  const scanned = scanDelimiterCode(content);
+  const path = group[0]?.path ?? "";
+  const scanned = scanDelimiterCode(content, /\.(?:py|rb)$/i.test(path), /\.rb$/i.test(path));
   if (scanned.depth > 0) return false;
   return !/(?:[=,:.]|=>|\b(?:return|throw))\s*$/.test(scanned.content);
 }
 
-function scanDelimiterCode(content: string): { content: string; depth: number } {
+function scanDelimiterCode(
+  content: string,
+  hashComments = false,
+  rubySyntax = false
+): { content: string; depth: number } {
   const output = content.split("");
   let depth = 0;
   let quote = "";
   let blockComment = false;
+  const templateExpressionDepths: number[] = [];
   for (let index = 0; index < content.length; index += 1) {
     const character = content[index] ?? "";
     const next = content[index + 1] ?? "";
@@ -413,7 +427,40 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
       }
       continue;
     }
+    const templateDepth = templateExpressionDepths.at(-1);
+    if (templateDepth === 0) {
+      output[index] = " ";
+      if (character === "\\") {
+        index += 1;
+        if (index < content.length) output[index] = " ";
+      } else if (character === "`") {
+        templateExpressionDepths.pop();
+      } else if (character === "$" && next === "{") {
+        output[index + 1] = " ";
+        templateExpressionDepths[templateExpressionDepths.length - 1] = 1;
+        index += 1;
+      }
+      continue;
+    }
+    if (rubySyntax && character === "?" && isRubyCharacterLiteralStart(content, index)) {
+      output[index] = " ";
+      output[index + 1] = " ";
+      if (next === "\\" && index + 2 < content.length) {
+        output[index + 2] = " ";
+        index += 2;
+      } else {
+        index += 1;
+      }
+      continue;
+    }
     if (character === "/" && next === "/") {
+      while (index < content.length && content[index] !== "\n") {
+        output[index] = " ";
+        index += 1;
+      }
+      continue;
+    }
+    if (hashComments && character === "#") {
       while (index < content.length && content[index] !== "\n") {
         output[index] = " ";
         index += 1;
@@ -427,7 +474,14 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
       index += 1;
       continue;
     }
-    if (character === '"' || character === "'" || character === "`") {
+    if (character === '"' || character === "'") {
+      const computedPropertyEnd = findComputedPropertyLiteralEnd(content, output, index);
+      if (computedPropertyEnd >= 0) {
+        output[index] = " ";
+        output[computedPropertyEnd] = " ";
+        index = computedPropertyEnd;
+        continue;
+      }
       quote = character;
       output[index] = " ";
       continue;
@@ -438,10 +492,59 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
       index = end;
       continue;
     }
+    if (character === "`") {
+      templateExpressionDepths.push(0);
+      output[index] = " ";
+      continue;
+    }
+    if (templateDepth !== undefined) {
+      if (character === "{") {
+        templateExpressionDepths[templateExpressionDepths.length - 1] = templateDepth + 1;
+      } else if (character === "}") {
+        const nextDepth = templateDepth - 1;
+        templateExpressionDepths[templateExpressionDepths.length - 1] = nextDepth;
+        if (nextDepth === 0) {
+          output[index] = " ";
+          continue;
+        }
+      }
+    }
     if (character === "(" || character === "[" || character === "{") depth += 1;
     if (character === ")" || character === "]" || character === "}") depth -= 1;
   }
   return { content: output.join(""), depth };
+}
+
+function findComputedPropertyLiteralEnd(
+  content: string,
+  output: string[],
+  quoteIndex: number
+): number {
+  let bracketIndex = quoteIndex - 1;
+  while (bracketIndex >= 0 && /\s/.test(output[bracketIndex] ?? "")) bracketIndex -= 1;
+  if (output[bracketIndex] !== "[") return -1;
+
+  let receiverIndex = bracketIndex - 1;
+  while (receiverIndex >= 0 && /\s/.test(output[receiverIndex] ?? "")) receiverIndex -= 1;
+  if (!/[\w$\]).]/.test(output[receiverIndex] ?? "")) return -1;
+
+  const quote = content[quoteIndex] ?? "";
+  let closingQuote = quoteIndex + 1;
+  for (; closingQuote < content.length; closingQuote += 1) {
+    const character = content[closingQuote] ?? "";
+    if (character === "\\") {
+      closingQuote += 1;
+    } else if (character === quote) {
+      break;
+    }
+  }
+  if (closingQuote >= content.length) return -1;
+
+  let closingBracket = closingQuote + 1;
+  while (closingBracket < content.length && /\s/.test(content[closingBracket] ?? "")) {
+    closingBracket += 1;
+  }
+  return content[closingBracket] === "]" ? closingQuote : -1;
 }
 
 function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
@@ -694,8 +797,14 @@ function isRegexLiteralStart(content: string, index: number): boolean {
   return (
     prefix.length === 0 ||
     /[=>(:,!&|?;[\]{}]$/.test(prefix) ||
-    /(?:^|[^\w$])(?:return|throw|case|yield|await)\s*$/i.test(prefix)
+    /(?:=|!)~$/.test(prefix) ||
+    /(?:^|[^\w$])(?:return|throw|case|yield|await|if|unless|while|until|when|elsif)\s*$/i.test(prefix)
   );
+}
+
+function isRubyCharacterLiteralStart(content: string, index: number): boolean {
+  const next = content[index + 1] ?? "";
+  return Boolean(next && !/\s/.test(next) && isRegexLiteralStart(content, index));
 }
 
 function findRegexLiteralEnd(content: string, start: number): number {
@@ -937,10 +1046,362 @@ function hasTargetedCoverage(
   });
 }
 
-function extractSecretTargets(content: string): string[] {
+function extractSecretTargets(matches: DiffRiskLine[]): string[] {
+  const executableContent = matches
+    .flatMap(({ content, path }) => extractSecretTargetContent(content, path))
+    .join("\n");
   return SECRET_TARGET_PATTERNS
-    .filter(({ pattern }) => pattern.test(content))
+    .filter(({ pattern }) => pattern.test(executableContent))
     .map(({ name }) => name);
+}
+
+function extractSecretTargetContent(content: string, path: string, depth = 0): string[] {
+  const hashComments = /\.(?:py|rb)$/i.test(path);
+  const scanContent = /\.rb$/i.test(path) ? maskRubyPercentLiterals(content) : content;
+  const rubySyntax = /\.rb$/i.test(path);
+  const executableContent = [scanDelimiterCode(scanContent, hashComments, rubySyntax).content];
+  if (depth >= 16) return executableContent;
+  const expressions = [
+    ...extractInterpolatedStringExpressions(content, path),
+    ...extractRubyLiteralInterpolationExpressions(content, path)
+  ];
+  for (const expression of expressions) {
+    executableContent.push(...extractSecretTargetContent(expression, path, depth + 1));
+  }
+  return executableContent;
+}
+
+function extractRubyLiteralInterpolationExpressions(content: string, path: string): string[] {
+  if (!/\.rb$/i.test(path)) return [];
+  const expressions: string[] = [];
+  let lineComment = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (character === "?" && isRubyCharacterLiteralStart(content, index)) {
+      index += content[index + 1] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (character === "#" && content[index + 1] !== "{") {
+      lineComment = true;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      const bounds = findQuotedLiteralBounds(content, index, path, "");
+      if (bounds) index = bounds.end + bounds.closingLength - 1;
+      continue;
+    }
+    if (character === "/" && isRegexLiteralStart(content, index)) {
+      const end = findRubyRegexLiteralEnd(content, index);
+      expressions.push(...findInterpolationBodies(content.slice(index + 1, end), "#{"));
+      index = end;
+      continue;
+    }
+    const percentLiteral = findRubyPercentLiteralBounds(content, index);
+    if (!percentLiteral) continue;
+    if (rubyPercentLiteralInterpolates(percentLiteral.kind)) {
+      expressions.push(...findInterpolationBodies(content.slice(percentLiteral.bodyStart, percentLiteral.end), "#{"));
+    }
+    index = percentLiteral.end;
+  }
+  return expressions;
+}
+
+function findRubyPercentLiteralBounds(
+  content: string,
+  start: number
+): { bodyStart: number; end: number; kind: string } | null {
+  if (content[start] !== "%") return null;
+  if (!isRegexLiteralStart(content, start)) return null;
+  const candidateKind = content[start + 1] ?? "";
+  const kind = /^[qQwWiIrxs]$/.test(candidateKind) ? candidateKind : "";
+  const delimiterIndex = start + (kind ? 2 : 1);
+  const opening = content[delimiterIndex] ?? "";
+  if (!opening || /[A-Za-z0-9\s]/.test(opening)) return null;
+  const closing = ({ "(": ")", "[": "]", "{": "}", "<": ">" } as Record<string, string>)[opening] ?? opening;
+  let depth = 1;
+  for (let index = delimiterIndex + 1; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (character === "\\") {
+      index += 1;
+    } else if (rubyPercentLiteralInterpolates(kind) && content.startsWith("#{", index) && !isEscapedAt(content, index)) {
+      const interpolationEnd = findInterpolationEnd(content, index + 1, 1, true);
+      if (interpolationEnd === null) return null;
+      index = interpolationEnd;
+    } else if (opening !== closing && character === opening) {
+      depth += 1;
+    } else if (character === closing && --depth === 0) {
+      return { bodyStart: delimiterIndex + 1, end: index, kind };
+    }
+  }
+  return null;
+}
+
+function rubyPercentLiteralInterpolates(kind: string): boolean {
+  return !["q", "w", "i", "s"].includes(kind);
+}
+
+function maskRubyPercentLiterals(content: string): string {
+  const output = content.split("");
+  let lineComment = false;
+  for (let index = 0; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (character === "?" && isRubyCharacterLiteralStart(content, index)) {
+      index += content[index + 1] === "\\" ? 2 : 1;
+      continue;
+    }
+    if (character === "#" && content[index + 1] !== "{") {
+      lineComment = true;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      const quoted = findQuotedLiteralBounds(content, index, "literal.rb", "");
+      if (!quoted) break;
+      index = quoted.end + quoted.closingLength - 1;
+      continue;
+    }
+    if (character === "/" && isRegexLiteralStart(content, index)) {
+      index = findRubyRegexLiteralEnd(content, index);
+      continue;
+    }
+    const bounds = findRubyPercentLiteralBounds(content, index);
+    if (!bounds) continue;
+    for (let masked = index; masked <= bounds.end; masked += 1) {
+      output[masked] = content[masked] === "\n" ? "\n" : " ";
+    }
+    index = bounds.end;
+  }
+  return output.join("");
+}
+
+function findRubyRegexLiteralEnd(content: string, start: number): number {
+  let escaped = false;
+  let characterClass = false;
+  for (let index = start + 1; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (escaped) {
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (content.startsWith("#{", index)) {
+      const interpolationEnd = findInterpolationEnd(content, index + 1, 1, true);
+      if (interpolationEnd === null) return content.length - 1;
+      index = interpolationEnd;
+    } else if (character === "[") {
+      characterClass = true;
+    } else if (character === "]") {
+      characterClass = false;
+    } else if (character === "/" && !characterClass) {
+      return index;
+    }
+  }
+  return content.length - 1;
+}
+
+function extractInterpolatedStringExpressions(content: string, path: string): string[] {
+  const expressions: string[] = [];
+  let blockComment = false;
+  let lineComment = false;
+  for (let quoteIndex = 0; quoteIndex < content.length; quoteIndex += 1) {
+    const quote = content[quoteIndex] ?? "";
+    const next = content[quoteIndex + 1] ?? "";
+    if (blockComment) {
+      if (quote === "*" && next === "/") {
+        blockComment = false;
+        quoteIndex += 1;
+      }
+      continue;
+    }
+    if (lineComment) {
+      if (quote === "\n") lineComment = false;
+      continue;
+    }
+    if (quote === "/" && next === "*") {
+      blockComment = true;
+      quoteIndex += 1;
+      continue;
+    }
+    if (quote === "/" && next === "/") {
+      lineComment = true;
+      quoteIndex += 1;
+      continue;
+    }
+    if (quote === "#" && next !== "{") {
+      lineComment = true;
+      continue;
+    }
+    if (quote !== '"' && quote !== "'") continue;
+
+    let prefixStart = quoteIndex - 1;
+    while (prefixStart >= 0 && /[A-Za-z@$]/.test(content[prefixStart] ?? "")) prefixStart -= 1;
+    const prefix = content.slice(prefixStart + 1, quoteIndex);
+    const pythonInterpolation = /^[rR]?[fF]$|^[fF][rR]?$/.test(prefix);
+    const csharpInterpolation = /^\$+@?$|^@\$+$/.test(prefix);
+
+    const literalBounds = findQuotedLiteralBounds(content, quoteIndex, path, prefix);
+    if (!literalBounds) break;
+    const literal = content.slice(literalBounds.bodyStart, literalBounds.end);
+    if (/\.py$/i.test(path) && pythonInterpolation) {
+      expressions.push(...findInterpolationBodies(literal, "{"));
+    }
+    if (/\.cs$/i.test(path) && csharpInterpolation) {
+      const rawDollarCount = prefix.startsWith("$") ? prefix.match(/^\$+/)?.[0].length ?? 1 : 1;
+      expressions.push(...findInterpolationBodies(literal, "{".repeat(rawDollarCount)));
+    }
+    if (/\.rb$/i.test(path) && quote === '"') {
+      expressions.push(...findInterpolationBodies(literal, "#{"));
+    }
+    quoteIndex = literalBounds.end + literalBounds.closingLength - 1;
+  }
+  return expressions;
+}
+
+function findQuotedLiteralBounds(
+  content: string,
+  quoteIndex: number,
+  path: string,
+  prefix: string
+): { bodyStart: number; end: number; closingLength: number } | null {
+  const quote = content[quoteIndex] ?? "";
+  const pythonTripleQuoted = /\.py$/i.test(path) && content.slice(quoteIndex, quoteIndex + 3) === quote.repeat(3);
+  const csharpRawQuoted = /\.cs$/i.test(path) && /^\$+$/.test(prefix) &&
+    content.slice(quoteIndex, quoteIndex + 3) === quote.repeat(3);
+  let delimiterLength = pythonTripleQuoted || csharpRawQuoted ? 3 : 1;
+  if (csharpRawQuoted) {
+    while (content[quoteIndex + delimiterLength] === quote) delimiterLength += 1;
+  }
+  const verbatimCsharp = /\.cs$/i.test(path) && (prefix === "$@" || prefix === "@$");
+  const pythonInterpolation = /\.py$/i.test(path) && (/^[rR]?[fF]$|^[fF][rR]?$/.test(prefix));
+  const csharpInterpolation = /\.cs$/i.test(path) && /^\$+@?$|^@\$+$/.test(prefix);
+  const rubyInterpolation = /\.rb$/i.test(path) && quote === '"';
+  const interpolationMarkerLength = csharpRawQuoted ? prefix.match(/^\$+/)?.[0].length ?? 1 : 1;
+  for (let index = quoteIndex + delimiterLength; index < content.length; index += 1) {
+    const interpolationStart = content.slice(index, index + interpolationMarkerLength) === "{".repeat(interpolationMarkerLength);
+    const rubyInterpolationStart = rubyInterpolation && content.startsWith("#{", index) && !isEscapedAt(content, index);
+    if (rubyInterpolationStart) {
+      const interpolationEnd = findInterpolationEnd(content, index + 1, 1, true);
+      if (interpolationEnd !== null) index = interpolationEnd;
+    } else if ((pythonInterpolation || csharpInterpolation) && interpolationStart) {
+      const interpolationEnd = findInterpolationEnd(content, index, interpolationMarkerLength);
+      if (interpolationEnd !== null) index = interpolationEnd;
+    } else if (verbatimCsharp && content[index] === quote && content[index + 1] === quote) {
+      index += 1;
+    } else if (!verbatimCsharp && content[index] === "\\") {
+      index += 1;
+    } else if (content.slice(index, index + delimiterLength) === quote.repeat(delimiterLength)) {
+      return {
+        bodyStart: quoteIndex + delimiterLength,
+        end: index,
+        closingLength: delimiterLength
+      };
+    }
+  }
+  return null;
+}
+
+function findInterpolationEnd(
+  content: string,
+  start: number,
+  markerLength: number,
+  rubySyntax = false
+): number | null {
+  let depth = 1;
+  let quote = "";
+  let quoteLength = 0;
+  let blockComment = false;
+  let lineComment = false;
+  for (let index = start + markerLength; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    const next = content[index + 1] ?? "";
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+    } else if (lineComment) {
+      if (character === "\n") lineComment = false;
+    } else if (quote) {
+      if (character === "\\") {
+        index += 1;
+      } else if (content.slice(index, index + quoteLength) === quote.repeat(quoteLength)) {
+        index += quoteLength - 1;
+        quote = "";
+        quoteLength = 0;
+      }
+    } else if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      quoteLength = content.slice(index, index + 3) === character.repeat(3) ? 3 : 1;
+      index += quoteLength - 1;
+    } else if (character === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+    } else if (character === "/" && next === "/") {
+      lineComment = true;
+      index += 1;
+    } else if (character === "/" && isRegexLiteralStart(content, index)) {
+      index = rubySyntax ? findRubyRegexLiteralEnd(content, index) : findRegexLiteralEnd(content, index);
+    } else if (rubySyntax && character === "%") {
+      const percentLiteral = findRubyPercentLiteralBounds(content, index);
+      if (percentLiteral) index = percentLiteral.end;
+    } else if (character === "#") {
+      lineComment = true;
+    } else if (character === "\\") {
+      index += 1;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0 && content.slice(index, index + markerLength) === "}".repeat(markerLength)) {
+        return index + markerLength - 1;
+      }
+    }
+  }
+  return null;
+}
+
+function findInterpolationBodies(literal: string, marker: string): string[] {
+  const bodies: string[] = [];
+  for (let index = 0; index < literal.length; index += 1) {
+    if (!literal.startsWith(marker, index)) continue;
+    if (marker === "#{" && isEscapedAt(literal, index)) continue;
+    if (marker === "{") {
+      if (literal[index - 1] === "{") continue;
+      let runLength = 1;
+      while (literal[index + runLength] === "{") runLength += 1;
+      if (runLength % 2 === 0) {
+        index += runLength - 1;
+        continue;
+      }
+      index += runLength - 1;
+    }
+    const bodyStart = index + marker.length;
+    const markerLength = marker === "#{" ? 1 : marker.length;
+    const bodyEnd = findInterpolationEnd(
+      literal,
+      marker === "#{" ? index + 1 : index,
+      markerLength,
+      marker === "#{"
+    );
+    if (bodyEnd !== null) {
+      const closingStart = bodyEnd - markerLength + 1;
+      bodies.push(literal.slice(bodyStart, closingStart));
+      index = bodyEnd;
+    }
+  }
+  return bodies;
+}
+
+function isEscapedAt(content: string, index: number): boolean {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && content[cursor] === "\\"; cursor -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
 }
 
 function chooseVerdict(input: {

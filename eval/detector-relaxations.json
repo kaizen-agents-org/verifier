@@ -22,6 +22,14 @@
       "mustBlockCaseId": "sb-026-unverified-secret-target-blocks",
       "sharedTrigger": "redact",
       "rationale": "Separate removed statements must not be combined into a secret guard, while an actual removed header-redaction guard must remain blocked without matching coverage."
+    },
+    {
+      "id": "minimal-verdict-literal-secret-target",
+      "detectorId": "minimal-verdict",
+      "falsePositiveCaseId": "gp-030-literal-secret-target-remains-covered",
+      "mustBlockCaseId": "sb-026-unverified-secret-target-blocks",
+      "sharedTrigger": "redact",
+      "rationale": "Secret-looking text inside a literal must not create an extra coverage target, while an unverified real redaction target remains blocked."
     }
   ],
   "structuralExemptions": []
