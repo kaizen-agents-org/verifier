@@ -1030,13 +1030,17 @@ function extractInterpolatedStringExpressions(content: string, path: string): st
     while (prefixStart >= 0 && /[A-Za-z@$]/.test(content[prefixStart] ?? "")) prefixStart -= 1;
     const prefix = content.slice(prefixStart + 1, quoteIndex);
     const pythonInterpolation = /^[rR]?[fF]$|^[fF][rR]?$/.test(prefix);
-    const csharpInterpolation = prefix === "$" || prefix === "$@" || prefix === "@$";
+    const csharpInterpolation = /^\$+@?$|^@\$+$/.test(prefix);
 
     const literalBounds = findQuotedLiteralBounds(content, quoteIndex, path, prefix);
     if (!literalBounds) break;
     const literal = content.slice(literalBounds.bodyStart, literalBounds.end);
-    if ((/\.py$/i.test(path) && pythonInterpolation) || (/\.cs$/i.test(path) && csharpInterpolation)) {
+    if (/\.py$/i.test(path) && pythonInterpolation) {
       expressions.push(...findInterpolationBodies(literal, "{"));
+    }
+    if (/\.cs$/i.test(path) && csharpInterpolation) {
+      const rawDollarCount = prefix.startsWith("$") ? prefix.match(/^\$+/)?.[0].length ?? 1 : 1;
+      expressions.push(...findInterpolationBodies(literal, "{".repeat(rawDollarCount)));
     }
     if (/\.rb$/i.test(path) && quote === '"') {
       expressions.push(...findInterpolationBodies(literal, "#{"));
@@ -1053,11 +1057,23 @@ function findQuotedLiteralBounds(
   prefix: string
 ): { bodyStart: number; end: number; closingLength: number } | null {
   const quote = content[quoteIndex] ?? "";
-  const tripleQuoted = /\.py$/i.test(path) && content.slice(quoteIndex, quoteIndex + 3) === quote.repeat(3);
-  const delimiterLength = tripleQuoted ? 3 : 1;
+  const pythonTripleQuoted = /\.py$/i.test(path) && content.slice(quoteIndex, quoteIndex + 3) === quote.repeat(3);
+  const csharpRawQuoted = /\.cs$/i.test(path) && /^\$+$/.test(prefix) &&
+    content.slice(quoteIndex, quoteIndex + 3) === quote.repeat(3);
+  let delimiterLength = pythonTripleQuoted || csharpRawQuoted ? 3 : 1;
+  if (csharpRawQuoted) {
+    while (content[quoteIndex + delimiterLength] === quote) delimiterLength += 1;
+  }
   const verbatimCsharp = /\.cs$/i.test(path) && (prefix === "$@" || prefix === "@$");
+  const pythonInterpolation = /\.py$/i.test(path) && (/^[rR]?[fF]$|^[fF][rR]?$/.test(prefix));
+  const csharpInterpolation = /\.cs$/i.test(path) && /^\$+@?$|^@\$+$/.test(prefix);
+  const interpolationMarkerLength = csharpRawQuoted ? prefix.match(/^\$+/)?.[0].length ?? 1 : 1;
   for (let index = quoteIndex + delimiterLength; index < content.length; index += 1) {
-    if (verbatimCsharp && content[index] === quote && content[index + 1] === quote) {
+    const interpolationStart = content.slice(index, index + interpolationMarkerLength) === "{".repeat(interpolationMarkerLength);
+    if ((pythonInterpolation || csharpInterpolation) && interpolationStart) {
+      const interpolationEnd = findInterpolationEnd(content, index, interpolationMarkerLength);
+      if (interpolationEnd !== null) index = interpolationEnd;
+    } else if (verbatimCsharp && content[index] === quote && content[index + 1] === quote) {
       index += 1;
     } else if (!verbatimCsharp && content[index] === "\\") {
       index += 1;
@@ -1072,22 +1088,49 @@ function findQuotedLiteralBounds(
   return null;
 }
 
-function findInterpolationBodies(literal: string, marker: "{" | "#{"): string[] {
+function findInterpolationEnd(content: string, start: number, markerLength: number): number | null {
+  let depth = 1;
+  let quote = "";
+  let quoteLength = 0;
+  for (let index = start + markerLength; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (quote) {
+      if (character === "\\") {
+        index += 1;
+      } else if (content.slice(index, index + quoteLength) === quote.repeat(quoteLength)) {
+        index += quoteLength - 1;
+        quote = "";
+        quoteLength = 0;
+      }
+    } else if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      quoteLength = content.slice(index, index + 3) === character.repeat(3) ? 3 : 1;
+      index += quoteLength - 1;
+    } else if (character === "\\") {
+      index += 1;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0 && content.slice(index, index + markerLength) === "}".repeat(markerLength)) {
+        return index + markerLength - 1;
+      }
+    }
+  }
+  return null;
+}
+
+function findInterpolationBodies(literal: string, marker: string): string[] {
   const bodies: string[] = [];
   for (let index = 0; index < literal.length; index += 1) {
     if (!literal.startsWith(marker, index)) continue;
     if (marker === "{" && (literal[index - 1] === "{" || literal[index + 1] === "{")) continue;
     const bodyStart = index + marker.length;
-    let depth = 1;
-    let bodyEnd = bodyStart;
-    for (; bodyEnd < literal.length; bodyEnd += 1) {
-      const character = literal[bodyEnd] ?? "";
-      if (character === "\\") bodyEnd += 1;
-      else if (character === "{") depth += 1;
-      else if (character === "}" && --depth === 0) break;
-    }
-    if (depth === 0) {
-      bodies.push(literal.slice(bodyStart, bodyEnd));
+    const markerLength = marker === "#{" ? 1 : marker.length;
+    const bodyEnd = findInterpolationEnd(literal, marker === "#{" ? index + 1 : index, markerLength);
+    if (bodyEnd !== null) {
+      const closingStart = bodyEnd - markerLength + 1;
+      bodies.push(literal.slice(bodyStart, closingStart));
       index = bodyEnd;
     }
   }

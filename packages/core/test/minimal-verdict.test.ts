@@ -1290,7 +1290,11 @@ describe("evaluateMinimalVerdict", () => {
 
   it.each([
     ["logger.py", 'redact(headers, f"""{password}""")'],
-    ["Logger.cs", 'redact(headers, $@"safe ""label"" {password}")']
+    ["Logger.cs", 'redact(headers, $@"safe ""label"" {password}")'],
+    ["Logger.cs", 'redact(headers, $"""{password}""")'],
+    ["Logger.cs", 'redact(headers, $$"""{{password}}""")'],
+    ["Logger.cs", 'redact(headers, $""""{password}"""")'],
+    ["logger.py", 'redact(headers, f"{record["safe"] + password}")']
   ])("preserves secret targets in native %s interpolated delimiters", (path, removedGuard) => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
