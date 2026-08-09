@@ -344,7 +344,7 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string; 
       label: signal.label,
       evidence: matches.slice(0, 3).map(formatDiffEvidence).join("\n"),
       coverageTargets: signal.label === "secrets/credentials"
-        ? extractSecretTargets(matches.map((match) => match.content).join("\n"))
+        ? extractSecretTargets(matches.map((match) => match.content))
         : []
     }];
   });
@@ -1009,11 +1009,69 @@ function hasTargetedCoverage(
   });
 }
 
-function extractSecretTargets(content: string): string[] {
-  const executableContent = scanDelimiterCode(content).content;
+function extractSecretTargets(contents: string[]): string[] {
+  const executableContent = contents.flatMap((content) => [
+    scanDelimiterCode(content).content,
+    ...extractInterpolatedStringExpressions(content).map((expression) => scanDelimiterCode(expression).content)
+  ]).join("\n");
   return SECRET_TARGET_PATTERNS
     .filter(({ pattern }) => pattern.test(executableContent))
     .map(({ name }) => name);
+}
+
+function extractInterpolatedStringExpressions(content: string): string[] {
+  const expressions: string[] = [];
+  for (let quoteIndex = 0; quoteIndex < content.length; quoteIndex += 1) {
+    const quote = content[quoteIndex] ?? "";
+    if (quote !== '"' && quote !== "'") continue;
+
+    let prefixStart = quoteIndex - 1;
+    while (prefixStart >= 0 && /[A-Za-z@$]/.test(content[prefixStart] ?? "")) prefixStart -= 1;
+    const prefix = content.slice(prefixStart + 1, quoteIndex);
+    const pythonInterpolation = /^[rR]?[fF]$|^[fF][rR]?$/.test(prefix);
+    const csharpInterpolation = prefix === "$" || prefix === "$@" || prefix === "@$";
+
+    const literalEnd = findQuotedLiteralEnd(content, quoteIndex);
+    if (literalEnd < 0) break;
+    const literal = content.slice(quoteIndex + 1, literalEnd);
+    if (pythonInterpolation || csharpInterpolation) {
+      expressions.push(...findInterpolationBodies(literal, "{"));
+    }
+    if (quote === '"') expressions.push(...findInterpolationBodies(literal, "#{"));
+    quoteIndex = literalEnd;
+  }
+  return expressions;
+}
+
+function findQuotedLiteralEnd(content: string, quoteIndex: number): number {
+  const quote = content[quoteIndex] ?? "";
+  for (let index = quoteIndex + 1; index < content.length; index += 1) {
+    if (content[index] === "\\") index += 1;
+    else if (content[index] === quote) return index;
+  }
+  return -1;
+}
+
+function findInterpolationBodies(literal: string, marker: "{" | "#{"): string[] {
+  const bodies: string[] = [];
+  for (let index = 0; index < literal.length; index += 1) {
+    if (!literal.startsWith(marker, index)) continue;
+    if (marker === "{" && (literal[index - 1] === "{" || literal[index + 1] === "{")) continue;
+    const bodyStart = index + marker.length;
+    let depth = 1;
+    let bodyEnd = bodyStart;
+    for (; bodyEnd < literal.length; bodyEnd += 1) {
+      const character = literal[bodyEnd] ?? "";
+      if (character === "\\") bodyEnd += 1;
+      else if (character === "{") depth += 1;
+      else if (character === "}" && --depth === 0) break;
+    }
+    if (depth === 0) {
+      bodies.push(literal.slice(bodyStart, bodyEnd));
+      index = bodyEnd;
+    }
+  }
+  return bodies;
 }
 
 function chooseVerdict(input: {

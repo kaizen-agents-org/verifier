@@ -1272,6 +1272,39 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
   });
 
+  it.each([
+    'redact(f"{password}", headers)',
+    'redact("#{password}", headers)',
+    'redact($"{password}", headers)'
+  ])("preserves secret targets in non-JavaScript interpolation: %s", (removedGuard) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff: `diff --git a/logger.py b/logger.py\n-${removedGuard}\n+log(headers, password)`,
+      verifyLogs: "header tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
+  it("isolates secret target scanning between removed guards", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        "-redact(headers); /* explanation\n" +
+        "-continued */\n" +
+        "-redact(token)\n" +
+        "+logger.info(headers, token)",
+      verifyLogs: "header tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
   it("ignores computed-property text inside replacement literals", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
