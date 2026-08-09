@@ -1036,11 +1036,12 @@ function extractSecretTargets(matches: DiffRiskLine[]): string[] {
 
 function extractSecretTargetContent(content: string, path: string, depth = 0): string[] {
   const hashComments = /\.(?:py|rb)$/i.test(path);
-  const executableContent = [scanDelimiterCode(content, hashComments).content];
+  const scanContent = /\.rb$/i.test(path) ? maskRubyPercentLiterals(content) : content;
+  const executableContent = [scanDelimiterCode(scanContent, hashComments).content];
   if (depth >= 16) return executableContent;
   const expressions = [
     ...extractInterpolatedStringExpressions(content, path),
-    ...extractRubyRegexInterpolationExpressions(content, path)
+    ...extractRubyLiteralInterpolationExpressions(content, path)
   ];
   for (const expression of expressions) {
     executableContent.push(...extractSecretTargetContent(expression, path, depth + 1));
@@ -1048,7 +1049,7 @@ function extractSecretTargetContent(content: string, path: string, depth = 0): s
   return executableContent;
 }
 
-function extractRubyRegexInterpolationExpressions(content: string, path: string): string[] {
+function extractRubyLiteralInterpolationExpressions(content: string, path: string): string[] {
   if (!/\.rb$/i.test(path)) return [];
   const expressions: string[] = [];
   let lineComment = false;
@@ -1073,38 +1074,58 @@ function extractRubyRegexInterpolationExpressions(content: string, path: string)
       index = end;
       continue;
     }
-    const percentRegex = findRubyPercentRegexBounds(content, index);
-    if (!percentRegex) continue;
-    expressions.push(...findInterpolationBodies(content.slice(percentRegex.bodyStart, percentRegex.end), "#{"));
-    index = percentRegex.end;
+    const percentLiteral = findRubyPercentLiteralBounds(content, index);
+    if (!percentLiteral) continue;
+    if (rubyPercentLiteralInterpolates(percentLiteral.kind)) {
+      expressions.push(...findInterpolationBodies(content.slice(percentLiteral.bodyStart, percentLiteral.end), "#{"));
+    }
+    index = percentLiteral.end;
   }
   return expressions;
 }
 
-function findRubyPercentRegexBounds(
+function findRubyPercentLiteralBounds(
   content: string,
   start: number
-): { bodyStart: number; end: number } | null {
-  if (!content.startsWith("%r", start)) return null;
-  const opening = content[start + 2] ?? "";
+): { bodyStart: number; end: number; kind: string } | null {
+  if (content[start] !== "%") return null;
+  const candidateKind = content[start + 1] ?? "";
+  const kind = /^[qQwWiIrxs]$/.test(candidateKind) ? candidateKind : "";
+  const delimiterIndex = start + (kind ? 2 : 1);
+  const opening = content[delimiterIndex] ?? "";
   if (!opening || /[A-Za-z0-9\s]/.test(opening)) return null;
   const closing = ({ "(": ")", "[": "]", "{": "}", "<": ">" } as Record<string, string>)[opening] ?? opening;
   let depth = 1;
-  for (let index = start + 3; index < content.length; index += 1) {
+  for (let index = delimiterIndex + 1; index < content.length; index += 1) {
     const character = content[index] ?? "";
     if (character === "\\") {
       index += 1;
-    } else if (content.startsWith("#{", index) && !isEscapedAt(content, index)) {
+    } else if (rubyPercentLiteralInterpolates(kind) && content.startsWith("#{", index) && !isEscapedAt(content, index)) {
       const interpolationEnd = findInterpolationEnd(content, index + 1, 1, true);
       if (interpolationEnd === null) return null;
       index = interpolationEnd;
     } else if (opening !== closing && character === opening) {
       depth += 1;
     } else if (character === closing && --depth === 0) {
-      return { bodyStart: start + 3, end: index };
+      return { bodyStart: delimiterIndex + 1, end: index, kind };
     }
   }
   return null;
+}
+
+function rubyPercentLiteralInterpolates(kind: string): boolean {
+  return !["q", "w", "i", "s"].includes(kind);
+}
+
+function maskRubyPercentLiterals(content: string): string {
+  const output = content.split("");
+  for (let index = 0; index < content.length; index += 1) {
+    const bounds = findRubyPercentLiteralBounds(content, index);
+    if (!bounds) continue;
+    for (let masked = index; masked <= bounds.end; masked += 1) output[masked] = " ";
+    index = bounds.end;
+  }
+  return output.join("");
 }
 
 function findRubyRegexLiteralEnd(content: string, start: number): number {
@@ -1273,9 +1294,9 @@ function findInterpolationEnd(
       index += 1;
     } else if (character === "/" && isRegexLiteralStart(content, index)) {
       index = rubySyntax ? findRubyRegexLiteralEnd(content, index) : findRegexLiteralEnd(content, index);
-    } else if (rubySyntax && content.startsWith("%r", index)) {
-      const percentRegex = findRubyPercentRegexBounds(content, index);
-      if (percentRegex) index = percentRegex.end;
+    } else if (rubySyntax && character === "%") {
+      const percentLiteral = findRubyPercentLiteralBounds(content, index);
+      if (percentLiteral) index = percentLiteral.end;
     } else if (character === "#") {
       lineComment = true;
     } else if (character === "\\") {
