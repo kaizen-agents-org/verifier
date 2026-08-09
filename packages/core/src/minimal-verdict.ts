@@ -1010,14 +1010,21 @@ function hasTargetedCoverage(
 }
 
 function extractSecretTargets(matches: DiffRiskLine[]): string[] {
-  const executableContent = matches.flatMap(({ content, path }) => [
-    scanDelimiterCode(content).content,
-    ...extractInterpolatedStringExpressions(content, path)
-      .map((expression) => scanDelimiterCode(expression).content)
-  ]).join("\n");
+  const executableContent = matches
+    .flatMap(({ content, path }) => extractSecretTargetContent(content, path))
+    .join("\n");
   return SECRET_TARGET_PATTERNS
     .filter(({ pattern }) => pattern.test(executableContent))
     .map(({ name }) => name);
+}
+
+function extractSecretTargetContent(content: string, path: string, depth = 0): string[] {
+  const executableContent = [scanDelimiterCode(content).content];
+  if (depth >= 16) return executableContent;
+  for (const expression of extractInterpolatedStringExpressions(content, path)) {
+    executableContent.push(...extractSecretTargetContent(expression, path, depth + 1));
+  }
+  return executableContent;
 }
 
 function extractInterpolatedStringExpressions(content: string, path: string): string[] {
@@ -1092,9 +1099,19 @@ function findInterpolationEnd(content: string, start: number, markerLength: numb
   let depth = 1;
   let quote = "";
   let quoteLength = 0;
+  let blockComment = false;
+  let lineComment = false;
   for (let index = start + markerLength; index < content.length; index += 1) {
     const character = content[index] ?? "";
-    if (quote) {
+    const next = content[index + 1] ?? "";
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+    } else if (lineComment) {
+      if (character === "\n") lineComment = false;
+    } else if (quote) {
       if (character === "\\") {
         index += 1;
       } else if (content.slice(index, index + quoteLength) === quote.repeat(quoteLength)) {
@@ -1106,6 +1123,14 @@ function findInterpolationEnd(content: string, start: number, markerLength: numb
       quote = character;
       quoteLength = content.slice(index, index + 3) === character.repeat(3) ? 3 : 1;
       index += quoteLength - 1;
+    } else if (character === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+    } else if (character === "/" && next === "/") {
+      lineComment = true;
+      index += 1;
+    } else if (character === "#") {
+      lineComment = true;
     } else if (character === "\\") {
       index += 1;
     } else if (character === "{") {
