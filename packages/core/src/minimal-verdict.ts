@@ -356,8 +356,9 @@ function findMultilineRemovedMatches(lines: DiffRiskLine[], pattern: RegExp): Di
   const flush = () => {
     const first = group[0];
     if (first && group.length > 1) {
-      const content = group.map((line) => line.content.trim()).join(" ");
-      if (pattern.test(content)) matches.push({ ...first, content });
+      const content = group.map((line) => line.content.trim()).join("\n");
+      const matchContent = group.map((line) => line.content.trim()).join(" ");
+      if (pattern.test(matchContent)) matches.push({ ...first, content });
     }
     group = [];
   };
@@ -1029,8 +1030,36 @@ function extractSecretTargetContent(content: string, path: string, depth = 0): s
 
 function extractInterpolatedStringExpressions(content: string, path: string): string[] {
   const expressions: string[] = [];
+  let blockComment = false;
+  let lineComment = false;
   for (let quoteIndex = 0; quoteIndex < content.length; quoteIndex += 1) {
     const quote = content[quoteIndex] ?? "";
+    const next = content[quoteIndex + 1] ?? "";
+    if (blockComment) {
+      if (quote === "*" && next === "/") {
+        blockComment = false;
+        quoteIndex += 1;
+      }
+      continue;
+    }
+    if (lineComment) {
+      if (quote === "\n") lineComment = false;
+      continue;
+    }
+    if (quote === "/" && next === "*") {
+      blockComment = true;
+      quoteIndex += 1;
+      continue;
+    }
+    if (quote === "/" && next === "/") {
+      lineComment = true;
+      quoteIndex += 1;
+      continue;
+    }
+    if (quote === "#" && next !== "{") {
+      lineComment = true;
+      continue;
+    }
     if (quote !== '"' && quote !== "'") continue;
 
     let prefixStart = quoteIndex - 1;

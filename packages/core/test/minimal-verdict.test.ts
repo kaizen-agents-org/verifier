@@ -1309,7 +1309,9 @@ describe("evaluateMinimalVerdict", () => {
 
   it.each([
     ["Logger.cs", 'redact(headers, $"{Format($"{password}")}")'],
-    ["Logger.cs", 'redact(headers, $"{Get(/* } */ password)}")']
+    ["Logger.cs", 'redact(headers, $"{Get(/* } */ password)}")'],
+    ["Logger.cs", 'redact(headers, /* " */ $"{password}")'],
+    ["Logger.cs", 'redact(headers, $"""{Get( // note\n-password)}""")']
   ])("preserves secret targets in nested or commented %s interpolation", (path, removedGuard) => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
