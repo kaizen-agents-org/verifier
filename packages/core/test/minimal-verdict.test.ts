@@ -1273,19 +1273,34 @@ describe("evaluateMinimalVerdict", () => {
   });
 
   it.each([
-    'redact(f"{password}", headers)',
-    'redact("#{password}", headers)',
-    'redact($"{password}", headers)'
-  ])("preserves secret targets in non-JavaScript interpolation: %s", (removedGuard) => {
+    ["logger.py", 'redact(f"{password}", headers)'],
+    ["logger.rb", 'redact("#{password}", headers)'],
+    ["Logger.cs", 'redact($"{password}", headers)']
+  ])("preserves secret targets in %s interpolation", (path, removedGuard) => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
-      diff: `diff --git a/logger.py b/logger.py\n-${removedGuard}\n+log(headers, password)`,
+      diff: `diff --git a/${path} b/${path}\n-${removedGuard}\n+log(headers, password)`,
       verifyLogs: "header tests passed",
       builderReport: "Verified header logging behavior."
     });
 
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
+  it("does not treat Ruby interpolation syntax inside JavaScript strings as executable", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        "diff --git a/logger.js b/logger.js\n" +
+        '-redact(headers, "#{password}")\n' +
+        "+logger.info(headers)",
+      verifyLogs: "header tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
   });
 
   it("isolates secret target scanning between removed guards", () => {

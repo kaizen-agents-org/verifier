@@ -344,7 +344,7 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string; 
       label: signal.label,
       evidence: matches.slice(0, 3).map(formatDiffEvidence).join("\n"),
       coverageTargets: signal.label === "secrets/credentials"
-        ? extractSecretTargets(matches.map((match) => match.content))
+        ? extractSecretTargets(matches)
         : []
     }];
   });
@@ -1009,17 +1009,18 @@ function hasTargetedCoverage(
   });
 }
 
-function extractSecretTargets(contents: string[]): string[] {
-  const executableContent = contents.flatMap((content) => [
+function extractSecretTargets(matches: DiffRiskLine[]): string[] {
+  const executableContent = matches.flatMap(({ content, path }) => [
     scanDelimiterCode(content).content,
-    ...extractInterpolatedStringExpressions(content).map((expression) => scanDelimiterCode(expression).content)
+    ...extractInterpolatedStringExpressions(content, path)
+      .map((expression) => scanDelimiterCode(expression).content)
   ]).join("\n");
   return SECRET_TARGET_PATTERNS
     .filter(({ pattern }) => pattern.test(executableContent))
     .map(({ name }) => name);
 }
 
-function extractInterpolatedStringExpressions(content: string): string[] {
+function extractInterpolatedStringExpressions(content: string, path: string): string[] {
   const expressions: string[] = [];
   for (let quoteIndex = 0; quoteIndex < content.length; quoteIndex += 1) {
     const quote = content[quoteIndex] ?? "";
@@ -1034,10 +1035,12 @@ function extractInterpolatedStringExpressions(content: string): string[] {
     const literalEnd = findQuotedLiteralEnd(content, quoteIndex);
     if (literalEnd < 0) break;
     const literal = content.slice(quoteIndex + 1, literalEnd);
-    if (pythonInterpolation || csharpInterpolation) {
+    if ((/\.py$/i.test(path) && pythonInterpolation) || (/\.cs$/i.test(path) && csharpInterpolation)) {
       expressions.push(...findInterpolationBodies(literal, "{"));
     }
-    if (quote === '"') expressions.push(...findInterpolationBodies(literal, "#{"));
+    if (/\.rb$/i.test(path) && quote === '"') {
+      expressions.push(...findInterpolationBodies(literal, "#{"));
+    }
     quoteIndex = literalEnd;
   }
   return expressions;
