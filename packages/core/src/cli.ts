@@ -8,7 +8,7 @@ import { promisify } from "node:util";
 import { runCheck, shouldFailForVerdict } from "./check.js";
 import { evaluateMinimalVerdict } from "./minimal-verdict.js";
 import { redactSensitiveText, redactSensitiveValue } from "./redaction.js";
-import { VerdictInputSchema } from "./types.js";
+import { KaizenVerifierResultSchema, VerdictInputSchema } from "./types.js";
 import type {
   FinalVerdictKind,
   KaizenVerifierResult,
@@ -161,7 +161,7 @@ async function runKaizenLoopMode(
         ? verdict.should_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary
         : "";
   const completedAt = new Date();
-  const payload: KaizenVerifierResult = {
+  const payload = KaizenVerifierResultSchema.parse({
     schemaVersion: verdict.schemaVersion,
     verdict: verdict.verdict,
     final_verdict: finalVerdictForKaizen(verdict.verdict, input),
@@ -194,7 +194,7 @@ async function runKaizenLoopMode(
       changed_files: changedFilesFromPrompt(prompt),
       verify_commands: []
     }
-  };
+  });
   const redactedPayload = redactSensitiveValue(payload);
 
   await persistKaizenArtifacts(context, input, redactedPayload);
