@@ -1051,8 +1051,23 @@ function extractSecretTargetContent(content: string, path: string, depth = 0): s
 function extractRubyRegexInterpolationExpressions(content: string, path: string): string[] {
   if (!/\.rb$/i.test(path)) return [];
   const expressions: string[] = [];
+  let lineComment = false;
   for (let index = 0; index < content.length; index += 1) {
-    if (content[index] === "/" && isRegexLiteralStart(content, index)) {
+    const character = content[index] ?? "";
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (character === "#" && content[index + 1] !== "{") {
+      lineComment = true;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      const bounds = findQuotedLiteralBounds(content, index, path, "");
+      if (bounds) index = bounds.end + bounds.closingLength - 1;
+      continue;
+    }
+    if (character === "/" && isRegexLiteralStart(content, index)) {
       const end = findRegexLiteralEnd(content, index);
       expressions.push(...findInterpolationBodies(content.slice(index + 1, end), "#{"));
       index = end;
@@ -1169,7 +1184,7 @@ function findQuotedLiteralBounds(
     const interpolationStart = content.slice(index, index + interpolationMarkerLength) === "{".repeat(interpolationMarkerLength);
     const rubyInterpolationStart = rubyInterpolation && content.startsWith("#{", index);
     if (rubyInterpolationStart) {
-      const interpolationEnd = findInterpolationEnd(content, index + 1, 1);
+      const interpolationEnd = findInterpolationEnd(content, index + 1, 1, true);
       if (interpolationEnd !== null) index = interpolationEnd;
     } else if ((pythonInterpolation || csharpInterpolation) && interpolationStart) {
       const interpolationEnd = findInterpolationEnd(content, index, interpolationMarkerLength);
@@ -1189,7 +1204,12 @@ function findQuotedLiteralBounds(
   return null;
 }
 
-function findInterpolationEnd(content: string, start: number, markerLength: number): number | null {
+function findInterpolationEnd(
+  content: string,
+  start: number,
+  markerLength: number,
+  rubySyntax = false
+): number | null {
   let depth = 1;
   let quote = "";
   let quoteLength = 0;
@@ -1225,7 +1245,7 @@ function findInterpolationEnd(content: string, start: number, markerLength: numb
       index += 1;
     } else if (character === "/" && isRegexLiteralStart(content, index)) {
       index = findRegexLiteralEnd(content, index);
-    } else if (content.startsWith("%r", index)) {
+    } else if (rubySyntax && content.startsWith("%r", index)) {
       const percentRegex = findRubyPercentRegexBounds(content, index);
       if (percentRegex) index = percentRegex.end;
     } else if (character === "#") {
@@ -1251,7 +1271,12 @@ function findInterpolationBodies(literal: string, marker: string): string[] {
     if (marker === "{" && (literal[index - 1] === "{" || literal[index + 1] === "{")) continue;
     const bodyStart = index + marker.length;
     const markerLength = marker === "#{" ? 1 : marker.length;
-    const bodyEnd = findInterpolationEnd(literal, marker === "#{" ? index + 1 : index, markerLength);
+    const bodyEnd = findInterpolationEnd(
+      literal,
+      marker === "#{" ? index + 1 : index,
+      markerLength,
+      marker === "#{"
+    );
     if (bodyEnd !== null) {
       const closingStart = bodyEnd - markerLength + 1;
       bodies.push(literal.slice(bodyStart, closingStart));
