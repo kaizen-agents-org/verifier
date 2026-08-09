@@ -1196,6 +1196,37 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
   });
 
+  it("requires coverage for every removed secret target", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        "-maskPassword(password)\n" +
+        "-redact(request.headers)\n" +
+        "+logger.info(password, request.headers)",
+      verifyLogs: "header tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
+  it("extracts secret targets from removed content rather than the file path", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        "diff --git a/password-logger.ts b/password-logger.ts\n" +
+        "-redact(request.headers)\n" +
+        "+logger.info(request.headers)",
+      verifyLogs: "password tests passed",
+      builderReport: "Verified password logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
   it("accepts verification for the removed password guard", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify password logging",
@@ -1214,6 +1245,22 @@ describe("evaluateMinimalVerdict", () => {
       diff:
         "diff --git a/logger.ts b/logger.ts\n" +
         "-redact(displayName)\n" +
+        "-const headers = buildHeaders()\n" +
+        "+const headers = createHeaders()",
+      verifyLogs: "all tests passed",
+      builderReport: "Verified logging setup tests passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(false);
+  });
+
+  it("ignores delimiters in literals when separating removed statements", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor logging setup",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        "-redact(displayName, \"[\")\n" +
         "-const headers = buildHeaders()\n" +
         "+const headers = createHeaders()",
       verifyLogs: "all tests passed",
