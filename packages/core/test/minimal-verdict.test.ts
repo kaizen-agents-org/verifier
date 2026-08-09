@@ -1288,6 +1288,21 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
   });
 
+  it.each([
+    ["logger.py", 'redact(headers, f"""{password}""")'],
+    ["Logger.cs", 'redact(headers, $@"safe ""label"" {password}")']
+  ])("preserves secret targets in native %s interpolated delimiters", (path, removedGuard) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff: `diff --git a/${path} b/${path}\n-${removedGuard}\n+log(headers, password)`,
+      verifyLogs: "header logging tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
   it("does not treat Ruby interpolation syntax inside JavaScript strings as executable", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",

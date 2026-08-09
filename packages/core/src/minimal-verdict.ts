@@ -1032,27 +1032,44 @@ function extractInterpolatedStringExpressions(content: string, path: string): st
     const pythonInterpolation = /^[rR]?[fF]$|^[fF][rR]?$/.test(prefix);
     const csharpInterpolation = prefix === "$" || prefix === "$@" || prefix === "@$";
 
-    const literalEnd = findQuotedLiteralEnd(content, quoteIndex);
-    if (literalEnd < 0) break;
-    const literal = content.slice(quoteIndex + 1, literalEnd);
+    const literalBounds = findQuotedLiteralBounds(content, quoteIndex, path, prefix);
+    if (!literalBounds) break;
+    const literal = content.slice(literalBounds.bodyStart, literalBounds.end);
     if ((/\.py$/i.test(path) && pythonInterpolation) || (/\.cs$/i.test(path) && csharpInterpolation)) {
       expressions.push(...findInterpolationBodies(literal, "{"));
     }
     if (/\.rb$/i.test(path) && quote === '"') {
       expressions.push(...findInterpolationBodies(literal, "#{"));
     }
-    quoteIndex = literalEnd;
+    quoteIndex = literalBounds.end + literalBounds.closingLength - 1;
   }
   return expressions;
 }
 
-function findQuotedLiteralEnd(content: string, quoteIndex: number): number {
+function findQuotedLiteralBounds(
+  content: string,
+  quoteIndex: number,
+  path: string,
+  prefix: string
+): { bodyStart: number; end: number; closingLength: number } | null {
   const quote = content[quoteIndex] ?? "";
-  for (let index = quoteIndex + 1; index < content.length; index += 1) {
-    if (content[index] === "\\") index += 1;
-    else if (content[index] === quote) return index;
+  const tripleQuoted = /\.py$/i.test(path) && content.slice(quoteIndex, quoteIndex + 3) === quote.repeat(3);
+  const delimiterLength = tripleQuoted ? 3 : 1;
+  const verbatimCsharp = /\.cs$/i.test(path) && (prefix === "$@" || prefix === "@$");
+  for (let index = quoteIndex + delimiterLength; index < content.length; index += 1) {
+    if (verbatimCsharp && content[index] === quote && content[index + 1] === quote) {
+      index += 1;
+    } else if (!verbatimCsharp && content[index] === "\\") {
+      index += 1;
+    } else if (content.slice(index, index + delimiterLength) === quote.repeat(delimiterLength)) {
+      return {
+        bodyStart: quoteIndex + delimiterLength,
+        end: index,
+        closingLength: delimiterLength
+      };
+    }
   }
-  return -1;
+  return null;
 }
 
 function findInterpolationBodies(literal: string, marker: "{" | "#{"): string[] {
