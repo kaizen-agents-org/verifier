@@ -13,7 +13,8 @@ import type {
   FinalVerdictKind,
   KaizenVerifierResult,
   VerdictDecision,
-  VerdictInput
+  VerdictInput,
+  VerdictRun
 } from "./types.js";
 import { readVersionInfo } from "./version.js";
 
@@ -153,7 +154,11 @@ async function runKaizenLoopMode(
   const startedAt = new Date();
   const prompt = await readStdin();
   const input = VerdictInputSchema.parse(parseKaizenLoopPrompt(prompt));
+  const verifyCommands = parseKaizenVerificationCommands(prompt);
   const verdict = evaluateMinimalVerdict(input);
+  const evidenceGrade = verifyCommands.length > 0
+    ? "executed"
+    : verdict.evidence_grade ?? "reported";
   const reason =
     verdict.verdict === "block_pr"
       ? verdict.must_fix.map((item) => item.evidence || item.message).join("\n") || verdict.summary
@@ -166,12 +171,12 @@ async function runKaizenLoopMode(
     verdict: verdict.verdict,
     final_verdict: finalVerdictForKaizen(verdict.verdict, input),
     status: verdict.verdict,
-    evidence_grade: verdict.evidence_grade ?? "reported",
+    evidence_grade: evidenceGrade,
     confidence: verdict.confidence,
     risk: verdict.risk,
     summary: verdict.summary,
     notes: [
-      verdict.evidence_grade ? `evidence_grade=${verdict.evidence_grade}` : "",
+      `evidence_grade=${evidenceGrade}`,
       `risk=${verdict.risk}`,
       `confidence=${verdict.confidence}`,
       verdict.must_fix.length ? `must_fix=${verdict.must_fix.map((item) => item.message).join("; ")}` : "",
@@ -192,7 +197,7 @@ async function runKaizenLoopMode(
       head_ref: process.env.GITHUB_SHA ?? "unknown",
       artifacts_dir: context.artifactsDir,
       changed_files: changedFilesFromPrompt(prompt),
-      verify_commands: []
+      verify_commands: verifyCommands
     }
   });
   const redactedPayload = redactSensitiveValue(payload);
@@ -523,6 +528,37 @@ function parseKaizenLoopPrompt(prompt: string) {
     verifyLogs: section(prompt, "# Mechanical verification", "# Changed files"),
     diff: sectionAfter(prompt, "# Changed files", "# Diff", "# Decision rules")
   };
+}
+
+function parseKaizenVerificationCommands(prompt: string): VerdictRun["verify_commands"] {
+  const taggedBlocks = [...prompt.matchAll(
+    /^<verification_logs_data>\r?\n([\s\S]*?)\r?\n<\/verification_logs_data>$/gm
+  )];
+  const taggedBlock = taggedBlocks.at(-1)?.[1];
+  if (!taggedBlock) return [];
+
+  const outerFence = /^(`{3,})markdown\r?\n([\s\S]*)\r?\n\1$/.exec(taggedBlock);
+  if (!outerFence) return [];
+
+  const records = outerFence[2];
+  if (records === undefined) return [];
+  const recordPattern = /^## Command (\d+)\r?\n\r?\nStatus: (passed|failed)\r?\n\r?\nCommand:\r?\n(`{3,})sh\r?\n([\s\S]*?)\r?\n\3\r?\n\r?\nOutput:\r?\n(`{3,})text\r?\n([\s\S]*?)\r?\n\5(?=\r?\n\r?\n## Command \d+\r?\n|$)/gm;
+  const commands: VerdictRun["verify_commands"] = [];
+  let previousEnd = 0;
+
+  for (const match of records.matchAll(recordPattern)) {
+    if (records.slice(previousEnd, match.index).trim()) return [];
+    if (Number(match[1]) !== commands.length + 1 || !match[4]) return [];
+    commands.push({
+      command: match[4],
+      exit_code: match[2] === "passed" ? 0 : null,
+      signal: null,
+      duration_ms: 0
+    });
+    previousEnd = (match.index ?? 0) + match[0].length;
+  }
+
+  return commands.length > 0 && !records.slice(previousEnd).trim() ? commands : [];
 }
 
 function sectionAfter(text: string, anchorMarker: string, startMarker: string, endMarker: string): string {

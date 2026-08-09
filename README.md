@@ -434,11 +434,11 @@ The integration payload is:
   "verdict": "open_pr",
   "final_verdict": "mergeable",
   "status": "open_pr",
-  "evidence_grade": "reported",
+  "evidence_grade": "executed",
   "confidence": 82,
   "risk": "low",
   "summary": "Open PR with 0 should_fix item(s); risk is low.",
-  "notes": "evidence_grade=reported\nrisk=low\nconfidence=82",
+  "notes": "evidence_grade=executed\nrisk=low\nconfidence=82",
   "reason": "",
   "must_fix": [],
   "should_fix": [],
@@ -452,7 +452,14 @@ The integration payload is:
     "head_ref": "unknown",
     "artifacts_dir": "/path/to/workspace/.kaizen/verifier",
     "changed_files": ["src/signup.ts"],
-    "verify_commands": []
+    "verify_commands": [
+      {
+        "command": "cargo test",
+        "exit_code": 0,
+        "signal": null,
+        "duration_ms": 0
+      }
+    ]
   }
 }
 ```
@@ -471,6 +478,14 @@ metadata as other verifier modes. `base_ref` and `head_ref` use `BASE_SHA` and
 `status`, `notes`, and `reason` fields remain available for compatibility with
 current consumers. All string values, including finding evidence, are redacted
 before the payload is written to stdout or the result file.
+
+When the stdin prompt contains the canonical Kaizen Loop
+`verification_logs_data` records, `verifier` preserves their command order and
+pass/fail status in `run.verify_commands` and reports `evidence_grade` as
+`executed`. Kaizen Loop does not currently provide command durations or failure
+signals, so inherited records use `duration_ms: 0`, `signal: null`, and a null
+exit code when the recorded status is failed. Missing or malformed records stay
+`reported` and do not populate `run.verify_commands`.
 
 The directory reported by `run.artifacts_dir` also contains redacted copies of
 the prompt-derived `intent.txt`, `diff.patch`, `verify-logs.txt`, and

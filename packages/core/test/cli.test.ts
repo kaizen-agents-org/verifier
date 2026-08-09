@@ -231,6 +231,104 @@ Return "block_pr" when the builder must revise the change before a PR is created
     expect(result.should_fix).toEqual([]);
   });
 
+  it("preserves kaizen-loop mechanical verification as executed evidence", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "verifier-kaizen-evidence-"));
+    const prompt = `# Issue #357: Preserve verifier evidence
+
+Use the mechanical verification results when deciding whether to open a PR.
+
+# Builder result
+
+Implemented the requested change.
+
+# Mechanical verification
+
+- [x] cargo test
+- [x] cargo clippy
+
+# Verification logs
+
+<verification_logs_data>
+\`\`\`\`markdown
+## Command 1
+
+Status: passed
+
+Command:
+\`\`\`sh
+cargo test
+\`\`\`
+
+Output:
+\`\`\`text
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+\`\`\`
+
+## Command 2
+
+Status: passed
+
+Command:
+\`\`\`sh
+cargo clippy
+\`\`\`
+
+Output:
+\`\`\`text
+Finished dev profile [unoptimized + debuginfo] target(s) in 9.27s
+\`\`\`
+\`\`\`\`
+</verification_logs_data>
+
+# Changed files
+
+- src/lib.rs
+
+# Diff
+
+diff --git a/src/lib.rs b/src/lib.rs
++pub const VERIFIED: bool = true;
+
+# Decision rules
+
+Return a verifier decision.
+`;
+
+    const { stdout } = await spawnWithInput(
+      process.execPath,
+      ["--import", "tsx", "src/cli.ts"],
+      prompt,
+      {
+        env: {
+          ...process.env,
+          KAIZEN_VERIFIER_RESULT_PATH: ".kaizen/verifier/verify-result.json",
+          KAIZEN_WORKSPACE_DIR: dir
+        }
+      }
+    );
+
+    const output = JSON.parse(stdout) as {
+      evidence_grade: string;
+      run: {
+        artifacts_dir: string;
+        verify_commands: Array<{
+          command: string;
+          exit_code: number | null;
+          signal: string | null;
+          duration_ms: number;
+        }>;
+      };
+    };
+
+    expect(output.evidence_grade).toBe("executed");
+    expect(output.run.verify_commands).toEqual([
+      { command: "cargo test", exit_code: 0, signal: null, duration_ms: 0 },
+      { command: "cargo clippy", exit_code: 0, signal: null, duration_ms: 0 }
+    ]);
+    await expect(readFile(join(output.run.artifacts_dir, "verify-logs.txt"), "utf8"))
+      .resolves.toContain("test result: ok. 3 passed; 0 failed");
+  });
+
   it("persists redacted prompt evidence for the kaizen-loop stdin contract", async () => {
     const dir = await mkdtemp(join(tmpdir(), "verifier-kaizen-artifacts-"));
     const prompt = `# Issue
