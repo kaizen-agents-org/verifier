@@ -1325,7 +1325,11 @@ describe("evaluateMinimalVerdict", () => {
     ["logger.rb", 'redact(headers, "#{value == %q[}] && password}")'],
     ["logger.rb", 'redact(headers, %Q(#{password}))'],
     ["logger.rb", "redact(headers, ?# + password.to_s)"],
-    ["logger.rb", 'redact(headers, if /marker %q!/ then password end, "!")']
+    ["logger.rb", 'redact(headers, if /marker %q!/ then password end, "!")'],
+    ["logger.rb", 'redact(headers, ?" + password.to_s)'],
+    ["logger.rb", "redact(headers, total%(password))"],
+    ["logger.py", 'redact(headers, f"{{{password}}}")'],
+    ["Logger.cs", 'redact(headers, $"{{{password}}}")']
   ])("preserves secret targets in nested or commented %s interpolation", (path, removedGuard) => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
