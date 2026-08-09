@@ -219,9 +219,10 @@ inference.
 Verdicts include `evidence_grade` so callers can distinguish executed local
 checks from reported text. Workspace mode emits `executed` only after at least
 one verification command ran, whether selected by CLI, config, or inference;
-direct contract inputs such as
-`--verify-logs "all tests passed"`, kaizen-loop stdin mode, and workspace checks
-with no verification commands emit `reported`.
+direct contract inputs such as `--verify-logs "all tests passed"` and workspace
+checks with no verification commands emit `reported`. Kaizen-loop stdin mode
+also emits `reported` by default, but emits `executed` when it contains valid
+canonical `verification_logs_data` records.
 
 Configure workspace check defaults in `verifier.config.json`:
 

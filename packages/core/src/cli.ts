@@ -154,8 +154,17 @@ async function runKaizenLoopMode(
   const startedAt = new Date();
   const prompt = await readStdin();
   const input = VerdictInputSchema.parse(parseKaizenLoopPrompt(prompt));
-  const verifyCommands = parseKaizenVerificationCommands(prompt);
-  const verdict = evaluateMinimalVerdict(input);
+  const verification = parseKaizenVerificationCommands(input.verifyLogs);
+  const verifyCommands = verification.commands;
+  const verdict = evaluateMinimalVerdict({
+    ...input,
+    verifyLogs: [
+      input.verifyLogs,
+      ...verification.failedCommandNumbers.map(
+        (number) => `Verification command failed: canonical record ${number}`
+      )
+    ].filter(Boolean).join("\n")
+  });
   const evidenceGrade = verifyCommands.length > 0
     ? "executed"
     : verdict.evidence_grade ?? "reported";
@@ -530,35 +539,51 @@ function parseKaizenLoopPrompt(prompt: string) {
   };
 }
 
-function parseKaizenVerificationCommands(prompt: string): VerdictRun["verify_commands"] {
-  const taggedBlocks = [...prompt.matchAll(
+function parseKaizenVerificationCommands(verifyLogs: string): {
+  commands: VerdictRun["verify_commands"];
+  failedCommandNumbers: number[];
+} {
+  const invalid = { commands: [], failedCommandNumbers: [] };
+  const taggedBlocks = [...verifyLogs.matchAll(
     /^<verification_logs_data>\r?\n([\s\S]*?)\r?\n<\/verification_logs_data>$/gm
   )];
   const taggedBlock = taggedBlocks.at(-1)?.[1];
-  if (!taggedBlock) return [];
+  if (!taggedBlock) return invalid;
 
   const outerFence = /^(`{3,})markdown\r?\n([\s\S]*)\r?\n\1$/.exec(taggedBlock);
-  if (!outerFence) return [];
+  if (!outerFence) return invalid;
 
+  const openingFence = outerFence[1];
   const records = outerFence[2];
-  if (records === undefined) return [];
+  if (!openingFence || records === undefined) return invalid;
+  const prematureClosingFence = new RegExp(
+    `^ {0,3}\`{${openingFence.length},}[\\t ]*$`,
+    "m"
+  );
+  if (prematureClosingFence.test(records)) return invalid;
+
   const recordPattern = /^## Command (\d+)\r?\n\r?\nStatus: (passed|failed)\r?\n\r?\nCommand:\r?\n(`{3,})sh\r?\n([\s\S]*?)\r?\n\3\r?\n\r?\nOutput:\r?\n(`{3,})text\r?\n([\s\S]*?)\r?\n\5(?=\r?\n\r?\n## Command \d+\r?\n|$)/gm;
   const commands: VerdictRun["verify_commands"] = [];
+  const failedCommandNumbers: number[] = [];
   let previousEnd = 0;
 
   for (const match of records.matchAll(recordPattern)) {
-    if (records.slice(previousEnd, match.index).trim()) return [];
-    if (Number(match[1]) !== commands.length + 1 || !match[4]) return [];
+    if (records.slice(previousEnd, match.index).trim()) return invalid;
+    const commandNumber = Number(match[1]);
+    if (commandNumber !== commands.length + 1 || !match[4]) return invalid;
     commands.push({
       command: match[4],
       exit_code: match[2] === "passed" ? 0 : null,
       signal: null,
       duration_ms: 0
     });
+    if (match[2] === "failed") failedCommandNumbers.push(commandNumber);
     previousEnd = (match.index ?? 0) + match[0].length;
   }
 
-  return commands.length > 0 && !records.slice(previousEnd).trim() ? commands : [];
+  return commands.length > 0 && !records.slice(previousEnd).trim()
+    ? { commands, failedCommandNumbers }
+    : invalid;
 }
 
 function sectionAfter(text: string, anchorMarker: string, startMarker: string, endMarker: string): string {
