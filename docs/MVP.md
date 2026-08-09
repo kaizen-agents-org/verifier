@@ -66,11 +66,12 @@ bearer tokens, and password/token assignments.
 
 Verdicts also include `evidence_grade`:
 
-- `executed`: verifier ran at least one workspace verification command and
-  recorded its exit metadata.
-- `reported`: verifier judged caller-supplied text, such as direct
-  `--verify-logs` input or kaizen-loop stdin sections, or no workspace
-  verification command was configured.
+- `executed`: verifier ran at least one workspace verification command, or a
+  canonical Kaizen Loop stdin record supplied an explicit command and execution
+  status.
+- `reported`: verifier judged caller-supplied prose such as direct
+  `--verify-logs` input, the Kaizen Loop record was missing or malformed, or no
+  workspace verification command was configured.
 
 ## Verdicts
 
