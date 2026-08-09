@@ -1396,6 +1396,19 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix).toHaveLength(0);
   });
 
+  it("does not mask executable targets after percent-literal text in a Ruby string", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        'diff --git a/logger.rb b/logger.rb\n-redact(headers, "marker %q[" + password + "]")\n+log(headers, password)',
+      verifyLogs: "header tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
   it("does not treat Ruby interpolation syntax inside JavaScript strings as executable", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",

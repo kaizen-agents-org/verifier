@@ -1119,7 +1119,27 @@ function rubyPercentLiteralInterpolates(kind: string): boolean {
 
 function maskRubyPercentLiterals(content: string): string {
   const output = content.split("");
+  let lineComment = false;
   for (let index = 0; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (character === "#" && content[index + 1] !== "{") {
+      lineComment = true;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      const quoted = findQuotedLiteralBounds(content, index, "literal.rb", "");
+      if (!quoted) break;
+      index = quoted.end + quoted.closingLength - 1;
+      continue;
+    }
+    if (character === "/" && isRegexLiteralStart(content, index)) {
+      index = findRubyRegexLiteralEnd(content, index);
+      continue;
+    }
     const bounds = findRubyPercentLiteralBounds(content, index);
     if (!bounds) continue;
     for (let masked = index; masked <= bounds.end; masked += 1) {
