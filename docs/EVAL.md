@@ -153,6 +153,9 @@ defectを検出している必要があり、期待値や ground truth の弱体
 `pnpm eval:relaxations` はPR baseと現在のファイルを正規化済みTypeScript出力で比較する。
 コメントとformatだけの変更は無視するが、追加だけのearly return、条件順序の変更、
 pattern置換、検出ロジックの移動を含むsemantic changeは保守的にすべて発火する。
+GitHub Actionsではworkflowがtrusted PR base SHAを`BASE_SHA`として明示的に渡す。
+ローカル実行では`origin/HEAD`、`origin/main`、`origin/master`、`main`、`master`の順に
+merge baseを探し、いずれも使えない場合だけ`HEAD^`へfallbackする。
 
 通常のdetector変更には同じPRで新しいimmutable pair recordを追加する。recordは対象
 detector、偽陽性を再現するgolden case、安全境界を残すseeded must-block case、両caseに
@@ -160,6 +163,8 @@ detector、偽陽性を再現するgolden case、安全境界を残すseeded mus
 `mustFixMax: 0`、`maxFalsePositives: 0`を要求し、must-block caseは`block_pr`、
 `mustFixMin >= 1`を要求する。must-block caseを`knownGap`にしたり期待値を弱めたりすると
 gateは失敗する。既存caseが境界を忠実に再現しない場合はcompact corpus caseも追加する。
+ここでのverdictはcompact corpusと共通の`VerdictDecisionSchema`を使い、non-blockingは
+`open_pr`または`open_pr_with_warning`、must-blockは`block_pr`である。
 
 純粋な構造refactorだけは、新fixtureの代わりに理由付き`structuralExemptions` recordを
 追加できる。これは自動的な安全証明ではなくreviewerが確認する監査宣言である。pair、

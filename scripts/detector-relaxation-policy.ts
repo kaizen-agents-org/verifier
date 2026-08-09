@@ -5,8 +5,15 @@ import { isDeepStrictEqual, promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { z } from "zod";
+import { VerdictDecisionSchema, type VerdictDecision } from "../packages/core/src/types.js";
 
 const execFileAsync = promisify(execFile);
+const POLICY_PATH = "eval/detector-relaxations.json";
+const CORPUS_DIR = "packages/core/eval/corpus";
+const BASE_CORPUS_READ_CONCURRENCY = 8;
+const [OPEN_PR, OPEN_PR_WITH_WARNING, BLOCK_PR] = VerdictDecisionSchema.options;
+const NON_BLOCKING_VERDICTS = new Set<VerdictDecision>([OPEN_PR, OPEN_PR_WITH_WARNING]);
+const MUST_BLOCK_VERDICTS = new Set<VerdictDecision>([BLOCK_PR]);
 
 const DetectorSchema = z.object({
   id: z.string().min(1),
@@ -28,7 +35,7 @@ const PairSchema = z.object({
 const StructuralExemptionSchema = z.object({
   id: z.string().min(1),
   detectorId: z.string().min(1),
-  rationale: z.string().min(1)
+  rationale: z.string().trim().min(1)
 }).strict();
 
 const PolicySchema = z.object({
@@ -43,8 +50,8 @@ const CorpusCaseSchema = z.object({
   kind: z.enum(["seeded", "golden"]),
   input: z.record(z.unknown()),
   expected: z.object({
-    verdict: z.string().optional(),
-    verdictAnyOf: z.array(z.string()).optional(),
+    verdict: VerdictDecisionSchema.optional(),
+    verdictAnyOf: z.array(VerdictDecisionSchema).optional(),
     mustFixMin: z.number().int().optional(),
     mustFixMax: z.number().int().optional(),
     maxFalsePositives: z.number().int().optional(),
@@ -54,6 +61,10 @@ const CorpusCaseSchema = z.object({
 
 export type DetectorRelaxationPolicy = z.infer<typeof PolicySchema>;
 export type DetectorCorpusCase = z.infer<typeof CorpusCaseSchema>;
+
+export function parseDetectorRelaxationPolicy(value: unknown): DetectorRelaxationPolicy {
+  return PolicySchema.parse(value);
+}
 
 export interface DetectorPolicyCheckInput {
   changedDetectorIds: string[];
@@ -84,12 +95,14 @@ export function checkDetectorPolicy(input: DetectorPolicyCheckInput): string[] {
 
   uniqueValues(input.cases.map(({ id }) => id), "corpus case id", errors);
   const cases = new Map(input.cases.map((testCase) => [testCase.id, testCase]));
-  preserveHistoricalPairControls(
-    input.previousPolicy?.pairs ?? [],
-    new Map((input.previousCases ?? []).map((testCase) => [testCase.id, testCase])),
-    cases,
-    errors
-  );
+  if (input.previousCases !== undefined) {
+    preserveHistoricalPairControls(
+      input.previousPolicy?.pairs ?? [],
+      new Map(input.previousCases.map((testCase) => [testCase.id, testCase])),
+      cases,
+      errors
+    );
+  }
   for (const pair of input.currentPolicy.pairs) validatePair(pair, detectorIds, cases, errors);
   for (const exemption of input.currentPolicy.structuralExemptions) {
     if (!detectorIds.has(exemption.detectorId)) {
@@ -187,7 +200,7 @@ function isFalsePositiveControl(testCase: DetectorCorpusCase): boolean {
   const verdicts = expectedVerdicts(testCase);
   return testCase.kind === "golden" &&
     verdicts.length > 0 &&
-    verdicts.every((verdict) => verdict === "open_pr" || verdict === "open_pr_with_warning") &&
+    verdicts.every((verdict) => NON_BLOCKING_VERDICTS.has(verdict)) &&
     testCase.expected.mustFixMax === 0 &&
     testCase.expected.maxFalsePositives === 0 &&
     testCase.expected.knownGap !== true;
@@ -197,12 +210,12 @@ function isMustBlockControl(testCase: DetectorCorpusCase): boolean {
   const verdicts = expectedVerdicts(testCase);
   return testCase.kind === "seeded" &&
     verdicts.length > 0 &&
-    verdicts.every((verdict) => verdict === "block_pr") &&
+    verdicts.every((verdict) => MUST_BLOCK_VERDICTS.has(verdict)) &&
     (testCase.expected.mustFixMin ?? 0) >= 1 &&
     testCase.expected.knownGap !== true;
 }
 
-function expectedVerdicts(testCase: DetectorCorpusCase): string[] {
+function expectedVerdicts(testCase: DetectorCorpusCase): VerdictDecision[] {
   if (testCase.expected.verdict) return [testCase.expected.verdict];
   return testCase.expected.verdictAnyOf ?? [];
 }
@@ -254,11 +267,7 @@ function preserveHistoricalPairControls(
         errors.push(`historical pair ${pair.id} is missing base corpus case ${caseId}`);
       } else if (!current) {
         errors.push(`historical pair ${pair.id} corpus case ${caseId} was deleted`);
-      } else if (
-        current.kind !== previous.kind ||
-        !isDeepStrictEqual(current.input, previous.input) ||
-        !isDeepStrictEqual(current.expected, previous.expected)
-      ) {
+      } else if (!isDeepStrictEqual(current, previous)) {
         errors.push(`historical pair ${pair.id} corpus case ${caseId} input and expectations are immutable`);
       }
     }
@@ -267,8 +276,8 @@ function preserveHistoricalPairControls(
 
 async function run(): Promise<void> {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-  const currentPolicy = PolicySchema.parse(
-    JSON.parse(await readFile(resolve(repoRoot, "eval/detector-relaxations.json"), "utf8"))
+  const currentPolicy = parseDetectorRelaxationPolicy(
+    JSON.parse(await readFile(resolve(repoRoot, POLICY_PATH), "utf8"))
   );
   const base = await resolveBase(repoRoot);
   const previousPolicy = await loadBasePolicy(repoRoot, base);
@@ -279,7 +288,7 @@ async function run(): Promise<void> {
     const previous = await gitShow(repoRoot, base, detector.path);
     if (detectorSourceChanged(previous, current, detector.path)) changedDetectorIds.push(detector.id);
   }
-  const cases = await loadCorpusCases(resolve(repoRoot, "packages/core/eval/corpus"));
+  const cases = await loadCorpusCases(resolve(repoRoot, CORPUS_DIR));
   const errors = checkDetectorPolicy({ changedDetectorIds, currentPolicy, previousPolicy, cases, previousCases });
   process.stdout.write(`${JSON.stringify({ base, changedDetectorIds, errors }, null, 2)}\n`);
   if (errors.length > 0) process.exitCode = 1;
@@ -290,9 +299,11 @@ export async function resolveBase(repoRoot: string, env: NodeJS.ProcessEnv = pro
   if (env.GITHUB_ACTIONS === "true" && (!configured || /^0+$/.test(configured))) {
     throw new Error("BASE_SHA must identify the trusted pull-request base in GitHub Actions");
   }
-  const base = configured && !/^0+$/.test(configured)
+  if (configured?.startsWith("-")) throw new Error("BASE_SHA must not start with '-'");
+  const baseRef = configured && !/^0+$/.test(configured)
     ? configured
     : await resolveLocalBase(repoRoot);
+  const base = await git(repoRoot, ["rev-parse", "--verify", `${baseRef}^{commit}`]);
   await git(repoRoot, ["cat-file", "-e", `${base}^{commit}`]);
   if (env.GITHUB_ACTIONS === "true") {
     const mergeBase = await git(repoRoot, ["merge-base", "HEAD", base]);
@@ -320,8 +331,8 @@ async function resolveLocalBase(repoRoot: string): Promise<string> {
 }
 
 async function loadBasePolicy(repoRoot: string, base: string): Promise<DetectorRelaxationPolicy | undefined> {
-  const content = await gitShow(repoRoot, base, "eval/detector-relaxations.json");
-  return content ? PolicySchema.parse(JSON.parse(content)) : undefined;
+  const content = await gitShow(repoRoot, base, POLICY_PATH);
+  return content ? parseDetectorRelaxationPolicy(JSON.parse(content)) : undefined;
 }
 
 async function loadCorpusCases(dir: string): Promise<DetectorCorpusCase[]> {
@@ -331,12 +342,17 @@ async function loadCorpusCases(dir: string): Promise<DetectorCorpusCase[]> {
 
 async function loadBaseCorpusCases(repoRoot: string, base: string): Promise<DetectorCorpusCase[]> {
   const listing = await git(repoRoot, [
-    "ls-tree", "-r", "--name-only", base, "--", "packages/core/eval/corpus"
+    "ls-tree", "-r", "--name-only", base, "--", CORPUS_DIR
   ]);
   const paths = listing.split("\n").filter((path) => path.endsWith(".json"));
-  return Promise.all(paths.map(async (path) => (
-    CorpusCaseSchema.parse(JSON.parse(await gitShow(repoRoot, base, path)))
-  )));
+  const cases: DetectorCorpusCase[] = [];
+  for (let index = 0; index < paths.length; index += BASE_CORPUS_READ_CONCURRENCY) {
+    const batch = await Promise.all(paths.slice(index, index + BASE_CORPUS_READ_CONCURRENCY).map(async (path) => (
+      CorpusCaseSchema.parse(JSON.parse(await gitShow(repoRoot, base, path)))
+    )));
+    cases.push(...batch);
+  }
+  return cases;
 }
 
 async function findJsonFiles(dir: string): Promise<string[]> {
@@ -362,7 +378,11 @@ async function gitShow(repoRoot: string, revision: string, path: string): Promis
 }
 
 async function git(repoRoot: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("git", args, { cwd: repoRoot, encoding: "utf8" });
+  const { stdout } = await execFileAsync("git", args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C" }
+  });
   return stdout.trim();
 }
 
