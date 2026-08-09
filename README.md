@@ -507,6 +507,9 @@ independent gate decision for the orchestrator and human reviewers.
 See [docs/MVP.md](./docs/MVP.md) for the current product scope and the explicit
 line between this MVP and the longer-term AI verifier design.
 
+Release maintainers should follow the component
+[release tag checklist](./docs/release-tags.md).
+
 ## Full Verifier Roadmap
 
 The longer-term design is documented but not fully implemented:
