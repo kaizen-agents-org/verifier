@@ -29,7 +29,7 @@ const PairSchema = z.object({
   falsePositiveCaseId: z.string().min(1),
   mustBlockCaseId: z.string().min(1),
   sharedTrigger: z.string().min(3),
-  rationale: z.string().min(1)
+  rationale: z.string().trim().min(1)
 }).strict();
 
 const StructuralExemptionSchema = z.object({

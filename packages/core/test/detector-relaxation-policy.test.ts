@@ -289,7 +289,11 @@ describe("detector relaxation policy", () => {
     );
   });
 
-  it("rejects whitespace-only structural exemption rationales", () => {
+  it("rejects whitespace-only policy rationales", () => {
+    expect(() => parseDetectorRelaxationPolicy({
+      ...previousPolicy,
+      pairs: [{ ...pair, rationale: "  " }]
+    })).toThrow();
     expect(() => parseDetectorRelaxationPolicy({
       ...previousPolicy,
       structuralExemptions: [{ id: "blank-rationale", detectorId: detector.id, rationale: "  " }]
