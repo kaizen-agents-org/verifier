@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "detectors": [
+    {
+      "id": "minimal-verdict",
+      "path": "packages/core/src/minimal-verdict.ts"
+    }
+  ],
+  "pairs": [],
+  "structuralExemptions": []
+}
