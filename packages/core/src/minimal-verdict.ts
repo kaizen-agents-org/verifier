@@ -118,7 +118,8 @@ const HIGH_RISK_DIFF_SIGNALS = [
     addedPattern:
       /\b(?:const|let|var)\s+\w*(?:password|secret|token|credential|api_?key)\w*\s*=|\b(?:process\.env|req\.(?:body|headers)|headers\.get|secretManager|vault)\b[^\n]*(?:password|secret|token|credential|api[_-]?key)|\b(?:console|logger)\.\w+\s*\([^\n]*(?:password|secret|token|credential|api[_-]?key)/i,
     removedPattern: REMOVED_SECRET_GUARD_PATTERN,
-    coveragePattern: /\b(?:secret|credential|token|api[_-\s]?key|redact|mask|leak|security)\b/i
+    coveragePattern:
+      /\b(?:secret|credential|token|api[_-\s]?key|redact|mask|saniti[sz](?:e|ation)|scrub|headers?|cookies?|auth(?:orization)?|leak|security)\b/i
   },
   {
     label: "billing/payments",
@@ -316,6 +317,13 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }
       if (line.kind === "removed" && signal.removedPattern?.test(line.content)) return true;
       return line.kind !== "context" && Boolean(signal.pathPattern?.test(line.path));
     });
+    if (signal.removedPattern) {
+      for (const line of findMultilineRemovedMatches(allDiffLines, signal.removedPattern)) {
+        if (!matches.some((match) => match.path === line.path && match.hunk === line.hunk && match.content === line.content)) {
+          matches.push(line);
+        }
+      }
+    }
     if (signal.label === "auth/authz") {
       for (const line of authorizationPolicyMatches) {
         if (!matches.includes(line)) matches.push(line);
@@ -327,6 +335,34 @@ function assessDiffRisk(diff: string): Array<{ label: string; evidence: string }
       evidence: matches.slice(0, 3).map(formatDiffEvidence).join("\n")
     }];
   });
+}
+
+function findMultilineRemovedMatches(lines: DiffRiskLine[], pattern: RegExp): DiffRiskLine[] {
+  const matches: DiffRiskLine[] = [];
+  let group: DiffRiskLine[] = [];
+  const flush = () => {
+    const first = group[0];
+    if (first && group.length > 1) {
+      const content = group.map((line) => line.content.trim()).join(" ");
+      if (pattern.test(content)) matches.push({ ...first, content });
+    }
+    group = [];
+  };
+
+  for (const line of lines) {
+    const previous = group.at(-1);
+    if (
+      line.kind !== "removed" ||
+      !isRuntimeRiskLine(line) ||
+      (previous && (previous.path !== line.path || previous.hunk !== line.hunk))
+    ) {
+      flush();
+      if (line.kind !== "removed" || !isRuntimeRiskLine(line)) continue;
+    }
+    group.push(line);
+  }
+  flush();
+  return matches;
 }
 
 function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {

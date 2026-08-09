@@ -447,6 +447,21 @@ describe("evaluateMinimalVerdict", () => {
   });
 
   it.each([
+    "redact: [\n-  \"req.headers.authorization\"\n-]",
+    "const safeCookies = redact(\n-  request.cookies\n-)"
+  ])("blocks multiline removal of the secret guard %s", (removedExpression) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff: `diff --git a/logger.ts b/logger.ts\n-${removedExpression}\n+const safeHeaders = request.headers`,
+      verifyLogs: "all tests passed",
+      builderReport: "Simplified the request logging helper."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
+  it.each([
     "const guard = secretSanitizationGuard()",
     "const guard = sanitizationSecretGuard()",
     "const guard = credentialSanitisationGuard()",
@@ -1144,6 +1159,24 @@ describe("evaluateMinimalVerdict", () => {
       diff: "diff --git a/billing.ts b/billing.ts\n+const token = req.body.token",
       verifyLogs: "billing token tests passed",
       builderReport: "Verified billing token handling with focused tests."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(true);
+  });
+
+  it.each([
+    "cookie logging tests passed",
+    "authorization header tests passed",
+    "header redaction tests passed",
+    "credential sanitisation tests passed"
+  ])("accepts targeted secret-guard verification: %s", (verifyLogs) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor request logging",
+      diff: "diff --git a/logger.ts b/logger.ts\n-redact(request.cookies)\n+const safeCookies = request.cookies",
+      verifyLogs,
+      builderReport: "Verified the request logging behavior."
     });
 
     expect(verdict.verdict).toBe("open_pr_with_warning");
