@@ -67,6 +67,7 @@ query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
       and ($threads.nodes | type == "array")
       and ($threads.pageInfo | type == "object")
       and ($threads.pageInfo.hasNextPage | type == "boolean")
+      and ($threads.pageInfo | has("endCursor"))
       and (($threads.pageInfo.endCursor == null) or ($threads.pageInfo.endCursor | type == "string"))
       and all($threads.nodes[];
         (.id | type == "string")
@@ -78,12 +79,14 @@ query($owner:String!, $name:String!, $number:Int!, $cursor:String) {
         and all(.comments.nodes[];
           ((.fullDatabaseId | type) == "string" or (.fullDatabaseId | type) == "number")
           and (.url | type == "string")
+          and has("author")
           and ((.author == null) or ((.author | type == "object") and (.author.login | type == "string")))
           and (.body | type == "string")
           and (.createdAt | type == "string")
           and (.outdated | type == "boolean"))
         and (.comments.pageInfo | type == "object")
         and (.comments.pageInfo.hasNextPage | type == "boolean")
+        and (.comments.pageInfo | has("endCursor"))
         and ((.comments.pageInfo.endCursor == null) or (.comments.pageInfo.endCursor | type == "string"))))
   ' >/dev/null <<<"${page}"; then
     echo 'reviewThreads returned an incomplete response' >&2
@@ -137,12 +140,14 @@ query($threadId:ID!, $cursor:String) {
       and all($comments.nodes[];
         ((.fullDatabaseId | type) == "string" or (.fullDatabaseId | type) == "number")
         and (.url | type == "string")
+        and has("author")
         and ((.author == null) or ((.author | type == "object") and (.author.login | type == "string")))
         and (.body | type == "string")
         and (.createdAt | type == "string")
         and (.outdated | type == "boolean"))
       and ($comments.pageInfo | type == "object")
       and ($comments.pageInfo.hasNextPage | type == "boolean")
+      and ($comments.pageInfo | has("endCursor"))
       and (($comments.pageInfo.endCursor == null) or ($comments.pageInfo.endCursor | type == "string")))
   ' >/dev/null <<<"${page}"; then
     echo 'review comments returned an incomplete response' >&2
