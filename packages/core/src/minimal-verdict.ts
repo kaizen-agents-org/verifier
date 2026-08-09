@@ -444,7 +444,7 @@ function scanDelimiterCode(content: string, hashComments = false): { content: st
       }
       continue;
     }
-    if (hashComments && character === "#") {
+    if (hashComments && character === "#" && content[index - 1] !== "?") {
       while (index < content.length && content[index] !== "\n") {
         output[index] = " ";
         index += 1;
@@ -782,7 +782,7 @@ function isRegexLiteralStart(content: string, index: number): boolean {
     prefix.length === 0 ||
     /[=>(:,!&|?;[\]{}]$/.test(prefix) ||
     /(?:=|!)~$/.test(prefix) ||
-    /(?:^|[^\w$])(?:return|throw|case|yield|await)\s*$/i.test(prefix)
+    /(?:^|[^\w$])(?:return|throw|case|yield|await|if|unless|while|until|when|elsif)\s*$/i.test(prefix)
   );
 }
 
