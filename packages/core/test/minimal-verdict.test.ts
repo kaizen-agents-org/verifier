@@ -446,6 +446,26 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
   });
 
+  it.each([
+    "const guard = secretSanitizationGuard()",
+    "const guard = sanitizationSecretGuard()",
+    "const guard = credentialSanitisationGuard()",
+    "const guard = sanitisationCredentialGuard()",
+    "const safeHeaders = redact(request.headers)",
+    "const safeHeaders = redactHeaders(request.headers)",
+    "redact: [\"req.headers.authorization\"]"
+  ])("blocks removal of the secret guard %s", (removedLine) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff: `diff --git a/logger.ts b/logger.ts\n-${removedLine}\n+const safeHeaders = request.headers`,
+      verifyLogs: "all tests passed",
+      builderReport: "Simplified the request logging helper."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
   it("does not block harmless delete wording in added comments", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Document cleanup behavior",

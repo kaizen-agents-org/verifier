@@ -97,6 +97,13 @@ const MISSING_VERIFICATION_CONFIG_PATTERNS = [
   /\bnot configured:?\s+(?:verification\s+(?:commands?|logs?|results?)|test|tests|typecheck|lint|schema(?::check)?)\b/i
 ];
 
+const SECRET_GUARD_ACTION = String.raw`(?:redact|mask|saniti[sz](?:e|ation)|scrub)`;
+const SECRET_GUARD_TARGET = String.raw`(?:password|secret|token|credential|api[_-]?key|auth(?:orization)?|headers?|cookies?)`;
+const REMOVED_SECRET_GUARD_PATTERN = new RegExp(
+  String.raw`\b(?:${SECRET_GUARD_ACTION}\w*${SECRET_GUARD_TARGET}\w*|${SECRET_GUARD_TARGET}\w*${SECRET_GUARD_ACTION}\w*)\b|\b${SECRET_GUARD_ACTION}\w*\s*\([^\n]*${SECRET_GUARD_TARGET}|\b${SECRET_GUARD_ACTION}\w*\s*:\s*[^\n]*${SECRET_GUARD_TARGET}`,
+  "i"
+);
+
 const HIGH_RISK_DIFF_SIGNALS = [
   {
     label: "auth/authz",
@@ -110,8 +117,7 @@ const HIGH_RISK_DIFF_SIGNALS = [
     label: "secrets/credentials",
     addedPattern:
       /\b(?:const|let|var)\s+\w*(?:password|secret|token|credential|api_?key)\w*\s*=|\b(?:process\.env|req\.(?:body|headers)|headers\.get|secretManager|vault)\b[^\n]*(?:password|secret|token|credential|api[_-]?key)|\b(?:console|logger)\.\w+\s*\([^\n]*(?:password|secret|token|credential|api[_-]?key)/i,
-    removedPattern:
-      /\b(?:(?:redact|mask|saniti[sz]e|scrub)\w*(?:password|secret|token|credential|api_?key)\w*|(?:password|secret|token|credential|api_?key)\w*(?:redact|mask|saniti[sz]e|scrub)\w*)\b|\b(?:redact|mask|saniti[sz]e|scrub)\w*\s*\([^\n]*(?:password|secret|token|credential|api[_-]?key)/i,
+    removedPattern: REMOVED_SECRET_GUARD_PATTERN,
     coveragePattern: /\b(?:secret|credential|token|api[_-\s]?key|redact|mask|leak|security)\b/i
   },
   {
