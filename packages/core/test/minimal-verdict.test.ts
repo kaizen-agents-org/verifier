@@ -1315,7 +1315,8 @@ describe("evaluateMinimalVerdict", () => {
     ["Logger.cs", 'redact(headers, $"""{Get(\n-// note\n-password)}""")'],
     ["logger.rb", 'redact(headers, "#{record["safe"] + password}")'],
     ["logger.py", 'redact(\n-# close ) later\n-password)'],
-    ["logger.rb", 'redact(headers, "#{values.any?(/[}]/) && password}")']
+    ["logger.rb", 'redact(headers, "#{values.any?(/[}]/) && password}")'],
+    ["logger.rb", 'redact(headers, "#{value =~ /[}]/ && password}")']
   ])("preserves secret targets in nested or commented %s interpolation", (path, removedGuard) => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
