@@ -366,9 +366,16 @@ function findMultilineRemovedMatches(lines: DiffRiskLine[], pattern: RegExp): Di
   for (const line of lines) {
     const previous = group.at(-1);
     if (previous && removedExpressionIsComplete(group)) flush();
+    const activeGroup = group.at(-1);
+    const continuesIncompleteGroup = Boolean(
+      activeGroup &&
+      line.kind === "removed" &&
+      activeGroup.path === line.path &&
+      activeGroup.hunk === line.hunk
+    );
     if (
       line.kind !== "removed" ||
-      !isRuntimeRiskLine(line) ||
+      (!isRuntimeRiskLine(line) && !continuesIncompleteGroup) ||
       (previous && (previous.path !== line.path || previous.hunk !== line.hunk))
     ) {
       flush();
@@ -1103,10 +1110,15 @@ function findQuotedLiteralBounds(
   const verbatimCsharp = /\.cs$/i.test(path) && (prefix === "$@" || prefix === "@$");
   const pythonInterpolation = /\.py$/i.test(path) && (/^[rR]?[fF]$|^[fF][rR]?$/.test(prefix));
   const csharpInterpolation = /\.cs$/i.test(path) && /^\$+@?$|^@\$+$/.test(prefix);
+  const rubyInterpolation = /\.rb$/i.test(path) && quote === '"';
   const interpolationMarkerLength = csharpRawQuoted ? prefix.match(/^\$+/)?.[0].length ?? 1 : 1;
   for (let index = quoteIndex + delimiterLength; index < content.length; index += 1) {
     const interpolationStart = content.slice(index, index + interpolationMarkerLength) === "{".repeat(interpolationMarkerLength);
-    if ((pythonInterpolation || csharpInterpolation) && interpolationStart) {
+    const rubyInterpolationStart = rubyInterpolation && content.startsWith("#{", index);
+    if (rubyInterpolationStart) {
+      const interpolationEnd = findInterpolationEnd(content, index + 1, 1);
+      if (interpolationEnd !== null) index = interpolationEnd;
+    } else if ((pythonInterpolation || csharpInterpolation) && interpolationStart) {
       const interpolationEnd = findInterpolationEnd(content, index, interpolationMarkerLength);
       if (interpolationEnd !== null) index = interpolationEnd;
     } else if (verbatimCsharp && content[index] === quote && content[index + 1] === quote) {
