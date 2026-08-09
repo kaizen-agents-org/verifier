@@ -444,6 +444,13 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
       continue;
     }
     if (character === '"' || character === "'") {
+      const computedPropertyEnd = findComputedPropertyLiteralEnd(content, output, index);
+      if (computedPropertyEnd >= 0) {
+        output[index] = " ";
+        output[computedPropertyEnd] = " ";
+        index = computedPropertyEnd;
+        continue;
+      }
       quote = character;
       output[index] = " ";
       continue;
@@ -475,6 +482,38 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
     if (character === ")" || character === "]" || character === "}") depth -= 1;
   }
   return { content: output.join(""), depth };
+}
+
+function findComputedPropertyLiteralEnd(
+  content: string,
+  output: string[],
+  quoteIndex: number
+): number {
+  let bracketIndex = quoteIndex - 1;
+  while (bracketIndex >= 0 && /\s/.test(output[bracketIndex] ?? "")) bracketIndex -= 1;
+  if (output[bracketIndex] !== "[") return -1;
+
+  let receiverIndex = bracketIndex - 1;
+  while (receiverIndex >= 0 && /\s/.test(output[receiverIndex] ?? "")) receiverIndex -= 1;
+  if (!/[\w$\]).]/.test(output[receiverIndex] ?? "")) return -1;
+
+  const quote = content[quoteIndex] ?? "";
+  let closingQuote = quoteIndex + 1;
+  for (; closingQuote < content.length; closingQuote += 1) {
+    const character = content[closingQuote] ?? "";
+    if (character === "\\") {
+      closingQuote += 1;
+    } else if (character === quote) {
+      break;
+    }
+  }
+  if (closingQuote >= content.length) return -1;
+
+  let closingBracket = closingQuote + 1;
+  while (closingBracket < content.length && /\s/.test(content[closingBracket] ?? "")) {
+    closingBracket += 1;
+  }
+  return content[closingBracket] === "]" ? closingQuote : -1;
 }
 
 function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {

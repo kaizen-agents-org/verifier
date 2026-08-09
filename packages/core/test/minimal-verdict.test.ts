@@ -1257,6 +1257,36 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
   });
 
+  it("preserves secret targets used as computed property keys", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        '-redact(request.headers, record["password"])\n' +
+        '+logger.info(request.headers, record["password"])',
+      verifyLogs: "header logging tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
+  it("ignores computed-property text inside replacement literals", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        "-redact(request.headers, 'record[\"password\"]')\n" +
+        "+logger.info(request.headers)",
+      verifyLogs: "header logging tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
   it("accepts verification for the removed password guard", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify password logging",
