@@ -1316,7 +1316,9 @@ describe("evaluateMinimalVerdict", () => {
     ["logger.rb", 'redact(headers, "#{record["safe"] + password}")'],
     ["logger.py", 'redact(\n-# close ) later\n-password)'],
     ["logger.rb", 'redact(headers, "#{values.any?(/[}]/) && password}")'],
-    ["logger.rb", 'redact(headers, "#{value =~ /[}]/ && password}")']
+    ["logger.rb", 'redact(headers, "#{value =~ /[}]/ && password}")'],
+    ["logger.rb", 'redact(headers, "#{value =~ /#{password}/}")'],
+    ["logger.rb", 'redact(headers, "#{value =~ %r([}]) && password}")']
   ])("preserves secret targets in nested or commented %s interpolation", (path, removedGuard) => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
@@ -1327,6 +1329,18 @@ describe("evaluateMinimalVerdict", () => {
 
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
+  it.each(["logger.py", "logger.rb"])("ignores secret targets in %s hash comments", (path) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff: `diff --git a/${path} b/${path}\n-redact(headers) # rotate password later\n+log(headers)`,
+      verifyLogs: "header tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
   });
 
   it("does not treat Ruby interpolation syntax inside JavaScript strings as executable", () => {
@@ -1359,6 +1373,8 @@ describe("evaluateMinimalVerdict", () => {
 
     expect(verdict.verdict).toBe("block_pr");
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+    expect(verdict.must_fix.some((item) => item.evidence.includes("redact(headers)"))).toBe(true);
+    expect(verdict.must_fix.some((item) => item.evidence.includes("redact(token)"))).toBe(true);
   });
 
   it("ignores computed-property text inside replacement literals", () => {

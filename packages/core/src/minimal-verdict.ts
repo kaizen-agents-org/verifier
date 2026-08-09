@@ -1035,12 +1035,57 @@ function extractSecretTargets(matches: DiffRiskLine[]): string[] {
 }
 
 function extractSecretTargetContent(content: string, path: string, depth = 0): string[] {
-  const executableContent = [scanDelimiterCode(content).content];
+  const hashComments = /\.(?:py|rb)$/i.test(path);
+  const executableContent = [scanDelimiterCode(content, hashComments).content];
   if (depth >= 16) return executableContent;
-  for (const expression of extractInterpolatedStringExpressions(content, path)) {
+  const expressions = [
+    ...extractInterpolatedStringExpressions(content, path),
+    ...extractRubyRegexInterpolationExpressions(content, path)
+  ];
+  for (const expression of expressions) {
     executableContent.push(...extractSecretTargetContent(expression, path, depth + 1));
   }
   return executableContent;
+}
+
+function extractRubyRegexInterpolationExpressions(content: string, path: string): string[] {
+  if (!/\.rb$/i.test(path)) return [];
+  const expressions: string[] = [];
+  for (let index = 0; index < content.length; index += 1) {
+    if (content[index] === "/" && isRegexLiteralStart(content, index)) {
+      const end = findRegexLiteralEnd(content, index);
+      expressions.push(...findInterpolationBodies(content.slice(index + 1, end), "#{"));
+      index = end;
+      continue;
+    }
+    const percentRegex = findRubyPercentRegexBounds(content, index);
+    if (!percentRegex) continue;
+    expressions.push(...findInterpolationBodies(content.slice(percentRegex.bodyStart, percentRegex.end), "#{"));
+    index = percentRegex.end;
+  }
+  return expressions;
+}
+
+function findRubyPercentRegexBounds(
+  content: string,
+  start: number
+): { bodyStart: number; end: number } | null {
+  if (!content.startsWith("%r", start)) return null;
+  const opening = content[start + 2] ?? "";
+  if (!opening || /[A-Za-z0-9\s]/.test(opening)) return null;
+  const closing = ({ "(": ")", "[": "]", "{": "}", "<": ">" } as Record<string, string>)[opening] ?? opening;
+  let depth = 1;
+  for (let index = start + 3; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (character === "\\") {
+      index += 1;
+    } else if (opening !== closing && character === opening) {
+      depth += 1;
+    } else if (character === closing && --depth === 0) {
+      return { bodyStart: start + 3, end: index };
+    }
+  }
+  return null;
 }
 
 function extractInterpolatedStringExpressions(content: string, path: string): string[] {
@@ -1180,6 +1225,9 @@ function findInterpolationEnd(content: string, start: number, markerLength: numb
       index += 1;
     } else if (character === "/" && isRegexLiteralStart(content, index)) {
       index = findRegexLiteralEnd(content, index);
+    } else if (content.startsWith("%r", index)) {
+      const percentRegex = findRubyPercentRegexBounds(content, index);
+      if (percentRegex) index = percentRegex.end;
     } else if (character === "#") {
       lineComment = true;
     } else if (character === "\\") {
