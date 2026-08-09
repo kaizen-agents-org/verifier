@@ -1242,6 +1242,21 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix).toHaveLength(0);
   });
 
+  it("preserves secret targets inside removed template interpolations", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        "-redact(headers, `${password}`)\n" +
+        "+logger.info(headers, password)",
+      verifyLogs: "header tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
   it("accepts verification for the removed password guard", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify password logging",

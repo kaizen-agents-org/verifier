@@ -391,6 +391,7 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
   let depth = 0;
   let quote = "";
   let blockComment = false;
+  const templateExpressionDepths: number[] = [];
   for (let index = 0; index < content.length; index += 1) {
     const character = content[index] ?? "";
     const next = content[index + 1] ?? "";
@@ -413,6 +414,21 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
       }
       continue;
     }
+    const templateDepth = templateExpressionDepths.at(-1);
+    if (templateDepth === 0) {
+      output[index] = " ";
+      if (character === "\\") {
+        index += 1;
+        if (index < content.length) output[index] = " ";
+      } else if (character === "`") {
+        templateExpressionDepths.pop();
+      } else if (character === "$" && next === "{") {
+        output[index + 1] = " ";
+        templateExpressionDepths[templateExpressionDepths.length - 1] = 1;
+        index += 1;
+      }
+      continue;
+    }
     if (character === "/" && next === "/") {
       while (index < content.length && content[index] !== "\n") {
         output[index] = " ";
@@ -427,7 +443,7 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
       index += 1;
       continue;
     }
-    if (character === '"' || character === "'" || character === "`") {
+    if (character === '"' || character === "'") {
       quote = character;
       output[index] = " ";
       continue;
@@ -437,6 +453,23 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
       for (let masked = index; masked <= end; masked += 1) output[masked] = " ";
       index = end;
       continue;
+    }
+    if (character === "`") {
+      templateExpressionDepths.push(0);
+      output[index] = " ";
+      continue;
+    }
+    if (templateDepth !== undefined) {
+      if (character === "{") {
+        templateExpressionDepths[templateExpressionDepths.length - 1] = templateDepth + 1;
+      } else if (character === "}") {
+        const nextDepth = templateDepth - 1;
+        templateExpressionDepths[templateExpressionDepths.length - 1] = nextDepth;
+        if (nextDepth === 0) {
+          output[index] = " ";
+          continue;
+        }
+      }
     }
     if (character === "(" || character === "[" || character === "{") depth += 1;
     if (character === ")" || character === "]" || character === "}") depth -= 1;
