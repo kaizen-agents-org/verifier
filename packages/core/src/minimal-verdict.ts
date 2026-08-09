@@ -1068,7 +1068,7 @@ function extractRubyRegexInterpolationExpressions(content: string, path: string)
       continue;
     }
     if (character === "/" && isRegexLiteralStart(content, index)) {
-      const end = findRegexLiteralEnd(content, index);
+      const end = findRubyRegexLiteralEnd(content, index);
       expressions.push(...findInterpolationBodies(content.slice(index + 1, end), "#{"));
       index = end;
       continue;
@@ -1094,6 +1094,10 @@ function findRubyPercentRegexBounds(
     const character = content[index] ?? "";
     if (character === "\\") {
       index += 1;
+    } else if (content.startsWith("#{", index) && !isEscapedAt(content, index)) {
+      const interpolationEnd = findInterpolationEnd(content, index + 1, 1, true);
+      if (interpolationEnd === null) return null;
+      index = interpolationEnd;
     } else if (opening !== closing && character === opening) {
       depth += 1;
     } else if (character === closing && --depth === 0) {
@@ -1101,6 +1105,30 @@ function findRubyPercentRegexBounds(
     }
   }
   return null;
+}
+
+function findRubyRegexLiteralEnd(content: string, start: number): number {
+  let escaped = false;
+  let characterClass = false;
+  for (let index = start + 1; index < content.length; index += 1) {
+    const character = content[index] ?? "";
+    if (escaped) {
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (content.startsWith("#{", index)) {
+      const interpolationEnd = findInterpolationEnd(content, index + 1, 1, true);
+      if (interpolationEnd === null) return content.length - 1;
+      index = interpolationEnd;
+    } else if (character === "[") {
+      characterClass = true;
+    } else if (character === "]") {
+      characterClass = false;
+    } else if (character === "/" && !characterClass) {
+      return index;
+    }
+  }
+  return content.length - 1;
 }
 
 function extractInterpolatedStringExpressions(content: string, path: string): string[] {
@@ -1182,7 +1210,7 @@ function findQuotedLiteralBounds(
   const interpolationMarkerLength = csharpRawQuoted ? prefix.match(/^\$+/)?.[0].length ?? 1 : 1;
   for (let index = quoteIndex + delimiterLength; index < content.length; index += 1) {
     const interpolationStart = content.slice(index, index + interpolationMarkerLength) === "{".repeat(interpolationMarkerLength);
-    const rubyInterpolationStart = rubyInterpolation && content.startsWith("#{", index);
+    const rubyInterpolationStart = rubyInterpolation && content.startsWith("#{", index) && !isEscapedAt(content, index);
     if (rubyInterpolationStart) {
       const interpolationEnd = findInterpolationEnd(content, index + 1, 1, true);
       if (interpolationEnd !== null) index = interpolationEnd;
@@ -1244,7 +1272,7 @@ function findInterpolationEnd(
       lineComment = true;
       index += 1;
     } else if (character === "/" && isRegexLiteralStart(content, index)) {
-      index = findRegexLiteralEnd(content, index);
+      index = rubySyntax ? findRubyRegexLiteralEnd(content, index) : findRegexLiteralEnd(content, index);
     } else if (rubySyntax && content.startsWith("%r", index)) {
       const percentRegex = findRubyPercentRegexBounds(content, index);
       if (percentRegex) index = percentRegex.end;
@@ -1268,6 +1296,7 @@ function findInterpolationBodies(literal: string, marker: string): string[] {
   const bodies: string[] = [];
   for (let index = 0; index < literal.length; index += 1) {
     if (!literal.startsWith(marker, index)) continue;
+    if (marker === "#{" && isEscapedAt(literal, index)) continue;
     if (marker === "{" && (literal[index - 1] === "{" || literal[index + 1] === "{")) continue;
     const bodyStart = index + marker.length;
     const markerLength = marker === "#{" ? 1 : marker.length;
@@ -1284,6 +1313,12 @@ function findInterpolationBodies(literal: string, marker: string): string[] {
     }
   }
   return bodies;
+}
+
+function isEscapedAt(content: string, index: number): boolean {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && content[cursor] === "\\"; cursor -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
 }
 
 function chooseVerdict(input: {

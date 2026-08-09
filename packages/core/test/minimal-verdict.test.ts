@@ -1319,7 +1319,9 @@ describe("evaluateMinimalVerdict", () => {
     ["logger.rb", 'redact(headers, "#{value =~ /[}]/ && password}")'],
     ["logger.rb", 'redact(headers, "#{value =~ /#{password}/}")'],
     ["logger.rb", 'redact(headers, "#{value =~ %r([}]) && password}")'],
-    ["logger.rb", 'redact(headers, "#{value =~ %r(#{password})}")']
+    ["logger.rb", 'redact(headers, "#{value =~ %r(#{password})}")'],
+    ["logger.rb", 'redact(headers, /#{format("/") + password}/)'],
+    ["logger.rb", 'redact(headers, %r(#{format(")") + password}))']
   ])("preserves secret targets in nested or commented %s interpolation", (path, removedGuard) => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
@@ -1351,6 +1353,21 @@ describe("evaluateMinimalVerdict", () => {
         "diff --git a/logger.rb b/logger.rb\n" +
         "-redact(headers, 'value =~ /#{password}/')\n" +
         "+log(headers)",
+      verifyLogs: "header tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
+  it.each([
+    'redact(headers, "\\#{password}")',
+    'redact(headers, /\\#{password}/)'
+  ])("ignores escaped Ruby interpolation markers in %s", (removedGuard) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff: `diff --git a/logger.rb b/logger.rb\n-${removedGuard}\n+log(headers)`,
       verifyLogs: "header tests passed",
       builderReport: "Verified header logging behavior."
     });
