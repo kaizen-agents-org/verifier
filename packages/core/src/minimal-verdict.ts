@@ -1122,7 +1122,9 @@ function maskRubyPercentLiterals(content: string): string {
   for (let index = 0; index < content.length; index += 1) {
     const bounds = findRubyPercentLiteralBounds(content, index);
     if (!bounds) continue;
-    for (let masked = index; masked <= bounds.end; masked += 1) output[masked] = " ";
+    for (let masked = index; masked <= bounds.end; masked += 1) {
+      output[masked] = content[masked] === "\n" ? "\n" : " ";
+    }
     index = bounds.end;
   }
   return output.join("");

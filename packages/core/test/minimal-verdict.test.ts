@@ -1379,10 +1379,15 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix).toHaveLength(0);
   });
 
-  it("masks literal target text in Ruby percent regexps", () => {
+  it.each([
+    "%r(password)",
+    "%q(#{password})",
+    "%Q(password)",
+    "%w(password)"
+  ])("masks literal target text in Ruby percent literal %s", (literal) => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
-      diff: "diff --git a/logger.rb b/logger.rb\n-redact(headers, %r(password))\n+log(headers)",
+      diff: `diff --git a/logger.rb b/logger.rb\n-redact(headers, ${literal})\n+log(headers)`,
       verifyLogs: "header tests passed",
       builderReport: "Verified header logging behavior."
     });
