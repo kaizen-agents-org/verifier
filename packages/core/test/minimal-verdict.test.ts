@@ -430,6 +430,22 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(false);
   });
 
+  it("blocks removed secret redaction guards without targeted verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        "-const safeHeaders = redactSecrets(request.headers)\n" +
+        "+const safeHeaders = request.headers",
+      verifyLogs: "all tests passed",
+      builderReport: "Simplified the request logging helper."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.risk).toBe("high");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
   it("does not block harmless delete wording in added comments", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Document cleanup behavior",

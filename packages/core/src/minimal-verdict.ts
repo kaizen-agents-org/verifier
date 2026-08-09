@@ -110,6 +110,8 @@ const HIGH_RISK_DIFF_SIGNALS = [
     label: "secrets/credentials",
     addedPattern:
       /\b(?:const|let|var)\s+\w*(?:password|secret|token|credential|api_?key)\w*\s*=|\b(?:process\.env|req\.(?:body|headers)|headers\.get|secretManager|vault)\b[^\n]*(?:password|secret|token|credential|api[_-]?key)|\b(?:console|logger)\.\w+\s*\([^\n]*(?:password|secret|token|credential|api[_-]?key)/i,
+    removedPattern:
+      /\b(?:(?:redact|mask|saniti[sz]e|scrub)\w*(?:password|secret|token|credential|api_?key)\w*|(?:password|secret|token|credential|api_?key)\w*(?:redact|mask|saniti[sz]e|scrub)\w*)\b|\b(?:redact|mask|saniti[sz]e|scrub)\w*\s*\([^\n]*(?:password|secret|token|credential|api[_-]?key)/i,
     coveragePattern: /\b(?:secret|credential|token|api[_-\s]?key|redact|mask|leak|security)\b/i
   },
   {
