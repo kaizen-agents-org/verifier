@@ -1363,7 +1363,8 @@ describe("evaluateMinimalVerdict", () => {
 
   it.each([
     'redact(headers, "\\#{password}")',
-    'redact(headers, /\\#{password}/)'
+    'redact(headers, /\\#{password}/)',
+    'redact(headers, %r(\\#{password}))'
   ])("ignores escaped Ruby interpolation markers in %s", (removedGuard) => {
     const verdict = evaluateMinimalVerdict({
       task: "Simplify request logging",
