@@ -66,8 +66,8 @@ Useful package commands:
 | `pnpm eval:fixtures` | Run the hermetic repository-fixture baseline and update `fixtures/metrics.json`. |
 | `pnpm eval:semantic -- --mode smoke` | Replay sb-001/003/008 with refutation on and off. |
 | `pnpm eval:semantic -- --mode full --output fixtures/semantic-metrics.json` | Replay the full semantic corpus and enforce `eval/thresholds.json`. |
-| `pnpm schema:generate` | Regenerate `schemas/verdict.schema.json` from Zod types. |
-| `pnpm schema:check` | Regenerate the schema and fail if the committed schema is stale. |
+| `pnpm schema:generate` | Regenerate the verdict and Kaizen integration schemas from Zod types. |
+| `pnpm schema:check` | Regenerate both schemas and fail if either committed schema is stale. |
 
 ## Opt-in Intent Extraction
 
@@ -456,6 +456,11 @@ The integration payload is:
   }
 }
 ```
+
+The machine-readable contract for this result file is generated from
+`KaizenVerifierResultSchema` and committed as
+`schemas/kaizen-verifier-result.schema.json`. Run `pnpm schema:check` after any
+payload contract change.
 
 `status` is one of `open_pr`, `open_pr_with_warning`, `block_pr`, or
 `needs_context`. `must_fix` and `should_fix` preserve the structured finding

@@ -49,6 +49,29 @@ export const VerdictInputSchema = z.object({
 });
 export type VerdictInput = z.infer<typeof VerdictInputSchema>;
 
+export const VerdictRunSchema = z.object({
+  id: z.string(),
+  started_at: z.string(),
+  completed_at: z.string(),
+  duration_ms: z.number().int().min(0),
+  workspace: z.string(),
+  base_ref: z.string(),
+  head_ref: z.string(),
+  artifacts_dir: z.string(),
+  changed_files: z.array(z.string()),
+  verify_commands: z.array(
+    z.object({
+      command: z.string(),
+      exit_code: z.number().int().nullable(),
+      signal: z.string().nullable(),
+      duration_ms: z.number().int().min(0),
+      timed_out: z.boolean().optional(),
+      timeout_ms: z.number().int().min(1).optional()
+    })
+  )
+});
+export type VerdictRun = z.infer<typeof VerdictRunSchema>;
+
 export const MinimalVerdictSchema = z.object({
   schemaVersion: z.literal(1),
   verdict: VerdictDecisionSchema,
@@ -60,29 +83,7 @@ export const MinimalVerdictSchema = z.object({
   confidence: z.number().int().min(0).max(100),
   risk: RiskLevelSchema,
   summary: z.string(),
-  run: z
-    .object({
-      id: z.string(),
-      started_at: z.string(),
-      completed_at: z.string(),
-      duration_ms: z.number().int().min(0),
-      workspace: z.string(),
-      base_ref: z.string(),
-      head_ref: z.string(),
-      artifacts_dir: z.string(),
-      changed_files: z.array(z.string()),
-      verify_commands: z.array(
-        z.object({
-          command: z.string(),
-          exit_code: z.number().int().nullable(),
-          signal: z.string().nullable(),
-          duration_ms: z.number().int().min(0),
-          timed_out: z.boolean().optional(),
-          timeout_ms: z.number().int().min(1).optional()
-        })
-      )
-    })
-    .optional(),
+  run: VerdictRunSchema.optional(),
   evidence: z
     .array(
       z.object({
@@ -103,21 +104,22 @@ export const MinimalVerdictSchema = z.object({
 });
 export type MinimalVerdict = z.infer<typeof MinimalVerdictSchema>;
 
-export interface KaizenVerifierResult {
-  schemaVersion: 1;
-  verdict: VerdictDecision;
-  final_verdict: FinalVerdictKind;
-  status: VerdictDecision;
-  evidence_grade: EvidenceGrade;
-  confidence: number;
-  risk: RiskLevel;
-  summary: string;
-  notes: string;
-  reason: string;
-  must_fix: MinimalFinding[];
-  should_fix: MinimalFinding[];
-  run: NonNullable<MinimalVerdict["run"]>;
-}
+export const KaizenVerifierResultSchema = z.object({
+  schemaVersion: z.literal(1),
+  verdict: VerdictDecisionSchema,
+  final_verdict: FinalVerdictKindSchema,
+  status: VerdictDecisionSchema,
+  evidence_grade: EvidenceGradeSchema,
+  confidence: z.number().int().min(0).max(100),
+  risk: RiskLevelSchema,
+  summary: z.string(),
+  notes: z.string(),
+  reason: z.string(),
+  must_fix: z.array(MinimalFindingSchema),
+  should_fix: z.array(MinimalFindingSchema),
+  run: VerdictRunSchema
+});
+export type KaizenVerifierResult = z.infer<typeof KaizenVerifierResultSchema>;
 
 export const VerdictSchema = MinimalVerdictSchema;
 export type Verdict = MinimalVerdict;
