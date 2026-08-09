@@ -6,6 +6,15 @@
       "path": "packages/core/src/minimal-verdict.ts"
     }
   ],
-  "pairs": [],
+  "pairs": [
+    {
+      "id": "minimal-verdict-removed-secret-redaction",
+      "detectorId": "minimal-verdict",
+      "falsePositiveCaseId": "gp-028-added-secret-redaction-remains-safe",
+      "mustBlockCaseId": "sb-025-removed-secret-redaction-blocks",
+      "sharedTrigger": "redactSecrets",
+      "rationale": "Removing a secret-redaction guard must block, while adding the same guard must remain non-blocking."
+    }
+  ],
   "structuralExemptions": []
 }

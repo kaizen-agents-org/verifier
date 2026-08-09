@@ -430,6 +430,57 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(false);
   });
 
+  it("blocks removed secret redaction guards without targeted verification evidence", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        "-const safeHeaders = redactSecrets(request.headers)\n" +
+        "+const safeHeaders = request.headers",
+      verifyLogs: "all tests passed",
+      builderReport: "Simplified the request logging helper."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.risk).toBe("high");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
+  it.each([
+    "redact: [\n-  \"req.headers.authorization\"\n-]",
+    "const safeCookies = redact(\n-  request.cookies\n-)"
+  ])("blocks multiline removal of the secret guard %s", (removedExpression) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff: `diff --git a/logger.ts b/logger.ts\n-${removedExpression}\n+const safeHeaders = request.headers`,
+      verifyLogs: "all tests passed",
+      builderReport: "Simplified the request logging helper."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
+  it.each([
+    "const guard = secretSanitizationGuard()",
+    "const guard = sanitizationSecretGuard()",
+    "const guard = credentialSanitisationGuard()",
+    "const guard = sanitisationCredentialGuard()",
+    "const safeHeaders = redact(request.headers)",
+    "const safeHeaders = redactHeaders(request.headers)",
+    "redact: [\"req.headers.authorization\"]"
+  ])("blocks removal of the secret guard %s", (removedLine) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify request logging",
+      diff: `diff --git a/logger.ts b/logger.ts\n-${removedLine}\n+const safeHeaders = request.headers`,
+      verifyLogs: "all tests passed",
+      builderReport: "Simplified the request logging helper."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
   it("does not block harmless delete wording in added comments", () => {
     const verdict = evaluateMinimalVerdict({
       task: "Document cleanup behavior",
@@ -1113,6 +1164,64 @@ describe("evaluateMinimalVerdict", () => {
     expect(verdict.verdict).toBe("open_pr_with_warning");
     expect(verdict.must_fix).toHaveLength(0);
     expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(true);
+  });
+
+  it.each([
+    ["redact(request.cookies)", "cookie logging tests passed"],
+    ["redact(request.headers.authorization)", "authorization header tests passed"],
+    ["redact(request.headers)", "header redaction tests passed"],
+    ["sanitiseCredential(credential)", "credential sanitisation tests passed"]
+  ])("accepts targeted secret-guard verification: %s", (removedGuard, verifyLogs) => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor request logging",
+      diff: `diff --git a/logger.ts b/logger.ts\n-${removedGuard}\n+const unsafeValue = requestValue`,
+      verifyLogs,
+      builderReport: "Verified the request logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+    expect(verdict.should_fix.some((item) => item.source === "diff")).toBe(true);
+  });
+
+  it("does not accept coverage for a different secret target", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify password logging",
+      diff: "diff --git a/logger.ts b/logger.ts\n-maskPassword(password)\n+logger.info(password)",
+      verifyLogs: "header tests passed",
+      builderReport: "Verified header logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("block_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(true);
+  });
+
+  it("accepts verification for the removed password guard", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Simplify password logging",
+      diff: "diff --git a/logger.ts b/logger.ts\n-maskPassword(password)\n+logger.info(password)",
+      verifyLogs: "password logging tests passed",
+      builderReport: "Verified password logging behavior."
+    });
+
+    expect(verdict.verdict).toBe("open_pr_with_warning");
+    expect(verdict.must_fix).toHaveLength(0);
+  });
+
+  it("does not combine adjacent removed statements into a secret guard", () => {
+    const verdict = evaluateMinimalVerdict({
+      task: "Refactor logging setup",
+      diff:
+        "diff --git a/logger.ts b/logger.ts\n" +
+        "-redact(displayName)\n" +
+        "-const headers = buildHeaders()\n" +
+        "+const headers = createHeaders()",
+      verifyLogs: "all tests passed",
+      builderReport: "Verified logging setup tests passed."
+    });
+
+    expect(verdict.verdict).toBe("open_pr");
+    expect(verdict.must_fix.some((item) => item.message.includes("secrets/credentials"))).toBe(false);
   });
 
   it("accepts targeted high-risk coverage from the builder report", () => {
