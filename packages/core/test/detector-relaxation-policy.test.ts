@@ -1,0 +1,298 @@
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  checkDetectorPolicy,
+  detectorSourceChanged,
+  parseDetectorRelaxationPolicy,
+  resolveBase,
+  type DetectorCorpusCase,
+  type DetectorRelaxationPolicy
+} from "../../../scripts/detector-relaxation-policy.js";
+
+const detector = { id: "minimal-verdict", path: "packages/core/src/minimal-verdict.ts" };
+const falsePositive: DetectorCorpusCase = {
+  id: "gp-clean-failure-prose",
+  kind: "golden",
+  input: { verifyLogs: "The failure-path tests passed." },
+  expected: { verdict: "open_pr", mustFixMax: 0, maxFalsePositives: 0 }
+};
+const mustBlock: DetectorCorpusCase = {
+  id: "sb-real-failure",
+  kind: "seeded",
+  input: { verifyLogs: "The failure-path test failed." },
+  expected: { verdict: "block_pr", mustFixMin: 1 }
+};
+const previousPolicy: DetectorRelaxationPolicy = {
+  version: 1,
+  detectors: [detector],
+  pairs: [],
+  structuralExemptions: []
+};
+const pair = {
+  id: "failure-prose-boundary",
+  detectorId: detector.id,
+  falsePositiveCaseId: falsePositive.id,
+  mustBlockCaseId: mustBlock.id,
+  sharedTrigger: "failure-path",
+  rationale: "Clean failure-path prose must not hide an actual failed failure-path test."
+};
+
+describe("detector relaxation policy", () => {
+  it("rejects an unpaired semantic detector change", () => {
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [detector.id],
+      currentPolicy: previousPolicy,
+      previousPolicy,
+      cases: [falsePositive, mustBlock]
+    })).toEqual([
+      "detector minimal-verdict changed without a new paired regression declaration or structural exemption"
+    ]);
+  });
+
+  it("accepts a detector change with a faithful positive/negative pair", () => {
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [detector.id],
+      currentPolicy: { ...previousPolicy, pairs: [pair] },
+      previousPolicy,
+      cases: [falsePositive, mustBlock]
+    })).toEqual([]);
+  });
+
+  it("does not treat input property names as shared triggers", () => {
+    const keyOnlyPair = { ...pair, sharedTrigger: "verifyLogs" };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [detector.id],
+      currentPolicy: { ...previousPolicy, pairs: [keyOnlyPair] },
+      previousPolicy,
+      cases: [falsePositive, mustBlock]
+    })).toEqual(expect.arrayContaining([
+      "pair failure-prose-boundary false-positive case does not contain shared trigger verifyLogs",
+      "pair failure-prose-boundary must-block case does not contain shared trigger verifyLogs"
+    ]));
+  });
+
+  it("detects additions-only control-flow relaxations", () => {
+    const previous = "export function blocks(value: string) { return /failed/.test(value); }";
+    const relaxed = "export function blocks(value: string) { if (value.includes('allowed')) return false; return /failed/.test(value); }";
+    expect(detectorSourceChanged(previous, relaxed)).toBe(true);
+  });
+
+  it("ignores comment-only and formatting changes", () => {
+    const previous = "// detector\nexport const blocks = (value: string) => /failed/.test(value);";
+    const reformatted = "export const blocks=(value: string)=> /failed/.test(value); // unchanged";
+    expect(detectorSourceChanged(previous, reformatted)).toBe(false);
+  });
+
+  it("falls back to the previous commit when no conventional base ref exists", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "verifier-relaxation-base-"));
+    const gitEnv = {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
+      LC_ALL: "C"
+    };
+    const git = (...args: string[]) => execFileSync("git", [
+      "-c", `core.hooksPath=${join(repo, "hooks")}`,
+      "-c", `init.templateDir=${repo}`,
+      "-c", "commit.gpgSign=false",
+      ...args
+    ], { cwd: repo, encoding: "utf8", env: gitEnv }).trim();
+    try {
+      git("init", "-b", "topic");
+      git("-c", "user.name=Verifier Test", "-c", "user.email=verifier@example.invalid", "commit", "--allow-empty", "-m", "base");
+      const base = git("rev-parse", "HEAD");
+      git("-c", "user.name=Verifier Test", "-c", "user.email=verifier@example.invalid", "commit", "--allow-empty", "-m", "head");
+      await expect(resolveBase(repo, {})).resolves.toBe(base);
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("allows an audited structural exemption without requiring a new fixture", () => {
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [detector.id],
+      currentPolicy: {
+        ...previousPolicy,
+        structuralExemptions: [{
+          id: "extract-pattern-constants",
+          detectorId: detector.id,
+          rationale: "Moves unchanged pattern constants without changing their use."
+        }]
+      },
+      previousPolicy,
+      cases: [falsePositive, mustBlock]
+    })).toEqual([]);
+  });
+
+  it("rejects a must-block case weakened or reclassified as a known gap", () => {
+    const weakened: DetectorCorpusCase = {
+      ...mustBlock,
+      expected: { verdict: "open_pr", mustFixMin: 0, knownGap: true }
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [detector.id],
+      currentPolicy: { ...previousPolicy, pairs: [pair] },
+      previousPolicy,
+      cases: [falsePositive, weakened]
+    })).toContain(
+      "pair failure-prose-boundary must-block case sb-real-failure must be seeded, require block_pr and mustFixMin >= 1, and not be a known gap"
+    );
+  });
+
+  it("keeps historical pair declarations append-only and immutable", () => {
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: previousPolicy,
+      previousPolicy: { ...previousPolicy, pairs: [pair] },
+      cases: [falsePositive, mustBlock],
+      previousCases: [falsePositive, mustBlock]
+    })).toEqual(["pair failure-prose-boundary was deleted"]);
+  });
+
+  it("compares historical declarations independently of property order", () => {
+    const reorderedPair = {
+      rationale: pair.rationale,
+      sharedTrigger: pair.sharedTrigger,
+      mustBlockCaseId: pair.mustBlockCaseId,
+      falsePositiveCaseId: pair.falsePositiveCaseId,
+      detectorId: pair.detectorId,
+      id: pair.id
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: { ...previousPolicy, pairs: [reorderedPair] },
+      previousPolicy: { ...previousPolicy, pairs: [pair] },
+      cases: [falsePositive, mustBlock],
+      previousCases: [falsePositive, mustBlock]
+    })).toEqual([]);
+  });
+
+  it("keeps historical paired corpus inputs and expectations immutable", () => {
+    const historicalPolicy = { ...previousPolicy, pairs: [pair] };
+    const rewrittenFalsePositive = {
+      ...falsePositive,
+      input: { verifyLogs: "An easier failure-path control passed." }
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: historicalPolicy,
+      previousPolicy: historicalPolicy,
+      cases: [rewrittenFalsePositive, mustBlock],
+      previousCases: [falsePositive, mustBlock]
+    })).toContain(
+      "historical pair failure-prose-boundary corpus case gp-clean-failure-prose input and expectations are immutable"
+    );
+
+    const weakenedExpectation = {
+      ...mustBlock,
+      expected: { ...mustBlock.expected, mustFixMin: 2 }
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: historicalPolicy,
+      previousPolicy: historicalPolicy,
+      cases: [falsePositive, weakenedExpectation],
+      previousCases: [falsePositive, mustBlock]
+    })).toContain(
+      "historical pair failure-prose-boundary corpus case sb-real-failure input and expectations are immutable"
+    );
+
+    const reorderedFalsePositive = {
+      ...falsePositive,
+      input: { nested: { second: "two", first: "one" }, verifyLogs: falsePositive.input.verifyLogs }
+    };
+    const originalFalsePositive = {
+      ...falsePositive,
+      input: { verifyLogs: falsePositive.input.verifyLogs, nested: { first: "one", second: "two" } }
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: historicalPolicy,
+      previousPolicy: historicalPolicy,
+      cases: [reorderedFalsePositive, mustBlock],
+      previousCases: [originalFalsePositive, mustBlock]
+    })).toEqual([]);
+
+    const changedSetup = { ...falsePositive, setup: { patch: "changed" } };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: historicalPolicy,
+      previousPolicy: historicalPolicy,
+      cases: [changedSetup, mustBlock],
+      previousCases: [{ ...falsePositive, setup: { patch: "original" } }, mustBlock]
+    })).toContain(
+      "historical pair failure-prose-boundary corpus case gp-clean-failure-prose input and expectations are immutable"
+    );
+  });
+
+  it("rejects duplicate corpus IDs that could mask a control", () => {
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: previousPolicy,
+      previousPolicy,
+      cases: [falsePositive, { ...mustBlock, id: falsePositive.id }]
+    })).toContain("corpus case id gp-clean-failure-prose must be unique");
+  });
+
+  it("reports malformed and missing pair controls precisely", () => {
+    const duplicatePolicy: DetectorRelaxationPolicy = {
+      version: 1,
+      detectors: [detector, { ...detector }],
+      pairs: [{ ...pair, mustBlockCaseId: falsePositive.id }],
+      structuralExemptions: [{ id: pair.id, detectorId: "missing", rationale: "audit" }]
+    };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: duplicatePolicy,
+      cases: [falsePositive]
+    })).toEqual(expect.arrayContaining([
+      "detector id minimal-verdict must be unique",
+      "detector path packages/core/src/minimal-verdict.ts must be unique",
+      "policy declaration id failure-prose-boundary is duplicated across pairs and exemptions",
+      "pair failure-prose-boundary must use distinct false-positive and must-block cases",
+      "pair failure-prose-boundary must-block case gp-clean-failure-prose must be seeded, require block_pr and mustFixMin >= 1, and not be a known gap",
+      "structural exemption failure-prose-boundary references unknown detector missing"
+    ]));
+
+    const unknownPair = { ...pair, detectorId: "missing", falsePositiveCaseId: "missing-golden" };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: { ...previousPolicy, pairs: [unknownPair] },
+      cases: [mustBlock]
+    })).toEqual(expect.arrayContaining([
+      "pair failure-prose-boundary references unknown detector missing",
+      "pair failure-prose-boundary false-positive case missing-golden does not exist"
+    ]));
+  });
+
+  it("reports missing and deleted historical pair controls", () => {
+    const historicalPolicy = { ...previousPolicy, pairs: [pair] };
+    expect(checkDetectorPolicy({
+      changedDetectorIds: [],
+      currentPolicy: historicalPolicy,
+      previousPolicy: historicalPolicy,
+      cases: [falsePositive],
+      previousCases: [mustBlock]
+    })).toEqual([
+      "historical pair failure-prose-boundary is missing base corpus case gp-clean-failure-prose",
+      "historical pair failure-prose-boundary corpus case sb-real-failure was deleted",
+      "pair failure-prose-boundary must-block case sb-real-failure does not exist"
+    ]);
+  });
+
+  it("rejects revision-like BASE_SHA options", async () => {
+    await expect(resolveBase(process.cwd(), { BASE_SHA: "--help" })).rejects.toThrow(
+      "BASE_SHA must not start with '-'"
+    );
+  });
+
+  it("rejects whitespace-only structural exemption rationales", () => {
+    expect(() => parseDetectorRelaxationPolicy({
+      ...previousPolicy,
+      structuralExemptions: [{ id: "blank-rationale", detectorId: detector.id, rationale: "  " }]
+    })).toThrow();
+  });
+});
