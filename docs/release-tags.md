@@ -16,15 +16,20 @@ pnpm build
 pnpm test:package-entry
 pnpm test:built-cli
 pnpm schema:check
-pnpm eval
-pnpm eval:semantic:ci
+pnpm --filter @verifier/core eval
+pnpm --filter @verifier/core exec node --import tsx src/eval/fixture-run.ts
+pnpm eval:relaxations
+SEMANTIC_EVAL_WRITE_METRICS=false pnpm eval:semantic:ci
+git diff --exit-code
 ```
 
-Review any changes to generated schemas or committed eval metrics before
-tagging; they are release evidence, not incidental build output. The onboarding
-installer builds and links the pinned checkout, so use `pnpm test:built-cli` to
-exercise that built command and its provenance rather than relying on a stale
-global `verifier` link.
+Refresh `fixtures/metrics.json` and `fixtures/semantic-metrics.json` in a
+separate change when the corpus or evaluation behavior intentionally changes.
+Review and commit that evidence before running the clean-checkout commands
+above; their no-output variants prevent timestamps from changing the commit
+that was verified. The onboarding installer builds and links the pinned
+checkout, so use `pnpm test:built-cli` to exercise that built command and its
+provenance rather than relying on a stale global `verifier` link.
 
 After publishing the tag, update the organization manifest and validate the
 complete pinned set through the organization release checklist. Do not advance
