@@ -1,0 +1,21 @@
+{
+  "id": "gp-029-adjacent-redaction-statements-remain-safe",
+  "kind": "golden",
+  "stack": "node",
+  "labelSource": "Paired false-positive control for verifier PR #218",
+  "description": "A display-name redaction call followed by separate header construction is not a removed header-redaction guard.",
+  "input": {
+    "task": "Refactor logging setup.",
+    "diff": "diff --git a/logger.ts b/logger.ts\n-redact(displayName, \"[\")\n-const headers = buildHeaders()\n+const headers = createHeaders()",
+    "verifyLogs": "Tests 12 passed\n0 failures",
+    "builderReport": "Verified logging setup tests passed."
+  },
+  "expected": {
+    "verdict": "open_pr",
+    "risk": "low",
+    "mustFixMax": 0,
+    "shouldFixMax": 0,
+    "confidenceMin": 80,
+    "maxFalsePositives": 0
+  }
+}
