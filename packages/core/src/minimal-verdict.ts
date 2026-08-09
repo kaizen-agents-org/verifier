@@ -119,7 +119,7 @@ const HIGH_RISK_DIFF_SIGNALS = [
       /\b(?:const|let|var)\s+\w*(?:password|secret|token|credential|api_?key)\w*\s*=|\b(?:process\.env|req\.(?:body|headers)|headers\.get|secretManager|vault)\b[^\n]*(?:password|secret|token|credential|api[_-]?key)|\b(?:console|logger)\.\w+\s*\([^\n]*(?:password|secret|token|credential|api[_-]?key)/i,
     removedPattern: REMOVED_SECRET_GUARD_PATTERN,
     coveragePattern:
-      /\b(?:secret|credential|token|api[_-\s]?key|redact|mask|saniti[sz](?:e|ation)|scrub|headers?|cookies?|auth(?:orization)?|leak|security)\b/i
+      /\b(?:password|secret|credential|token|api[_-\s]?key|redact|mask|saniti[sz](?:e|ation)|scrub|headers?|cookies?|auth(?:orization)?|leak|security)\b/i
   },
   {
     label: "billing/payments",
@@ -189,7 +189,7 @@ export function evaluateMinimalVerdict(input: VerdictInput): MinimalVerdict {
 
   const diffRisks = assessDiffRisk(normalized.diff);
   for (const diffRisk of diffRisks) {
-    if (hasTargetedCoverage(diffRisk.label, normalized.verifyLogs, normalized.builderReport)) {
+    if (hasTargetedCoverage(diffRisk.label, diffRisk.evidence, normalized.verifyLogs, normalized.builderReport)) {
       shouldFix.push({
         source: "diff",
         message: `Diff touches high-risk ${diffRisk.label} code; targeted verification evidence was found, but reviewers should still inspect it.`,
@@ -351,6 +351,7 @@ function findMultilineRemovedMatches(lines: DiffRiskLine[], pattern: RegExp): Di
 
   for (const line of lines) {
     const previous = group.at(-1);
+    if (previous && removedExpressionIsComplete(group)) flush();
     if (
       line.kind !== "removed" ||
       !isRuntimeRiskLine(line) ||
@@ -363,6 +364,17 @@ function findMultilineRemovedMatches(lines: DiffRiskLine[], pattern: RegExp): Di
   }
   flush();
   return matches;
+}
+
+function removedExpressionIsComplete(group: DiffRiskLine[]): boolean {
+  const content = group.map((line) => line.content.trim()).join(" ");
+  let depth = 0;
+  for (const character of content) {
+    if (character === "(" || character === "[" || character === "{") depth += 1;
+    if (character === ")" || character === "]" || character === "}") depth -= 1;
+  }
+  if (depth > 0) return false;
+  return !/(?:[=,:.]|=>|\b(?:return|throw))\s*$/.test(content);
 }
 
 function findAuthorizationPolicyMatches(lines: DiffRiskLine[]): DiffRiskLine[] {
@@ -838,6 +850,7 @@ function hasPositiveVerificationEvidence(verifyLogs: string): boolean {
 
 function hasTargetedCoverage(
   label: string,
+  evidence: string,
   verifyLogs: string,
   builderReport: string
 ): boolean {
@@ -846,9 +859,24 @@ function hasTargetedCoverage(
   return lines(`${verifyLogs}\n${builderReport}`).some((line) => {
     return (
       signal.coveragePattern.test(line) &&
+      (label !== "secrets/credentials" || hasMatchingSecretTarget(evidence, line)) &&
       /\b(?:test|tested|verify|verified|coverage|passed|check|checked)\b/i.test(line)
     );
   });
+}
+
+function hasMatchingSecretTarget(evidence: string, coverageLine: string): boolean {
+  const targetPatterns = [
+    /\bpasswords?\b/i,
+    /\bsecrets?\b/i,
+    /\btokens?\b/i,
+    /\bcredentials?\b/i,
+    /\bapi[_\-\s]?keys?\b/i,
+    /\bauth(?:orization)?\b/i,
+    /\bheaders?\b/i,
+    /\bcookies?\b/i
+  ];
+  return targetPatterns.some((pattern) => pattern.test(evidence) && pattern.test(coverageLine));
 }
 
 function chooseVerdict(input: {
