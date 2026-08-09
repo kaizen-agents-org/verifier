@@ -389,12 +389,12 @@ function findMultilineRemovedMatches(lines: DiffRiskLine[], pattern: RegExp): Di
 
 function removedExpressionIsComplete(group: DiffRiskLine[]): boolean {
   const content = group.map((line) => line.content.trim()).join("\n");
-  const scanned = scanDelimiterCode(content);
+  const scanned = scanDelimiterCode(content, /\.(?:py|rb)$/i.test(group[0]?.path ?? ""));
   if (scanned.depth > 0) return false;
   return !/(?:[=,:.]|=>|\b(?:return|throw))\s*$/.test(scanned.content);
 }
 
-function scanDelimiterCode(content: string): { content: string; depth: number } {
+function scanDelimiterCode(content: string, hashComments = false): { content: string; depth: number } {
   const output = content.split("");
   let depth = 0;
   let quote = "";
@@ -438,6 +438,13 @@ function scanDelimiterCode(content: string): { content: string; depth: number } 
       continue;
     }
     if (character === "/" && next === "/") {
+      while (index < content.length && content[index] !== "\n") {
+        output[index] = " ";
+        index += 1;
+      }
+      continue;
+    }
+    if (hashComments && character === "#") {
       while (index < content.length && content[index] !== "\n") {
         output[index] = " ";
         index += 1;
@@ -1170,6 +1177,8 @@ function findInterpolationEnd(content: string, start: number, markerLength: numb
     } else if (character === "/" && next === "/") {
       lineComment = true;
       index += 1;
+    } else if (character === "/" && isRegexLiteralStart(content, index)) {
+      index = findRegexLiteralEnd(content, index);
     } else if (character === "#") {
       lineComment = true;
     } else if (character === "\\") {
