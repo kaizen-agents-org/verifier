@@ -14,12 +14,14 @@ describe("built verifier CLI", () => {
       encoding: "utf8"
     });
     const result = JSON.parse(stdout) as {
+      version: string;
       status: string;
       stale: boolean | null;
       build: { commit: string | null };
       runtime: { commit: string | null };
     };
 
+    expect(result.version).toBe("0.1.0");
     expect(result.status).toBe("current");
     expect(result.stale).toBe(false);
     expect(result.build.commit).toMatch(/^[0-9a-f]{40}$/);
