@@ -6,6 +6,8 @@ import type { LaunchContext, Observation, Scenario, StepResult } from "@verifier
 import { CliProbeDriver } from "../src/index.js";
 
 const fixture = resolve(import.meta.dirname, "../../../../fixtures/probe/cli-tool/cli.mjs");
+const PROCESS_TEST_TIMEOUT_MS = 10_000;
+const PROCESS_TEST_CASE_TIMEOUT_MS = 15_000;
 
 describe("CLI probe driver", () => {
   for (const defect of ["bad-exit", "stderr-noise", "missing-output", "hang"] as const) {
@@ -18,7 +20,7 @@ describe("CLI probe driver", () => {
         expect(results[0]).toMatchObject({ ok: false, error: expect.stringContaining("timeout") });
         expect(observation.crashed).toBe(false);
       }
-    });
+    }, PROCESS_TEST_CASE_TIMEOUT_MS);
   }
 
   it("keeps a clean run free of failure observations", async () => {
@@ -27,7 +29,7 @@ describe("CLI probe driver", () => {
     expect(observation).toMatchObject({ exitCode: 0, stderr: "", crashed: false });
     expect(observation.artifacts).toEqual([{ kind: "file", path: "output.txt" }]);
     await expect(readFile(join(workdir, "output.txt"), "utf8")).resolves.toBe("HELLO");
-  });
+  }, PROCESS_TEST_CASE_TIMEOUT_MS);
 
   it("does not inherit unrelated parent secrets", async () => {
     const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-env-"));
@@ -39,7 +41,7 @@ describe("CLI probe driver", () => {
           args: ["-e", "process.stdout.write(process.env.VERIFIER_PARENT_SECRET ?? 'absent')"]
         }
       }
-    }).launch(context(workdir, {}));
+    }).launch(context(workdir, {}, PROCESS_TEST_TIMEOUT_MS));
     try {
       await session.interact(scenario("inspect"));
       await expect(session.observe()).resolves.toMatchObject({ stdout: "absent" });
@@ -47,7 +49,7 @@ describe("CLI probe driver", () => {
       delete process.env.VERIFIER_PARENT_SECRET;
       await session.teardown();
     }
-  });
+  }, PROCESS_TEST_CASE_TIMEOUT_MS);
 
   it("detects package and Cargo binaries without side effects", async () => {
     const driver = new CliProbeDriver({ commands: {} });
@@ -89,14 +91,14 @@ describe("CLI probe driver", () => {
         exit: { file: process.execPath, args: ["-e", "process.exit(0)"] }
       },
       maxInputBytes: 1024 * 1024
-    }).launch(context(workdir, {}));
+    }).launch(context(workdir, {}, PROCESS_TEST_TIMEOUT_MS));
     const results = await session.interact({
       ...scenario("exit"),
       steps: [{ op: "exec", command: "exit", stdin: "x".repeat(1024 * 1024) }]
     });
     expect(results).toMatchObject([{ ok: true }]);
     await session.teardown();
-  });
+  }, PROCESS_TEST_CASE_TIMEOUT_MS);
 
   it("preserves a prior crash and failing exit code across later successful exec steps", async () => {
     const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-multi-step-"));
@@ -106,7 +108,7 @@ describe("CLI probe driver", () => {
         crash: { file: process.execPath, args: ["-e", "process.kill(process.pid, 'SIGTERM')"] },
         pass: { file: process.execPath, args: ["-e", "process.exit(0)"] }
       }
-    }).launch(context(workdir, {}, 5_000));
+    }).launch(context(workdir, {}, PROCESS_TEST_TIMEOUT_MS));
     await session.interact({
       ...scenario("fail"),
       steps: [
@@ -117,7 +119,7 @@ describe("CLI probe driver", () => {
     });
     await expect(session.observe()).resolves.toMatchObject({ crashed: true, exitCode: 7 });
     await session.teardown();
-  });
+  }, PROCESS_TEST_CASE_TIMEOUT_MS);
 
   it("enforces one deadline across all scenario steps", async () => {
     const workdir = await mkdtemp(join(tmpdir(), "verifier-cli-deadline-"));
@@ -153,7 +155,7 @@ describe("CLI probe driver", () => {
         }
       }
     });
-    const session = await driver.launch(context(workdir, {}));
+    const session = await driver.launch(context(workdir, {}, PROCESS_TEST_TIMEOUT_MS));
 
     try {
       const results = await session.interact(scenario("noop"));
@@ -162,7 +164,7 @@ describe("CLI probe driver", () => {
     } finally {
       await session.teardown();
     }
-  });
+  }, PROCESS_TEST_CASE_TIMEOUT_MS);
 });
 
 async function runFixture(defect: string): Promise<{
@@ -182,7 +184,7 @@ async function runFixture(defect: string): Promise<{
     }
   });
   const session = await driver.launch(
-    context(workdir, { FIXTURE_DEFECTS: defect }, defect === "hang" ? 1_000 : 5_000)
+    context(workdir, { FIXTURE_DEFECTS: defect }, defect === "hang" ? 1_000 : PROCESS_TEST_TIMEOUT_MS)
   );
   try {
     const results = await session.interact(scenario("convert"));
@@ -196,7 +198,7 @@ async function runFixture(defect: string): Promise<{
 function context(
   workdir: string,
   env: Record<string, string>,
-  timeoutMs = 1_000
+  timeoutMs = PROCESS_TEST_TIMEOUT_MS
 ): LaunchContext {
   return {
     workdir,

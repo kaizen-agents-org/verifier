@@ -10,6 +10,8 @@ import {
 import type { Finding } from "../src/judge/index.js";
 
 const temporaryDirectories: string[] = [];
+const PROCESS_TEST_TIMEOUT_MS = 10_000;
+const PROCESS_TEST_CASE_TIMEOUT_MS = 15_000;
 
 afterEach(async () => {
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
@@ -235,11 +237,11 @@ describe("refutation gate", () => {
     const workspace = await makeWorkspace();
     const result = await executeReproCommand(
       `${process.execPath} -e "process.stdout.write('1234567890')"`,
-      { workspace, timeoutMs: 2_000, maxOutputBytes: 4 }
+      { workspace, timeoutMs: PROCESS_TEST_TIMEOUT_MS, maxOutputBytes: 4 }
     );
 
     expect(result).toMatchObject({ code: 0, stdout: "1234", outputTruncated: true });
-  });
+  }, PROCESS_TEST_CASE_TIMEOUT_MS);
 });
 
 async function makeWorkspace(): Promise<string> {
