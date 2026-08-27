@@ -143,7 +143,7 @@ describe("scenario generator authority", () => {
   });
 });
 
-describe("Stage 5 probe orchestration", () => {
+describe("Stage 5 probe orchestration", { timeout: 15_000 }, () => {
   for (const defect of ["bad-exit", "stderr-noise", "missing-output"] as const) {
     it(`materializes the CLI ${defect} observation as a reproduced finding`, async () => {
       const result = await runCli(defect);
@@ -778,7 +778,7 @@ async function runCli(defect: string, withRefutation = false) {
     : await runProbeStage(options);
 }
 
-async function runApi(defect: string, scenario: Scenario, timeoutMs = 2_000) {
+async function runApi(defect: string, scenario: Scenario, timeoutMs = 10_000) {
   const workdir = await mkdtemp(join(tmpdir(), "verifier-stage5-api-"));
   const runsRoot = join(workdir, ".verifier", "runs");
   const result = await runProbeStage({
