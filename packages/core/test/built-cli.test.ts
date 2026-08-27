@@ -11,9 +11,10 @@ const execFileAsync = promisify(execFile);
 describe("built verifier CLI", () => {
   it("reports build provenance from the compiled command", async () => {
     const packageJson = JSON.parse(await readFile("package.json", "utf8")) as { version: string };
-    const { stdout } = await execFileAsync(process.execPath, ["dist/cli.js", "--version", "--json"], {
-      encoding: "utf8"
-    });
+    const [{ stdout }, { stdout: plainOutput }] = await Promise.all([
+      execFileAsync(process.execPath, ["dist/cli.js", "--version", "--json"], { encoding: "utf8" }),
+      execFileAsync(process.execPath, ["dist/cli.js", "--version"], { encoding: "utf8" })
+    ]);
     const result = JSON.parse(stdout) as {
       version: string;
       status: string;
@@ -24,6 +25,7 @@ describe("built verifier CLI", () => {
 
     expect(result.version).toBe(packageJson.version);
     expect(result.version).not.toBe("0.0.0");
+    expect(plainOutput).toBe(`verifier ${packageJson.version}\n`);
     expect(result.status).toBe("current");
     expect(result.stale).toBe(false);
     expect(result.build.commit).toMatch(/^[0-9a-f]{40}$/);
