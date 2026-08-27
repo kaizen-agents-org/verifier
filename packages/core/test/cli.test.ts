@@ -2222,7 +2222,8 @@ function spawnWithInput(
 }
 
 async function waitForPath(path: string): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
     try {
       await lstat(path);
       return;
